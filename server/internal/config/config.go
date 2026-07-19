@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -58,7 +59,7 @@ func Load() (Config, error) {
 		AdminPassword:         os.Getenv("ADMIN_PASSWORD"),
 		SessionTTL:            30 * 24 * time.Hour,
 		MaxUploadBytes:        500 << 20,
-		TrustedProxyCIDR:      os.Getenv("TRUSTED_PROXY_CIDR"),
+		TrustedProxyCIDR:      strings.TrimSpace(os.Getenv("TRUSTED_PROXY_CIDR")),
 		AIProvider:            strings.ToLower(strings.TrimSpace(os.Getenv("AI_PROVIDER"))),
 		AIBaseURL:             strings.TrimRight(strings.TrimSpace(os.Getenv("AI_BASE_URL")), "/"),
 		AIModel:               strings.TrimSpace(os.Getenv("AI_MODEL")),
@@ -93,6 +94,11 @@ func Load() (Config, error) {
 	}
 	if cfg.AdminPassword == "" {
 		return Config{}, fmt.Errorf("ADMIN_PASSWORD is required")
+	}
+	if cfg.TrustedProxyCIDR != "" {
+		if _, _, err := net.ParseCIDR(cfg.TrustedProxyCIDR); err != nil {
+			return Config{}, fmt.Errorf("TRUSTED_PROXY_CIDR must be a valid CIDR")
+		}
 	}
 	if len(cfg.AdminPassword) < 12 {
 		return Config{}, fmt.Errorf("ADMIN_PASSWORD must contain at least 12 characters")

@@ -2,10 +2,31 @@ package httpapi
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+func TestClientIPOnlyTrustsForwardingHeaderFromConfiguredProxy(t *testing.T) {
+	_, trusted, err := net.ParseCIDR("10.0.0.0/8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := &API{trustedProxy: trusted}
+	trustedRequest := httptest.NewRequest(http.MethodGet, "/", nil)
+	trustedRequest.RemoteAddr = "10.0.0.2:1234"
+	trustedRequest.Header.Set("X-Forwarded-For", "203.0.113.7, 10.0.0.2")
+	if got := api.clientIP(trustedRequest); got != "203.0.113.7" {
+		t.Fatalf("trusted proxy client IP=%q", got)
+	}
+	untrustedRequest := httptest.NewRequest(http.MethodGet, "/", nil)
+	untrustedRequest.RemoteAddr = "192.168.1.5:1234"
+	untrustedRequest.Header.Set("X-Forwarded-For", "203.0.113.8")
+	if got := api.clientIP(untrustedRequest); got != "192.168.1.5" {
+		t.Fatalf("untrusted forwarding header accepted: %q", got)
+	}
+}
 
 func TestValidPosition(t *testing.T) {
 	tests := []struct {

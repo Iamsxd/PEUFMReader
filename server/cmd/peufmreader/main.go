@@ -110,7 +110,7 @@ func main() {
 		}
 	}
 	bibliographyService := bibliography.NewService(bibliographyProviders...)
-	api := httpapi.New(dataStore, libraryManager, importService, calibreScanner, bibliographyService, advisor, cfg.WebRoot, cfg.CookieSecure, cfg.SessionTTL, cfg.MaxUploadBytes, logger)
+	api := httpapi.New(dataStore, libraryManager, importService, calibreScanner, bibliographyService, advisor, cfg.WebRoot, cfg.CookieSecure, cfg.SessionTTL, cfg.MaxUploadBytes, cfg.TrustedProxyCIDR, logger)
 	server := &http.Server{
 		Addr:              cfg.Address,
 		Handler:           api.Handler(),

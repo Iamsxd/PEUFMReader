@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -41,6 +42,8 @@ type API struct {
 	calibre        *calibre.Scanner
 	bibliography   *bibliography.Service
 	logger         *slog.Logger
+	loginLimiter   *loginLimiter
+	trustedProxy   *net.IPNet
 	mux            *http.ServeMux
 }
 
@@ -48,7 +51,11 @@ type contextKey string
 
 const sessionContextKey contextKey = "session"
 
-func New(store *store.Store, libraryManager *library.Manager, importer *importing.Service, calibreScanner *calibre.Scanner, bibliographyService *bibliography.Service, advisor *classification.Advisor, webRoot string, cookieSecure bool, sessionTTL time.Duration, maxUploadBytes int64, logger *slog.Logger) *API {
+func New(store *store.Store, libraryManager *library.Manager, importer *importing.Service, calibreScanner *calibre.Scanner, bibliographyService *bibliography.Service, advisor *classification.Advisor, webRoot string, cookieSecure bool, sessionTTL time.Duration, maxUploadBytes int64, trustedProxyCIDR string, logger *slog.Logger) *API {
+	var trustedProxy *net.IPNet
+	if strings.TrimSpace(trustedProxyCIDR) != "" {
+		_, trustedProxy, _ = net.ParseCIDR(trustedProxyCIDR)
+	}
 	api := &API{
 		store:          store,
 		library:        libraryManager,
@@ -61,6 +68,8 @@ func New(store *store.Store, libraryManager *library.Manager, importer *importin
 		calibre:        calibreScanner,
 		bibliography:   bibliographyService,
 		logger:         logger,
+		loginLimiter:   newLoginLimiter(),
+		trustedProxy:   trustedProxy,
 		mux:            http.NewServeMux(),
 	}
 	api.routes()
@@ -101,6 +110,7 @@ func (a *API) routes() {
 	a.mux.Handle("POST /api/v1/editions/{id}/bibliography-search", a.requireAuth(http.HandlerFunc(a.searchBibliography), "admin", true))
 	a.mux.Handle("GET /api/v1/import-jobs", a.requireAuth(http.HandlerFunc(a.listImportJobs), "admin", false))
 	a.mux.Handle("GET /api/v1/background-jobs", a.requireAuth(http.HandlerFunc(a.listBackgroundJobs), "admin", false))
+	a.mux.Handle("GET /api/v1/audit-events", a.requireAuth(http.HandlerFunc(a.listAuditEvents), "admin", false))
 	a.mux.Handle("POST /api/v1/background-jobs/{id}/retry", a.requireAuth(http.HandlerFunc(a.retryBackgroundJob), "admin", true))
 	a.mux.Handle("GET /api/v1/calibre/preview", a.requireAuth(http.HandlerFunc(a.previewCalibre), "admin", false))
 	a.mux.Handle("POST /api/v1/calibre/import", a.requireAuth(http.HandlerFunc(a.importCalibre), "admin", true))
@@ -126,15 +136,36 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
+	clientIP := a.clientIP(r)
+	username := strings.ToLower(strings.TrimSpace(input.Username))
+	limitKey := clientIP + "|" + username
+	if allowed, retryAfter := a.loginLimiter.allow(limitKey, time.Now()); !allowed {
+		w.Header().Set("Retry-After", strconv.Itoa(max(1, int(retryAfter.Seconds()))))
+		a.recordAudit(nil, username, "auth.login.blocked", clientIP, http.StatusTooManyRequests, nil)
+		writeError(w, http.StatusTooManyRequests, "login_rate_limited", "too many login attempts; try again later")
+		return
+	}
 	user, valid, err := a.store.Authenticate(r.Context(), input.Username, input.Password)
 	if err != nil {
 		a.internalError(w, err)
 		return
 	}
 	if !valid {
-		writeError(w, http.StatusUnauthorized, "invalid_credentials", "invalid username or password")
+		blocked, retryAfter := a.loginLimiter.failure(limitKey, time.Now())
+		status := http.StatusUnauthorized
+		code := "invalid_credentials"
+		message := "invalid username or password"
+		if blocked {
+			status = http.StatusTooManyRequests
+			code = "login_rate_limited"
+			message = "too many login attempts; try again later"
+			w.Header().Set("Retry-After", strconv.Itoa(max(1, int(retryAfter.Seconds()))))
+		}
+		a.recordAudit(nil, username, "auth.login.failed", clientIP, status, nil)
+		writeError(w, status, code, message)
 		return
 	}
+	a.loginLimiter.success(limitKey)
 	rawToken, err := randomToken(32)
 	if err != nil {
 		a.internalError(w, err)
@@ -150,6 +181,7 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, err)
 		return
 	}
+	a.recordAudit(&user.ID, user.Username, "auth.login.succeeded", clientIP, http.StatusOK, nil)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    rawToken,
@@ -755,6 +787,15 @@ func (a *API) listBackgroundJobs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+func (a *API) listAuditEvents(w http.ResponseWriter, r *http.Request) {
+	items, err := a.store.ListAuditEvents(r.Context(), 100)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 func (a *API) retryBackgroundJob(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(w, r.PathValue("id"))
 	if !ok {
@@ -942,8 +983,56 @@ func (a *API) requireAuth(next http.Handler, requiredRole string, csrfRequired b
 			writeError(w, http.StatusForbidden, "invalid_csrf_token", "CSRF token is missing or invalid")
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionContextKey, session)))
+		authenticatedRequest := r.WithContext(context.WithValue(r.Context(), sessionContextKey, session))
+		if !csrfRequired || requiredRole != "admin" {
+			next.ServeHTTP(w, authenticatedRequest)
+			return
+		}
+		recorder := &auditResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		next.ServeHTTP(recorder, authenticatedRequest)
+		a.recordAudit(&session.User.ID, session.User.Username, r.Method+" "+r.Pattern, a.clientIP(r), recorder.statusCode, map[string]any{"path": r.URL.Path})
 	})
+}
+
+type auditResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (w *auditResponseWriter) WriteHeader(statusCode int) {
+	w.statusCode = statusCode
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (w *auditResponseWriter) Write(content []byte) (int, error) {
+	return w.ResponseWriter.Write(content)
+}
+
+func (a *API) recordAudit(actorID *int64, actorName, action, clientIP string, statusCode int, details map[string]any) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := a.store.RecordAuditEvent(ctx, actorID, actorName, action, clientIP, statusCode, details); err != nil {
+		a.logger.Warn("audit event write failed", "action", action, "error", err)
+	}
+}
+
+func (a *API) clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err != nil {
+		host = strings.TrimSpace(r.RemoteAddr)
+	}
+	remoteIP := net.ParseIP(host)
+	if a.trustedProxy != nil && remoteIP != nil && a.trustedProxy.Contains(remoteIP) {
+		for _, value := range strings.Split(r.Header.Get("X-Forwarded-For"), ",") {
+			if forwarded := net.ParseIP(strings.TrimSpace(value)); forwarded != nil {
+				return forwarded.String()
+			}
+		}
+	}
+	if remoteIP != nil {
+		return remoteIP.String()
+	}
+	return host
 }
 
 func sessionFromContext(ctx context.Context) store.Session {
