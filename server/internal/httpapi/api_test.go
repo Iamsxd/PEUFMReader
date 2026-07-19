@@ -41,6 +41,25 @@ func TestCategorySlugPattern(t *testing.T) {
 	}
 }
 
+func TestValidUsername(t *testing.T) {
+	for _, valid := range []string{"reader", "reader-2", "张三", "user.name_3"} {
+		if !validUsername(valid) {
+			t.Fatalf("valid username rejected: %q", valid)
+		}
+	}
+	for _, invalid := range []string{"", "-reader", "two words", "reader/2", string(make([]byte, 65))} {
+		if validUsername(invalid) {
+			t.Fatalf("invalid username accepted: %q", invalid)
+		}
+	}
+}
+
+func TestTruncateRunesPreservesUnicode(t *testing.T) {
+	if got := truncateRunes(" 阅读设备 ", 3); got != "阅读设" {
+		t.Fatalf("truncateRunes()=%q", got)
+	}
+}
+
 func TestValidPosition(t *testing.T) {
 	tests := []struct {
 		name  string

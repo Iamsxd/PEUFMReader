@@ -176,11 +176,11 @@ func (s *Store) GetActiveUserByUsername(ctx context.Context, username string) (U
 	return user, true, nil
 }
 
-func (s *Store) CreateSession(ctx context.Context, rawToken, csrfToken string, userID int64, expiresAt time.Time) error {
+func (s *Store) CreateSession(ctx context.Context, rawToken, csrfToken string, userID int64, expiresAt time.Time, clientIP, userAgent string) error {
 	hash := sha256.Sum256([]byte(rawToken))
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO user_sessions(token_hash,user_id,csrf_token,expires_at)
-		VALUES ($1,$2,$3,$4)`, hash[:], userID, csrfToken, expiresAt,
+		INSERT INTO user_sessions(token_hash,user_id,csrf_token,expires_at,created_ip,user_agent)
+		VALUES ($1,$2,$3,$4,$5,$6)`, hash[:], userID, csrfToken, expiresAt, strings.TrimSpace(clientIP), strings.TrimSpace(userAgent),
 	)
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)

@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 
@@ -90,6 +92,11 @@ func (a *API) routes() {
 	a.mux.Handle("POST /api/v1/auth/logout", a.requireAuth(http.HandlerFunc(a.logout), "", true))
 	a.mux.Handle("GET /api/v1/users", a.requireAuth(http.HandlerFunc(a.listUsers), "admin", false))
 	a.mux.Handle("POST /api/v1/users", a.requireAuth(http.HandlerFunc(a.createUser), "admin", true))
+	a.mux.Handle("PATCH /api/v1/users/{id}", a.requireAuth(http.HandlerFunc(a.updateUser), "admin", true))
+	a.mux.Handle("DELETE /api/v1/users/{id}", a.requireAuth(http.HandlerFunc(a.deleteUser), "admin", true))
+	a.mux.Handle("GET /api/v1/users/{id}/access", a.requireAuth(http.HandlerFunc(a.userAccessInfo), "admin", false))
+	a.mux.Handle("POST /api/v1/users/{id}/password", a.requireAuth(http.HandlerFunc(a.resetUserPassword), "admin", true))
+	a.mux.Handle("DELETE /api/v1/users/{id}/sessions", a.requireAuth(http.HandlerFunc(a.revokeUserSessions), "admin", true))
 	a.mux.Handle("GET /api/v1/home", a.requireAuth(http.HandlerFunc(a.homeDashboard), "", false))
 	a.mux.Handle("GET /api/v1/favorites", a.requireAuth(http.HandlerFunc(a.listFavorites), "", false))
 	a.mux.Handle("GET /api/v1/recommendations", a.requireAuth(http.HandlerFunc(a.listRecommendations), "", false))
@@ -184,7 +191,7 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	expiresAt := time.Now().UTC().Add(a.sessionTTL)
-	if err := a.store.CreateSession(r.Context(), rawToken, csrfToken, user.ID, expiresAt); err != nil {
+	if err := a.store.CreateSession(r.Context(), rawToken, csrfToken, user.ID, expiresAt, clientIP, truncateRunes(r.UserAgent(), 512)); err != nil {
 		a.internalError(w, err)
 		return
 	}
@@ -225,7 +232,7 @@ func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) listUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := a.store.ListUsers(r.Context())
+	users, err := a.store.ListManagedUsers(r.Context())
 	if err != nil {
 		a.internalError(w, err)
 		return
@@ -247,12 +254,126 @@ func (a *API) createUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "weak_password", "password must contain at least 12 characters")
 		return
 	}
+	if !validUsername(input.Username) {
+		writeError(w, http.StatusBadRequest, "invalid_username", "username must contain 1 to 64 letters, numbers, dots, underscores, or hyphens")
+		return
+	}
 	user, err := a.store.CreateUser(r.Context(), input.Username, input.Password, input.Role)
 	if err != nil {
 		writeError(w, http.StatusConflict, "user_not_created", "username already exists or input is invalid")
 		return
 	}
 	writeJSON(w, http.StatusCreated, user)
+}
+
+func (a *API) updateUser(w http.ResponseWriter, r *http.Request) {
+	userID, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	var input struct {
+		Username string `json:"username"`
+		Role     string `json:"role"`
+		Disabled bool   `json:"disabled"`
+	}
+	if err := readJSON(w, r, &input, 64<<10); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if !validUsername(input.Username) || (input.Role != "admin" && input.Role != "reader") {
+		writeError(w, http.StatusBadRequest, "invalid_user", "username or role is invalid")
+		return
+	}
+	current := sessionFromContext(r.Context()).User
+	if userID == current.ID && (input.Disabled || input.Role != "admin") {
+		writeError(w, http.StatusForbidden, "cannot_change_current_admin", "the current administrator cannot be disabled or demoted")
+		return
+	}
+	user, err := a.store.UpdateManagedUser(r.Context(), userID, input.Username, input.Role, input.Disabled)
+	if err != nil {
+		writeUserManagementError(w, err, "user_not_updated")
+		return
+	}
+	writeJSON(w, http.StatusOK, user)
+}
+
+func (a *API) deleteUser(w http.ResponseWriter, r *http.Request) {
+	userID, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if userID == sessionFromContext(r.Context()).User.ID {
+		writeError(w, http.StatusForbidden, "cannot_delete_current_user", "the current administrator cannot delete their own account")
+		return
+	}
+	if err := a.store.DeleteManagedUser(r.Context(), userID); err != nil {
+		writeUserManagementError(w, err, "user_not_deleted")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) resetUserPassword(w http.ResponseWriter, r *http.Request) {
+	userID, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	var input struct {
+		Password string `json:"password"`
+	}
+	if err := readJSON(w, r, &input, 64<<10); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if len(input.Password) < 12 {
+		writeError(w, http.StatusBadRequest, "weak_password", "password must contain at least 12 characters")
+		return
+	}
+	if err := a.store.ResetUserPassword(r.Context(), userID, input.Password); err != nil {
+		writeUserManagementError(w, err, "password_not_reset")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) revokeUserSessions(w http.ResponseWriter, r *http.Request) {
+	userID, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if err := a.store.RevokeUserSessions(r.Context(), userID); err != nil {
+		writeUserManagementError(w, err, "sessions_not_revoked")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) userAccessInfo(w http.ResponseWriter, r *http.Request) {
+	userID, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	currentToken := ""
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
+		currentToken = cookie.Value
+	}
+	info, err := a.store.GetUserAccessInfo(r.Context(), userID, currentToken)
+	if err != nil {
+		writeUserManagementError(w, err, "access_info_not_loaded")
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+func writeUserManagementError(w http.ResponseWriter, err error, fallbackCode string) {
+	switch {
+	case errors.Is(err, store.ErrUserNotFound):
+		writeError(w, http.StatusNotFound, "user_not_found", "user not found")
+	case errors.Is(err, store.ErrLastActiveAdmin):
+		writeError(w, http.StatusConflict, "last_active_admin", "at least one active administrator must remain")
+	default:
+		writeError(w, http.StatusConflict, fallbackCode, "the user change could not be completed")
+	}
 }
 
 func (a *API) listBookFiles(w http.ResponseWriter, r *http.Request) {
@@ -1234,4 +1355,26 @@ func validReadingStatus(value string) bool {
 	default:
 		return false
 	}
+}
+
+func validUsername(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || utf8.RuneCountInString(value) > 64 {
+		return false
+	}
+	for index, char := range []rune(value) {
+		if unicode.IsLetter(char) || unicode.IsDigit(char) || (index > 0 && (char == '.' || char == '_' || char == '-')) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func truncateRunes(value string, maxRunes int) string {
+	value = strings.TrimSpace(value)
+	if utf8.RuneCountInString(value) <= maxRunes {
+		return value
+	}
+	return string([]rune(value)[:maxRunes])
 }
