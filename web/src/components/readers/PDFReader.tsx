@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as pdfjs from 'pdfjs-dist'
 import workerURL from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { api } from '../../api'
+import { describePDFError, fetchPDFBytes } from '../../pdf'
 import type { BookFile, ReadingState } from '../../types'
 import { clampProgress } from '../../utils'
 
@@ -17,6 +18,7 @@ export function PDFReader({ book, initialState, onProgress }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const documentRef = useRef<pdfjs.PDFDocumentProxy | null>(null)
   const renderTaskRef = useRef<pdfjs.RenderTask | null>(null)
+  const loadingTaskRef = useRef<pdfjs.PDFDocumentLoadingTask | null>(null)
   const initialPage = typeof initialState.position.pageIndex === 'number' ? Number(initialState.position.pageIndex) + 1 : 1
   const [pageNumber, setPageNumber] = useState(Math.max(1, initialPage))
   const [pageCount, setPageCount] = useState(0)
@@ -24,20 +26,30 @@ export function PDFReader({ book, initialState, onProgress }: Props) {
 
   useEffect(() => {
     let disposed = false
-    const task = pdfjs.getDocument({ url: api.contentURL(book.id), withCredentials: true })
-    void task.promise.then((document) => {
-      if (disposed) {
-        void task.destroy()
-        return
-      }
+    const controller = new AbortController()
+    setError('')
+
+    void fetchPDFBytes(api.contentURL(book.id), controller.signal).then((bytes) => {
+      if (disposed) return null
+      const task = pdfjs.getDocument({ data: bytes })
+      loadingTaskRef.current = task
+      return task.promise
+    }).then((document) => {
+      if (!document || disposed) return
       documentRef.current = document
       setPageCount(document.numPages)
       setPageNumber((current) => Math.min(current, document.numPages))
-    }).catch(() => setError('PDF 加载失败。'))
+    }).catch((reason: unknown) => {
+      if (controller.signal.aborted) return
+      console.error('PDF loading failed', reason)
+      setError(describePDFError(reason))
+    })
     return () => {
       disposed = true
+      controller.abort()
       renderTaskRef.current?.cancel()
-      void task.destroy()
+      void loadingTaskRef.current?.destroy()
+      loadingTaskRef.current = null
       documentRef.current = null
     }
   }, [book.id])
