@@ -96,6 +96,55 @@ export interface ImportJob {
   updatedAt: string
 }
 
+export interface BackgroundJob {
+  id: number
+  kind: string
+  state: 'queued' | 'running' | 'completed' | 'failed'
+  dedupeKey: string
+  payload: Record<string, unknown>
+  result: Record<string, unknown>
+  attempts: number
+  maxAttempts: number
+  availableAt: string
+  leaseExpiresAt?: string
+  lastError?: string
+  bookFileId?: number
+  createdAt: string
+  updatedAt: string
+  completedAt?: string
+}
+
+export interface CalibreRecord {
+  sourcePath: string
+  metadataPath: string
+  coverPath?: string
+  title: string
+  authors: string[]
+  publishedYear?: number
+  language?: string
+  isbn?: string
+  publisher?: string
+  description?: string
+  subjects: string[]
+  format: 'pdf' | 'epub'
+}
+
+export interface CalibrePreview {
+  configured: boolean
+  rootLabel: string
+  books: CalibreRecord[]
+  total: number
+  pdfCount: number
+  epubCount: number
+  errors: string[]
+}
+
+export interface CalibreImportResult {
+  queued: number
+  existing: number
+  jobIds: number[]
+}
+
 export interface ReadingState {
   bookFileId: number
   position: Record<string, unknown>

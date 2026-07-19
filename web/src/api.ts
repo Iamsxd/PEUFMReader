@@ -1,4 +1,4 @@
-import type { BookFile, Category, ImportJob, ReadingSession, ReadingState, ReviewInput, ReviewItem, Session, User } from './types'
+import type { BackgroundJob, BookFile, CalibreImportResult, CalibrePreview, Category, ImportJob, ReadingSession, ReadingState, ReviewInput, ReviewItem, Session, User } from './types'
 
 interface ErrorBody {
   error?: { code?: string; message?: string }
@@ -82,6 +82,27 @@ class APIClient {
   async listImportJobs(): Promise<ImportJob[]> {
     const result = await this.request<{ items: ImportJob[] }>('/api/v1/import-jobs')
     return result.items
+  }
+
+  async listBackgroundJobs(): Promise<BackgroundJob[]> {
+    const result = await this.request<{ items: BackgroundJob[] }>('/api/v1/background-jobs')
+    return result.items
+  }
+
+  retryBackgroundJob(jobID: number): Promise<BackgroundJob> {
+    return this.request(`/api/v1/background-jobs/${jobID}/retry`, { method: 'POST' })
+  }
+
+  previewCalibre(): Promise<CalibrePreview> {
+    return this.request('/api/v1/calibre/preview')
+  }
+
+  importCalibre(sourcePaths: string[] = []): Promise<CalibreImportResult> {
+    return this.request('/api/v1/calibre/import', {
+      method: 'POST',
+      body: JSON.stringify({ sourcePaths }),
+      headers: { 'Content-Type': 'application/json' },
+    })
   }
 
   async listUsers(): Promise<User[]> {

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -12,10 +13,13 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"peufmreader/internal/calibre"
 	"peufmreader/internal/classification"
 	"peufmreader/internal/config"
 	"peufmreader/internal/database"
 	"peufmreader/internal/httpapi"
+	"peufmreader/internal/importing"
+	"peufmreader/internal/jobs"
 	"peufmreader/internal/library"
 	"peufmreader/internal/store"
 )
@@ -56,9 +60,20 @@ func main() {
 		logger.Error("library setup failed", "error", err)
 		os.Exit(1)
 	}
+	importService := importing.New(dataStore, libraryManager)
+	calibreScanner := calibre.NewScanner(cfg.CalibreRoot)
+	workerID := fmt.Sprintf("%s-%d", hostname(), os.Getpid())
+	worker := jobs.New(dataStore, map[string]jobs.Handler{
+		calibre.ImportJobKind: calibre.ImportHandler(calibreScanner, importService),
+	}, logger, workerID)
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		worker.Run(ctx)
+	}()
 
 	advisor := classification.NewAdvisor(cfg.AIProvider, cfg.AIBaseURL, cfg.AIModel, cfg.AIAPIKey, cfg.AITimeout)
-	api := httpapi.New(dataStore, libraryManager, advisor, cfg.WebRoot, cfg.CookieSecure, cfg.SessionTTL, cfg.MaxUploadBytes, logger)
+	api := httpapi.New(dataStore, libraryManager, importService, calibreScanner, advisor, cfg.WebRoot, cfg.CookieSecure, cfg.SessionTTL, cfg.MaxUploadBytes, logger)
 	server := &http.Server{
 		Addr:              cfg.Address,
 		Handler:           api.Handler(),
@@ -81,6 +96,19 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", "error", err)
 	}
+	select {
+	case <-workerDone:
+	case <-shutdownCtx.Done():
+		logger.Warn("background worker did not stop before shutdown deadline")
+	}
+}
+
+func hostname() string {
+	value, err := os.Hostname()
+	if err != nil || value == "" {
+		return "peufmreader"
+	}
+	return value
 }
 
 func healthcheck() {

@@ -15,6 +15,7 @@ type Config struct {
 	LibraryRoot      string
 	StagingRoot      string
 	CacheRoot        string
+	CalibreRoot      string
 	WebRoot          string
 	AdminUsername    string
 	AdminPassword    string
@@ -36,6 +37,7 @@ func Load() (Config, error) {
 		LibraryRoot:      envOr("LIBRARY_ROOT", "/data/library"),
 		StagingRoot:      envOr("STAGING_ROOT", "/data/staging"),
 		CacheRoot:        envOr("CACHE_ROOT", "/data/cache"),
+		CalibreRoot:      envOr("CALIBRE_LIBRARY_ROOT", "/import/calibre"),
 		WebRoot:          envOr("WEB_ROOT", "/app/web"),
 		AdminUsername:    strings.ToLower(strings.TrimSpace(envOr("ADMIN_USERNAME", "admin"))),
 		AdminPassword:    os.Getenv("ADMIN_PASSWORD"),

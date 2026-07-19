@@ -1,6 +1,6 @@
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
 import { APIError, api } from '../api'
-import type { BookFile, Category, ImportJob, ReviewItem, Session, User } from '../types'
+import type { BackgroundJob, BookFile, CalibrePreview, Category, ImportJob, ReviewItem, Session, User } from '../types'
 import { formatBytes } from '../utils'
 import { ReviewQueue } from './ReviewQueue'
 
@@ -19,9 +19,13 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
   const [manualReviewItem, setManualReviewItem] = useState<ReviewItem | null>(null)
   const [importJobs, setImportJobs] = useState<ImportJob[]>([])
+  const [backgroundJobs, setBackgroundJobs] = useState<BackgroundJob[]>([])
+  const [calibrePreview, setCalibrePreview] = useState<CalibrePreview | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [scanningCalibre, setScanningCalibre] = useState(false)
+  const [migratingCalibre, setMigratingCalibre] = useState(false)
   const [newUsername, setNewUsername] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [query, setQuery] = useState('')
@@ -34,10 +38,11 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
       setBooks(bookItems)
       setCategories(categoryItems)
       if (session.user.role === 'admin') {
-        const [userItems, queueItems, jobs] = await Promise.all([api.listUsers(), api.listReviewQueue(), api.listImportJobs()])
+        const [userItems, queueItems, jobs, asyncJobs] = await Promise.all([api.listUsers(), api.listReviewQueue(), api.listImportJobs(), api.listBackgroundJobs()])
         setUsers(userItems)
         setReviewItems(queueItems)
         setImportJobs(jobs)
+        setBackgroundJobs(asyncJobs)
       }
     } catch (reason) {
       setError(reason instanceof APIError ? reason.message : '无法加载书库。')
@@ -45,6 +50,22 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
   }
 
   useEffect(() => { void refresh() }, [])
+
+  useEffect(() => {
+    if (session.user.role !== 'admin') return
+    const timer = window.setInterval(() => {
+      void api.listBackgroundJobs().then(async (jobs) => {
+        setBackgroundJobs(jobs)
+        if (jobs.some((job) => job.state === 'queued' || job.state === 'running')) {
+          const [bookItems, queueItems, imports] = await Promise.all([api.listBooks(), api.listReviewQueue(), api.listImportJobs()])
+          setBooks(bookItems)
+          setReviewItems(queueItems)
+          setImportJobs(imports)
+        }
+      }).catch(() => undefined)
+    }, 4000)
+    return () => window.clearInterval(timer)
+  }, [session.user.role])
 
   async function upload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -74,6 +95,42 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
       setUsers(await api.listUsers())
     } catch (reason) {
       setError(reason instanceof APIError ? reason.message : '用户创建失败。')
+    }
+  }
+
+  async function scanCalibre() {
+    setScanningCalibre(true)
+    setError('')
+    try {
+      setCalibrePreview(await api.previewCalibre())
+    } catch (reason) {
+      setError(reason instanceof APIError ? reason.message : 'Calibre 书库扫描失败。')
+    } finally {
+      setScanningCalibre(false)
+    }
+  }
+
+  async function migrateCalibre() {
+    setMigratingCalibre(true)
+    setError('')
+    try {
+      const result = await api.importCalibre()
+      setNotice(`Calibre 迁移已排队：新增 ${result.queued} 项，已有 ${result.existing} 项。任务可在服务重启后继续。`)
+      setBackgroundJobs(await api.listBackgroundJobs())
+    } catch (reason) {
+      setError(reason instanceof APIError ? reason.message : 'Calibre 迁移排队失败。')
+    } finally {
+      setMigratingCalibre(false)
+    }
+  }
+
+  async function retryJob(jobID: number) {
+    setError('')
+    try {
+      await api.retryBackgroundJob(jobID)
+      setBackgroundJobs(await api.listBackgroundJobs())
+    } catch (reason) {
+      setError(reason instanceof APIError ? reason.message : '任务重试失败。')
     }
   }
 
@@ -176,6 +233,49 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
         <>
           <ReviewQueue categories={categories} items={visibleReviewItems} onChanged={reviewChanged} />
 
+          <section className="integration-panel">
+            <div className="section-title">
+              <div>
+                <p className="eyebrow">Calibre 批量迁移</p>
+                <h2>只读预检并复制到应用书库</h2>
+              </div>
+              <div className="integration-actions">
+                <button className="secondary" type="button" disabled={scanningCalibre} onClick={() => void scanCalibre()}>{scanningCalibre ? '扫描中…' : '扫描 Calibre'}</button>
+                <button className="primary" type="button" disabled={!calibrePreview?.total || migratingCalibre} onClick={() => void migrateCalibre()}>{migratingCalibre ? '排队中…' : '迁移全部'}</button>
+              </div>
+            </div>
+            {calibrePreview && (
+              <div className="calibre-preview">
+                <p><strong>{calibrePreview.total}</strong> 个文件 · PDF {calibrePreview.pdfCount} · EPUB {calibrePreview.epubCount} · 来源挂载 <code>{calibrePreview.rootLabel}</code></p>
+                {calibrePreview.total === 0 && <p className="muted">没有找到含 metadata.opf 的 Calibre 书目，请检查 CALIBRE_LIBRARY_PATH 挂载。</p>}
+                {calibrePreview.books.slice(0, 6).map((book) => (
+                  <div className="calibre-row" key={book.sourcePath}>
+                    <span className={`format-badge ${book.format}`}>{book.format.toUpperCase()}</span>
+                    <strong>{book.title}</strong>
+                    <span>{book.authors.join('、') || '未知作者'}</span>
+                  </div>
+                ))}
+                {calibrePreview.total > 6 && <p className="muted">另有 {calibrePreview.total - 6} 个文件将在“迁移全部”后逐项排队。</p>}
+                {calibrePreview.errors.length > 0 && <details><summary>{calibrePreview.errors.length} 个扫描警告</summary><ul>{calibrePreview.errors.slice(0, 20).map((message) => <li key={message}>{message}</li>)}</ul></details>}
+              </div>
+            )}
+          </section>
+
+          <section className="jobs-panel">
+            <div className="section-title"><div><p className="eyebrow">可恢复后台任务</p><h2>处理队列</h2></div><span className="muted">服务重启后自动接续；失败任务可人工重试</span></div>
+            <div className="job-list">
+              {backgroundJobs.length === 0 && <div className="job-empty">暂无后台任务</div>}
+              {backgroundJobs.slice(0, 20).map((job) => (
+                <div className="job-row background-job-row" key={job.id}>
+                  <span className={`job-state ${job.state}`}>{jobStateLabel(job.state)}</span>
+                  <span><strong>{jobKindLabel(job.kind)}</strong><small>{job.dedupeKey}</small></span>
+                  <span>{job.lastError || `尝试 ${job.attempts} / ${job.maxAttempts}`}</span>
+                  {job.state === 'failed' && <button className="secondary" type="button" onClick={() => void retryJob(job.id)}>重试</button>}
+                </div>
+              ))}
+            </div>
+          </section>
+
           <section className="admin-panel">
             <div>
               <p className="eyebrow">用户管理</p>
@@ -204,6 +304,14 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
       )}
     </main>
   )
+}
+
+function jobStateLabel(state: BackgroundJob['state']): string {
+  return { queued: '排队', running: '处理中', completed: '完成', failed: '失败' }[state]
+}
+
+function jobKindLabel(kind: string): string {
+  return { 'calibre-import': 'Calibre 迁移', 'pdf-assets': 'PDF 封面 / OCR' }[kind] ?? kind
 }
 
 function BookCard({ book, isAdmin, onOpen, onEdit }: { book: BookFile; isAdmin: boolean; onOpen: (book: BookFile) => void; onEdit: (book: BookFile) => Promise<void> }) {

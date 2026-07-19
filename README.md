@@ -11,8 +11,10 @@
 - 19 个固定题材分类、双语确定性规则、证据/置信度、管理员待整理与可撤销决策。
 - 可选 Ollama 或 OpenAI-compatible AI 分类建议；AI 不能自动覆盖人工选择。
 - 每次成功、重复或失败导入都保留任务审计记录。
+- Calibre `metadata.opf` 只读预检与批量迁移，来源文件不会被修改或删除。
+- PostgreSQL 持久后台任务、租约、自动重试和服务重启恢复。
 
-目标环境是 Unraid Docker Compose，按约 10 个用户、3000 本书（典型 PDF 约 20 MB）设计。Calibre 不是运行依赖；现有 Calibre 书库的批量迁移尚未实现，可继续使用浏览器上传。
+目标环境是 Unraid Docker Compose，按约 10 个用户、3000 本书（典型 PDF 约 20 MB）设计。Calibre 不是运行依赖，也可以继续使用浏览器上传。
 
 ## 本地启动
 
@@ -49,9 +51,12 @@ docker compose down
 PUID=99
 PGID=100
 PEUFM_DATA_ROOT=/mnt/user/appdata/peufmreader
+CALIBRE_LIBRARY_PATH=/mnt/user/ebooks/Calibre Library
 ```
 
 PostgreSQL 数据应位于 Unraid 本机持久卷，不要把数据库目录放到另一台机器的 SMB/CIFS 共享。书库文件保存在 `${PEUFM_DATA_ROOT}/library`，可再生封面保存在 `${PEUFM_DATA_ROOT}/cache`。
+
+`CALIBRE_LIBRARY_PATH` 会以只读方式挂载到容器的 `/import/calibre`。管理员先点击“扫描 Calibre”查看预检结果，再点击“迁移全部”；每个 PDF/EPUB 都是独立可恢复任务，迁移只复制文件，不改写 Calibre 目录。
 
 ## AI 分类（可选）
 
@@ -86,7 +91,7 @@ pnpm build
 后端（本机无 Go 时可使用容器）：
 
 ```sh
-docker run --rm -v "$PWD/server:/src" -w /src golang:1.26.5-bookworm sh -c "go test ./..."
+docker run --rm -v "$PWD/server:/src" -w /src golang:1.26.5-bookworm /usr/local/go/bin/go test ./...
 ```
 
 完整架构与范围见 [实现方案](docs/product/nas-web-implementation-proposal.md)，验证结果见 [M0](docs/validation/m0-technical-validation.md) 与 [M1 技术验证记录](docs/validation/m1-import-classification-validation.md)。

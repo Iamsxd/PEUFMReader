@@ -19,9 +19,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"peufmreader/internal/calibre"
 	"peufmreader/internal/classification"
+	"peufmreader/internal/importing"
 	"peufmreader/internal/library"
-	"peufmreader/internal/metadata"
 	"peufmreader/internal/store"
 )
 
@@ -35,6 +36,8 @@ type API struct {
 	sessionTTL     time.Duration
 	maxUploadBytes int64
 	advisor        *classification.Advisor
+	importer       *importing.Service
+	calibre        *calibre.Scanner
 	logger         *slog.Logger
 	mux            *http.ServeMux
 }
@@ -43,7 +46,7 @@ type contextKey string
 
 const sessionContextKey contextKey = "session"
 
-func New(store *store.Store, libraryManager *library.Manager, advisor *classification.Advisor, webRoot string, cookieSecure bool, sessionTTL time.Duration, maxUploadBytes int64, logger *slog.Logger) *API {
+func New(store *store.Store, libraryManager *library.Manager, importer *importing.Service, calibreScanner *calibre.Scanner, advisor *classification.Advisor, webRoot string, cookieSecure bool, sessionTTL time.Duration, maxUploadBytes int64, logger *slog.Logger) *API {
 	api := &API{
 		store:          store,
 		library:        libraryManager,
@@ -52,6 +55,8 @@ func New(store *store.Store, libraryManager *library.Manager, advisor *classific
 		sessionTTL:     sessionTTL,
 		maxUploadBytes: maxUploadBytes,
 		advisor:        advisor,
+		importer:       importer,
+		calibre:        calibreScanner,
 		logger:         logger,
 		mux:            http.NewServeMux(),
 	}
@@ -84,6 +89,10 @@ func (a *API) routes() {
 	a.mux.Handle("PUT /api/v1/editions/{id}/review", a.requireAuth(http.HandlerFunc(a.reviewEdition), "admin", true))
 	a.mux.Handle("POST /api/v1/editions/{id}/ai-classify", a.requireAuth(http.HandlerFunc(a.aiClassifyEdition), "admin", true))
 	a.mux.Handle("GET /api/v1/import-jobs", a.requireAuth(http.HandlerFunc(a.listImportJobs), "admin", false))
+	a.mux.Handle("GET /api/v1/background-jobs", a.requireAuth(http.HandlerFunc(a.listBackgroundJobs), "admin", false))
+	a.mux.Handle("POST /api/v1/background-jobs/{id}/retry", a.requireAuth(http.HandlerFunc(a.retryBackgroundJob), "admin", true))
+	a.mux.Handle("GET /api/v1/calibre/preview", a.requireAuth(http.HandlerFunc(a.previewCalibre), "admin", false))
+	a.mux.Handle("POST /api/v1/calibre/import", a.requireAuth(http.HandlerFunc(a.importCalibre), "admin", true))
 	a.mux.HandleFunc("GET /", a.serveFrontend)
 }
 
@@ -224,54 +233,26 @@ func (a *API) uploadBookFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 	userSession := sessionFromContext(r.Context())
-	job, err := a.store.CreateImportJob(r.Context(), userSession.User.ID, header.Filename)
+	result, err := a.importer.Import(r.Context(), userSession.User.ID, header.Filename, header.Filename, file, nil)
 	if err != nil {
-		a.internalError(w, err)
-		return
-	}
-
-	stored, err := a.library.Ingest(header.Filename, file)
-	if err != nil {
-		_ = a.store.FailImportJob(r.Context(), job.ID, err)
 		switch {
 		case errors.Is(err, library.ErrUnsupportedFormat):
 			writeError(w, http.StatusUnsupportedMediaType, "unsupported_format", "only valid PDF and EPUB files are supported")
 		case errors.Is(err, library.ErrUploadTooLarge):
 			writeError(w, http.StatusRequestEntityTooLarge, "upload_too_large", "file exceeds the configured upload limit")
+		case errors.Is(err, importing.ErrMetadataExtraction):
+			writeError(w, http.StatusUnprocessableEntity, "metadata_extraction_failed", "ebook metadata could not be extracted")
 		default:
 			a.internalError(w, err)
 		}
 		return
 	}
-	extracted, err := metadata.Extract(stored.AbsolutePath, stored.Format, stored.OriginalFilename)
-	if err != nil {
-		a.library.RemoveIfCreated(stored)
-		_ = a.store.FailImportJob(r.Context(), job.ID, err)
-		writeError(w, http.StatusUnprocessableEntity, "metadata_extraction_failed", "ebook metadata could not be extracted")
-		return
-	}
-	coverPath := ""
-	if extracted.Cover != nil {
-		coverPath, err = a.library.StoreCover(stored.SHA256Hex, extracted.Cover.Extension, extracted.Cover.Bytes)
-		if err != nil {
-			extracted.Warnings = append(extracted.Warnings, "封面缓存失败："+err.Error())
-			coverPath = ""
-		}
-	}
-	suggestions := classification.Classify(extracted)
-	book, duplicate, err := a.store.RegisterImportedBook(r.Context(), stored, extracted, suggestions, coverPath, userSession.User.ID, job.ID)
-	if err != nil {
-		a.library.RemoveIfCreated(stored)
-		_ = a.store.FailImportJob(r.Context(), job.ID, err)
-		a.internalError(w, err)
-		return
-	}
 	status := http.StatusCreated
-	if duplicate {
+	if result.Duplicate {
 		status = http.StatusOK
 	}
-	a.decorateBook(&book)
-	writeJSON(w, status, map[string]any{"bookFile": book, "duplicate": duplicate, "importJobId": job.ID})
+	a.decorateBook(&result.Book)
+	writeJSON(w, status, map[string]any{"bookFile": result.Book, "duplicate": result.Duplicate, "importJobId": result.ImportJobID})
 }
 
 func (a *API) decorateBook(book *store.BookFile) {
@@ -490,6 +471,83 @@ func (a *API) listImportJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": jobs})
+}
+
+func (a *API) listBackgroundJobs(w http.ResponseWriter, r *http.Request) {
+	items, err := a.store.ListBackgroundJobs(r.Context(), 100)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (a *API) retryBackgroundJob(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	job, err := a.store.RetryBackgroundJob(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusConflict, "job_not_retryable", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, job)
+}
+
+func (a *API) previewCalibre(w http.ResponseWriter, r *http.Request) {
+	preview, err := a.calibre.Preview(200)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "calibre_scan_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, preview)
+}
+
+func (a *API) importCalibre(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		SourcePaths []string `json:"sourcePaths"`
+	}
+	if err := readJSON(w, r, &input, 2<<20); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	preview, err := a.calibre.Preview(10000)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "calibre_scan_failed", err.Error())
+		return
+	}
+	requested := make(map[string]struct{}, len(input.SourcePaths))
+	for _, path := range input.SourcePaths {
+		requested[path] = struct{}{}
+	}
+	userID := sessionFromContext(r.Context()).User.ID
+	queued, existing := 0, 0
+	jobIDs := make([]int64, 0, min(preview.Total, 200))
+	for _, record := range preview.Books {
+		if len(requested) > 0 {
+			if _, ok := requested[record.SourcePath]; !ok {
+				continue
+			}
+		}
+		job, created, enqueueErr := a.store.EnqueueBackgroundJob(
+			r.Context(), calibre.ImportJobKind, record.SourcePath,
+			calibre.ImportPayload{SourcePath: record.SourcePath}, &userID, nil, 3,
+		)
+		if enqueueErr != nil {
+			a.internalError(w, enqueueErr)
+			return
+		}
+		if created {
+			queued++
+		} else {
+			existing++
+		}
+		if len(jobIDs) < 200 {
+			jobIDs = append(jobIDs, job.ID)
+		}
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"queued": queued, "existing": existing, "jobIds": jobIDs})
 }
 
 func (a *API) getProgress(w http.ResponseWriter, r *http.Request) {

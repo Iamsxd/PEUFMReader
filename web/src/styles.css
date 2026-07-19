@@ -70,7 +70,12 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .admin-panel { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-top: 50px; padding: 24px; border-radius: 18px; background: #e6ebe3; }
 .inline-form { grid-template-columns: minmax(130px, 1fr) minmax(180px, 1fr) auto; align-items: center; }
 
-.review-panel, .jobs-panel { margin-top: 54px; }
+.review-panel, .jobs-panel, .integration-panel { margin-top: 54px; }
+.integration-panel { padding: 24px; border: 1px solid #cbd7ca; border-radius: 18px; background: #edf2e9; }
+.integration-actions { display: flex; gap: 10px; }
+.calibre-preview { margin-top: 18px; padding-top: 18px; border-top: 1px solid #d2dbd1; }
+.calibre-preview code { padding: 3px 6px; border-radius: 5px; background: #dfe6dc; }
+.calibre-row { display: grid; grid-template-columns: auto minmax(180px, 1fr) minmax(130px, .6fr); gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid #dce2da; font-size: .82rem; }
 .complete-panel { padding: 28px; border: 1px solid #cbd7ca; border-radius: 18px; background: #edf2e9; }
 .section-title, .review-card-heading, .review-actions { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .review-list { display: grid; gap: 20px; }
@@ -94,6 +99,10 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .job-list { display: grid; overflow: hidden; border: 1px solid #d4d8d1; border-radius: 14px; background: #faf8f2; }
 .job-row { display: grid; grid-template-columns: 90px minmax(150px, .7fr) 1fr; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #e1e2dc; align-items: center; font-size: .82rem; }
 .job-row:last-child { border-bottom: 0; }
+.job-row.background-job-row { grid-template-columns: 90px minmax(190px, .8fr) 1fr auto; }
+.background-job-row > span:nth-child(2) { display: grid; gap: 3px; min-width: 0; }
+.background-job-row small { overflow: hidden; color: #718077; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.job-empty { padding: 18px; color: #718077; text-align: center; }
 .job-state { padding: 4px 7px; border-radius: 999px; background: #e0e4de; text-align: center; font-size: .68rem; font-weight: 800; text-transform: uppercase; }
 .job-state.completed { background: #dcebdd; color: #24563a; }
 .job-state.failed { background: #f4d9d5; color: #862b24; }
@@ -150,7 +159,11 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .book-card { min-height: 260px; }
   .book-cover, .cover-placeholder { height: 145px; }
   .section-title, .review-card-heading, .review-actions { align-items: stretch; flex-direction: column; }
+  .integration-actions { align-items: stretch; flex-direction: column; }
+  .calibre-row { grid-template-columns: auto 1fr; }
+  .calibre-row > :last-child { grid-column: 1 / -1; }
   .job-row { grid-template-columns: 80px 1fr; }
+  .job-row.background-job-row { grid-template-columns: 80px 1fr; }
   .job-row > :last-child { grid-column: 1 / -1; }
   .reader-title { display: none; }
   .pdf-toolbar { gap: 7px; padding: 7px 8px; }

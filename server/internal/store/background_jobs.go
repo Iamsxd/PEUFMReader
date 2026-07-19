@@ -36,6 +36,11 @@ const backgroundJobColumns = `
 	COALESCE(locked_by,''),lease_expires_at,COALESCE(last_error,''),created_by,book_file_id,
 	created_at,updated_at,completed_at`
 
+const claimedBackgroundJobColumns = `
+	j.id,j.kind,j.state,j.dedupe_key,j.payload,j.result,j.attempts,j.max_attempts,j.available_at,
+	COALESCE(j.locked_by,''),j.lease_expires_at,COALESCE(j.last_error,''),j.created_by,j.book_file_id,
+	j.created_at,j.updated_at,j.completed_at`
+
 func scanBackgroundJob(row scanner) (BackgroundJob, error) {
 	var job BackgroundJob
 	err := row.Scan(
@@ -119,7 +124,7 @@ func (s *Store) ClaimBackgroundJob(ctx context.Context, workerID string, lease t
 			state='running',attempts=j.attempts+1,locked_by=$1,
 			lease_expires_at=now()+$2::interval,updated_at=now()
 		FROM candidate WHERE j.id=candidate.id
-		RETURNING `+backgroundJobColumns, workerID, lease.String()))
+		RETURNING `+claimedBackgroundJobColumns, workerID, lease.String()))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return BackgroundJob{}, false, nil
 	}

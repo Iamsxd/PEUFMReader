@@ -85,16 +85,18 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 	result, handlerErr := handler(jobCtx, job)
 	close(done)
 	cancel()
+	finalizeCtx, finalizeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer finalizeCancel()
 
 	if handlerErr != nil {
 		w.logger.Warn("background job failed", "job_id", job.ID, "kind", job.Kind, "attempt", job.Attempts, "error", handlerErr)
-		return true, w.repository.FailBackgroundJob(ctx, job, w.workerID, handlerErr, retryDelay(job.Attempts))
+		return true, w.repository.FailBackgroundJob(finalizeCtx, job, w.workerID, handlerErr, retryDelay(job.Attempts))
 	}
 	encoded, err := json.Marshal(result)
 	if err != nil {
-		return true, w.repository.FailBackgroundJob(ctx, job, w.workerID, fmt.Errorf("encode job result: %w", err), retryDelay(job.Attempts))
+		return true, w.repository.FailBackgroundJob(finalizeCtx, job, w.workerID, fmt.Errorf("encode job result: %w", err), retryDelay(job.Attempts))
 	}
-	if err := w.repository.CompleteBackgroundJob(ctx, job.ID, w.workerID, encoded); err != nil {
+	if err := w.repository.CompleteBackgroundJob(finalizeCtx, job.ID, w.workerID, encoded); err != nil {
 		return true, err
 	}
 	w.logger.Info("background job completed", "job_id", job.ID, "kind", job.Kind, "attempt", job.Attempts)

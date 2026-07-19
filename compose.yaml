@@ -41,6 +41,7 @@ services:
       AI_MODEL: ${AI_MODEL:-}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_TIMEOUT: ${AI_TIMEOUT:-45s}
+      CALIBRE_LIBRARY_ROOT: /import/calibre
       TZ: ${TZ:-Asia/Shanghai}
     ports:
       - "${APP_PORT:-8080}:8080"
@@ -48,6 +49,7 @@ services:
       - ${PEUFM_DATA_ROOT:-./data}/library:/data/library
       - ${PEUFM_DATA_ROOT:-./data}/staging:/data/staging
       - ${PEUFM_DATA_ROOT:-./data}/cache:/data/cache
+      - ${CALIBRE_LIBRARY_PATH:-./data/calibre}:/import/calibre:ro
     user: "${PUID:-99}:${PGID:-100}"
     read_only: true
     tmpfs:
