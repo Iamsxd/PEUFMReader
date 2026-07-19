@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+data
+tmp
+web/node_modules
+web/dist
+server/peufmreader
+server/peufmreader.exe
+*.log

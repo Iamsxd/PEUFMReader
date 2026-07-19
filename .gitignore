@@ -1,0 +1,14 @@
+.env
+.idea/
+.vscode/
+node_modules/
+web/dist/
+coverage/
+*.tsbuildinfo
+web/vite.config.js
+web/vite.config.d.ts
+*.log
+data/
+tmp/
+server/peufmreader
+server/peufmreader.exe

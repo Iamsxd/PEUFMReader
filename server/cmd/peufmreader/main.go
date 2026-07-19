@@ -1,0 +1,111 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"peufmreader/internal/classification"
+	"peufmreader/internal/config"
+	"peufmreader/internal/database"
+	"peufmreader/internal/httpapi"
+	"peufmreader/internal/library"
+	"peufmreader/internal/store"
+)
+
+func main() {
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		healthcheck()
+		return
+	}
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Error("invalid configuration", "error", err)
+		os.Exit(1)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	pool, err := openDatabaseWithRetry(ctx, cfg.DatabaseURL, logger)
+	if err != nil {
+		logger.Error("database startup failed", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+	if err := database.Migrate(ctx, pool); err != nil {
+		logger.Error("database migration failed", "error", err)
+		os.Exit(1)
+	}
+
+	dataStore := store.New(pool)
+	if err := dataStore.EnsureAdmin(ctx, cfg.AdminUsername, cfg.AdminPassword); err != nil {
+		logger.Error("initial admin setup failed", "error", err)
+		os.Exit(1)
+	}
+	libraryManager, err := library.NewManager(cfg.LibraryRoot, cfg.StagingRoot, cfg.CacheRoot, cfg.MaxUploadBytes)
+	if err != nil {
+		logger.Error("library setup failed", "error", err)
+		os.Exit(1)
+	}
+
+	advisor := classification.NewAdvisor(cfg.AIProvider, cfg.AIBaseURL, cfg.AIModel, cfg.AIAPIKey, cfg.AITimeout)
+	api := httpapi.New(dataStore, libraryManager, advisor, cfg.WebRoot, cfg.CookieSecure, cfg.SessionTTL, cfg.MaxUploadBytes, logger)
+	server := &http.Server{
+		Addr:              cfg.Address,
+		Handler:           api.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    1 << 20,
+	}
+
+	go func() {
+		logger.Info("PEUFMReader listening", "address", cfg.Address)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("HTTP server failed", "error", err)
+			stop()
+		}
+	}()
+
+	<-ctx.Done()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.Error("graceful shutdown failed", "error", err)
+	}
+}
+
+func healthcheck() {
+	client := &http.Client{Timeout: 3 * time.Second}
+	response, err := client.Get("http://127.0.0.1:8080/healthz")
+	if err != nil || response.StatusCode != http.StatusOK {
+		os.Exit(1)
+	}
+	_ = response.Body.Close()
+}
+
+func openDatabaseWithRetry(ctx context.Context, databaseURL string, logger *slog.Logger) (*pgxpool.Pool, error) {
+	var lastErr error
+	for attempt := 1; attempt <= 15; attempt++ {
+		pool, err := database.Open(ctx, databaseURL)
+		if err == nil {
+			return pool, nil
+		}
+		lastErr = err
+		logger.Warn("database not ready", "attempt", attempt, "error", err)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
+	return nil, lastErr
+}

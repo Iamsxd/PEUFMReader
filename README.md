@@ -1,0 +1,92 @@
+# PEUFMReader
+
+面向 NAS 的多用户电子书管理与阅读服务。当前已完成 M0 技术基线与 M1 导入分类闭环，覆盖：
+
+- Docker Compose + PostgreSQL 部署。
+- admin/reader 本地账号、Argon2id 密码、HttpOnly 会话和 CSRF 防护。
+- EPUB/PDF 托管上传、SHA-256 去重和格式签名校验。
+- 鉴权 HTTP Range 文件流，不向浏览器暴露 NAS 路径。
+- 浏览器 EPUB/PDF 阅读，以及按用户隔离的进度和有效阅读时长。
+- EPUB OPF 与 PDF Info 元数据提取、EPUB 封面缓存、作者/年份/题材分组和搜索。
+- 19 个固定题材分类、双语确定性规则、证据/置信度、管理员待整理与可撤销决策。
+- 可选 Ollama 或 OpenAI-compatible AI 分类建议；AI 不能自动覆盖人工选择。
+- 每次成功、重复或失败导入都保留任务审计记录。
+
+目标环境是 Unraid Docker Compose，按约 10 个用户、3000 本书（典型 PDF 约 20 MB）设计。Calibre 不是运行依赖；现有 Calibre 书库的批量迁移尚未实现，可继续使用浏览器上传。
+
+## 本地启动
+
+1. 复制 `.env.example` 为 `.env`，修改两个密码。
+2. 确保数据目录对 `.env` 中的 PUID/PGID 可写。
+3. 启动服务：
+
+   ```sh
+   docker compose up --build -d
+   ```
+
+4. 打开 `http://NAS-IP:8080`，使用 `.env` 中的管理员账号登录。
+
+查看状态：
+
+```sh
+docker compose ps
+docker compose logs -f app
+```
+
+停止服务：
+
+```sh
+docker compose down
+```
+
+`docker compose down` 不会删除数据目录。不要使用 `down -v` 或手工删除 `PEUFM_DATA_ROOT`，除非已经确认备份。
+
+## Unraid 配置
+
+建议在 `.env` 中设置：
+
+```dotenv
+PUID=99
+PGID=100
+PEUFM_DATA_ROOT=/mnt/user/appdata/peufmreader
+```
+
+PostgreSQL 数据应位于 Unraid 本机持久卷，不要把数据库目录放到另一台机器的 SMB/CIFS 共享。书库文件保存在 `${PEUFM_DATA_ROOT}/library`，可再生封面保存在 `${PEUFM_DATA_ROOT}/cache`。
+
+## AI 分类（可选）
+
+AI 默认关闭；不配置时导入、规则分类和人工整理均可正常工作。启用方式见 `.env.example`：
+
+- `AI_PROVIDER=ollama`：调用局域网 Ollama。
+- `AI_PROVIDER=openai-compatible`：调用兼容 Chat Completions 的云端服务。
+
+AI 只在管理员点击“请求 AI 建议”时发送书名、作者、年份、语言、题材和简介，并且只能返回固定分类 ID。使用云端提供者意味着这些元数据会离开局域网，请在配置前确认服务条款和隐私边界。
+
+## 公网访问边界
+
+当前版本适合局域网 M0 验证。若通过公网访问，至少需要：
+
+- 使用受信任的 HTTPS 反向代理，并设置 `COOKIE_SECURE=true`。
+- 增加登录限流、账号锁定、反向代理可信 IP 配置和安全审计。
+- 不直接暴露 PostgreSQL，也不公开 `/data` 路径。
+
+在这些工作完成前，不应将当前版本直接暴露到公网。
+
+## 开发验证
+
+前端：
+
+```sh
+cd web
+pnpm install
+pnpm test
+pnpm build
+```
+
+后端（本机无 Go 时可使用容器）：
+
+```sh
+docker run --rm -v "$PWD/server:/src" -w /src golang:1.26.5-bookworm sh -c "go test ./..."
+```
+
+完整架构与范围见 [实现方案](docs/product/nas-web-implementation-proposal.md)，验证结果见 [M0](docs/validation/m0-technical-validation.md) 与 [M1 技术验证记录](docs/validation/m1-import-classification-validation.md)。
