@@ -35,6 +35,8 @@ export function describePDFError(reason: unknown): string {
       case 'UnexpectedResponseException':
         return 'PDF 文件请求返回了异常响应。'
     }
+	const detail = `${reason.name || 'Error'}: ${reason.message || '未知错误'}`.replace(/\s+/g, ' ').slice(0, 240)
+	return `PDF 加载失败（${detail}）`
   }
-  return 'PDF 加载失败，请刷新后重试。'
+  return `PDF 加载失败（${String(reason).replace(/\s+/g, ' ').slice(0, 240)}）`
 }

@@ -41,4 +41,8 @@ describe('describePDFError', () => {
     error.name = 'InvalidPDFException'
     expect(describePDFError(error)).toContain('结构无效')
   })
+
+  it('shows unknown error details for diagnosis', () => {
+    expect(describePDFError(new TypeError('worker startup failed'))).toContain('TypeError: worker startup failed')
+  })
 })

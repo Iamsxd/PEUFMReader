@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import * as pdfjs from 'pdfjs-dist'
-import workerURL from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
+import workerURL from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 import { api } from '../../api'
 import { describePDFError, fetchPDFBytes } from '../../pdf'
 import type { BookFile, ReadingState } from '../../types'
