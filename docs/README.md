@@ -6,6 +6,7 @@
 - [NAS 多用户 Web 实现方案](./product/nas-web-implementation-proposal.md)
 - [M0 技术验证记录](./validation/m0-technical-validation.md)
 - [M1 导入分类验证记录](./validation/m1-import-classification-validation.md)
+- [M2 阅读、导入与运维闭环验证](./validation/m2-reader-import-operations-validation.md)
 - [早期桌面方案（已废弃）](./product/implementation-proposal.md)
 - [领域术语表](./domain/glossary.md)
 - [ADR-0001：local-first 桌面模块化单体](./adr/0001-local-first-desktop.md) — Rejected
