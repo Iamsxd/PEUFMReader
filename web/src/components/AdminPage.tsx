@@ -1,11 +1,13 @@
 import { type ChangeEvent, type DragEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
 import { APIError, api } from '../api'
-import type { AuditEvent, BackgroundJob, CalibrePreview, Category, ImportJob, ReviewItem, StorageAuditReport, User } from '../types'
+import type { AuditEvent, BackgroundJob, CalibrePreview, Category, ImportJob, ReviewItem, StorageAuditReport } from '../types'
 import { formatBytes, formatRelativeTime } from '../utils'
 import { ReviewQueue } from './ReviewQueue'
+import { UserManagement } from './UserManagement'
 
 interface Props {
   initialEditionID?: number
+  currentUserID: number
 }
 
 type UploadState = 'queued' | 'uploading' | 'processing' | 'completed' | 'duplicate' | 'failed'
@@ -18,10 +20,9 @@ interface UploadItem {
   message: string
 }
 
-export function AdminPage({ initialEditionID }: Props) {
+export function AdminPage({ initialEditionID, currentUserID }: Props) {
   const [categories, setCategories] = useState<Category[]>([])
   const [adminCategories, setAdminCategories] = useState<Category[]>([])
-  const [users, setUsers] = useState<User[]>([])
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
   const [manualReviewItem, setManualReviewItem] = useState<ReviewItem | null>(null)
   const [importJobs, setImportJobs] = useState<ImportJob[]>([])
@@ -37,17 +38,14 @@ export function AdminPage({ initialEditionID }: Props) {
   const [scanningCalibre, setScanningCalibre] = useState(false)
   const [migratingCalibre, setMigratingCalibre] = useState(false)
   const [checkingStorage, setCheckingStorage] = useState(false)
-  const [newUsername, setNewUsername] = useState('')
-  const [newPassword, setNewPassword] = useState('')
 
   async function refreshAdmin() {
     try {
-      const [categoryItems, managedCategories, userItems, queueItems, jobs, asyncJobs, audits] = await Promise.all([
-        api.listCategories(), api.listAdminCategories(), api.listUsers(), api.listReviewQueue(), api.listImportJobs(), api.listBackgroundJobs(), api.listAuditEvents(),
+      const [categoryItems, managedCategories, queueItems, jobs, asyncJobs, audits] = await Promise.all([
+        api.listCategories(), api.listAdminCategories(), api.listReviewQueue(), api.listImportJobs(), api.listBackgroundJobs(), api.listAuditEvents(),
       ])
       setCategories(categoryItems)
       setAdminCategories(managedCategories)
-      setUsers(userItems)
       setReviewItems(queueItems)
       setImportJobs(jobs)
       setBackgroundJobs(asyncJobs)
@@ -155,19 +153,6 @@ export function AdminPage({ initialEditionID }: Props) {
     event.preventDefault()
     setDraggingFiles(false)
     if (!uploading) void uploadFiles(Array.from(event.dataTransfer.files))
-  }
-
-  async function createReader(event: FormEvent) {
-    event.preventDefault()
-    setError('')
-    try {
-      await api.createUser(newUsername, newPassword, 'reader')
-      setNewUsername('')
-      setNewPassword('')
-      setUsers(await api.listUsers())
-    } catch (reason) {
-      setError(reason instanceof APIError ? reason.message : '用户创建失败。')
-    }
   }
 
   async function scanCalibre() {
@@ -307,14 +292,7 @@ export function AdminPage({ initialEditionID }: Props) {
         </div>
       </section>
 
-      <section className="admin-panel">
-        <div><p className="eyebrow">用户管理</p><h2>{users.length} 个账号</h2></div>
-        <form className="inline-form" onSubmit={createReader}>
-          <input aria-label="新用户名" placeholder="新用户名" value={newUsername} onChange={(event) => setNewUsername(event.target.value)} required />
-          <input aria-label="新用户密码" type="password" placeholder="至少 12 位密码" minLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required />
-          <button className="secondary" type="submit">添加阅读者</button>
-        </form>
-      </section>
+      <UserManagement currentUserID={currentUserID} onError={setError} onNotice={setNotice} />
 
       <section className="integration-panel operations-panel">
         <div className="section-title">
@@ -391,6 +369,11 @@ function auditActionLabel(action: string): string {
   if (action === 'auth.login.blocked') return '登录被限流'
   const labels: Record<string, string> = {
     'POST /api/v1/users': '创建用户',
+    'PATCH /api/v1/users/{id}': '修改用户',
+    'DELETE /api/v1/users/{id}': '删除用户',
+    'POST /api/v1/users/{id}/password': '重置用户密码',
+    'DELETE /api/v1/users/{id}/sessions': '下线用户全部设备',
+    'DELETE /api/v1/users/{id}/sessions/{sessionId}': '下线用户设备',
     'POST /api/v1/book-files': '上传书籍',
     'PUT /api/v1/editions/{id}/review': '确认书目分类',
     'POST /api/v1/editions/{id}/ai-classify': '请求 AI 分类',

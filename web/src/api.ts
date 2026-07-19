@@ -1,4 +1,4 @@
-import type { AuditEvent, BackgroundJob, BibliographySearchResult, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Session, StorageAuditReport, User } from './types'
+import type { AuditEvent, BackgroundJob, BibliographySearchResult, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ManagedUser, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
 
 interface ErrorBody {
   error?: { code?: string; message?: string }
@@ -195,8 +195,8 @@ class APIClient {
     })
   }
 
-  async listUsers(): Promise<User[]> {
-    const result = await this.request<{ items: User[] }>('/api/v1/users')
+  async listUsers(): Promise<ManagedUser[]> {
+    const result = await this.request<{ items: ManagedUser[] }>('/api/v1/users')
     return result.items
   }
 
@@ -206,6 +206,38 @@ class APIClient {
       body: JSON.stringify({ username, password, role }),
       headers: { 'Content-Type': 'application/json' },
     })
+  }
+
+  updateUser(userID: number, input: { username: string; role: Role; disabled: boolean }): Promise<ManagedUser> {
+    return this.request(`/api/v1/users/${userID}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  getUserAccess(userID: number): Promise<UserAccessInfo> {
+    return this.request(`/api/v1/users/${userID}/access`)
+  }
+
+  resetUserPassword(userID: number, password: string): Promise<void> {
+    return this.request(`/api/v1/users/${userID}/password`, {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  revokeUserSessions(userID: number): Promise<void> {
+    return this.request(`/api/v1/users/${userID}/sessions`, { method: 'DELETE' })
+  }
+
+  revokeUserSession(userID: number, sessionID: number): Promise<void> {
+    return this.request(`/api/v1/users/${userID}/sessions/${sessionID}`, { method: 'DELETE' })
+  }
+
+  deleteUser(userID: number): Promise<void> {
+    return this.request(`/api/v1/users/${userID}`, { method: 'DELETE' })
   }
 
   contentURL(bookFileID: number): string {

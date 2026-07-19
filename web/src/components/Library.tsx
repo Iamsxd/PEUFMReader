@@ -111,7 +111,7 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
             onBrowseCategory={(category) => navigate('books', { category, sort: 'title' })}
           />
         )}
-        {activeView === 'admin' && isAdmin && <AdminPage initialEditionID={positiveInteger(route.params.get('edition'))} />}
+        {activeView === 'admin' && isAdmin && <AdminPage initialEditionID={positiveInteger(route.params.get('edition'))} currentUserID={session.user.id} />}
       </div>
     </main>
   )

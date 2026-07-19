@@ -6,6 +6,38 @@ export interface User {
   role: Role
 }
 
+export interface ManagedUser extends User {
+  createdAt: string
+  disabledAt?: string
+  lastLoginAt?: string
+  lastLoginIp: string
+  lastSeenAt?: string
+  activeSessionCount: number
+  readingBookCount: number
+  totalActiveSeconds: number
+}
+
+export interface UserSessionInfo {
+  id: number
+  createdAt: string
+  lastSeenAt: string
+  expiresAt: string
+  clientIp: string
+  userAgent: string
+  current: boolean
+}
+
+export interface UserLoginEvent {
+  createdAt: string
+  clientIp: string
+  statusCode: number
+}
+
+export interface UserAccessInfo {
+  sessions: UserSessionInfo[]
+  recentLogins: UserLoginEvent[]
+}
+
 export interface Session {
   user: User
   csrfToken: string

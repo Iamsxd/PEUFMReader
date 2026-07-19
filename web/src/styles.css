@@ -250,6 +250,53 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .category-management-row input, .category-management-row select { min-width: 0; padding: 8px 9px; font-size: .76rem; }
 .category-management-row button { padding: 8px 10px; font-size: .73rem; }
 .danger-text { color: #9a332d; }
+.danger-button { border: 1px solid #dfb8b2; border-radius: 10px; padding: 10px 14px; background: #f7e2df; color: #8a2d27; font-weight: 750; }
+.danger-button:hover:not(:disabled) { background: #f1d2ce; }
+.user-management-panel { margin: 54px 0; padding: 26px; border: 1px solid #cad6ca; border-radius: 20px; background: #edf2e9; }
+.user-management-panel .section-title h2 { margin-bottom: 7px; font-family: Georgia, serif; font-size: 1.7rem; }
+.user-management-panel .section-title p:last-child { margin-bottom: 0; }
+.user-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(110px, 1fr)); gap: 10px; margin: 20px 0; }
+.user-summary-grid > div { min-height: 84px; display: flex; flex-direction: column; justify-content: end; gap: 5px; padding: 14px; border-radius: 13px; background: #fafaf5; }
+.user-summary-grid > div.has-issue { background: #f5e5df; }
+.user-summary-grid strong { color: #265039; font-family: Georgia, serif; font-size: 1.45rem; }
+.user-summary-grid span { color: #728078; font-size: .72rem; }
+.user-create-form { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(180px, 1fr) minmax(120px, .55fr) auto; align-items: end; gap: 10px; padding: 16px; border: 1px solid #d6ded4; border-radius: 14px; background: #fafbf7; }
+.user-create-form label, .user-profile-form label, .user-password-form label { gap: 5px; color: #68766d; font-size: .7rem; }
+.user-create-form input, .user-create-form select, .user-profile-form input, .user-profile-form select, .user-password-form input { padding: 9px 10px; font-size: .8rem; }
+.user-create-form button { min-height: 38px; }
+.user-management-list { display: grid; gap: 14px; margin-top: 18px; }
+.user-management-card { padding: 18px; border: 1px solid #d5dcd3; border-radius: 16px; background: #fbfaf5; box-shadow: 0 8px 24px #3f55410a; }
+.user-management-card.disabled { background: #efefeb; }
+.user-card-heading { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.user-avatar { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: #28573b; color: white; font-family: Georgia, serif; font-size: 1.1rem; font-weight: 800; }
+.user-management-card.disabled .user-avatar { background: #7b827d; }
+.user-card-heading > div:nth-child(2) { min-width: 0; display: grid; gap: 3px; }
+.user-card-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-card-heading span:not(.account-status) { color: #728078; font-size: .72rem; }
+.account-status { padding: 5px 9px; border-radius: 999px; background: #dcebdd; color: #24563a; font-size: .68rem; font-weight: 800; }
+.account-status.disabled { background: #e4deda; color: #7d4a43; }
+.user-activity-grid { display: grid; grid-template-columns: .7fr 1fr 1.4fr 1.1fr; gap: 8px; margin: 15px 0; }
+.user-activity-grid > div { min-width: 0; display: grid; align-content: end; gap: 4px; padding: 11px; border-radius: 10px; background: #eff2eb; }
+.user-activity-grid strong { overflow: hidden; color: #314e3a; font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
+.user-activity-grid span { overflow: hidden; color: #758078; font-size: .64rem; text-overflow: ellipsis; white-space: nowrap; }
+.user-profile-form { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(120px, .5fr) auto auto; align-items: end; gap: 9px; }
+.user-profile-form button, .user-password-form button { min-height: 36px; padding: 8px 12px; font-size: .75rem; }
+.user-password-form { display: grid; grid-template-columns: minmax(230px, 1fr) auto; align-items: end; gap: 9px; margin-top: 10px; }
+.user-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid #e0e4de; }
+.user-card-actions button { padding: 8px 11px; font-size: .73rem; }
+.user-card-actions .danger-button { margin-left: auto; }
+.user-access-panel { margin-top: 15px; padding: 14px; border: 1px solid #d7ddd5; border-radius: 12px; background: #f2f5ef; }
+.access-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 7px; font-size: .78rem; }
+.access-section-heading button { padding: 5px 8px; color: #356047; font-size: .7rem; }
+.access-section-heading > span { color: #7a857d; font-size: .66rem; }
+.recent-logins-heading { margin-top: 18px; padding-top: 13px; border-top: 1px solid #d9ded7; }
+.session-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid #dfe3dd; }
+.session-row > span { min-width: 0; display: grid; gap: 4px; }
+.session-row strong { font-size: .75rem; }
+.session-row small { overflow: hidden; color: #6e7a72; font-size: .66rem; text-overflow: ellipsis; white-space: nowrap; }
+.session-row button { padding: 6px 8px; font-size: .7rem; }
+.login-event-row { display: flex; justify-content: space-between; gap: 15px; padding: 6px 0; color: #526158; font-size: .7rem; }
+.login-event-row time { color: #778179; }
 .integration-actions { display: flex; gap: 10px; }
 .calibre-preview { margin-top: 18px; padding-top: 18px; border-top: 1px solid #d2dbd1; }
 .calibre-preview code { padding: 3px 6px; border-radius: 5px; background: #dfe6dc; }
@@ -458,6 +505,13 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .category-create-form { grid-template-columns: 1fr; }
   .category-management-row { grid-template-columns: 1fr 1fr; }
   .category-identity { grid-column: 1 / -1; }
+  .user-management-panel { padding: 17px; }
+  .user-summary-grid { grid-template-columns: 1fr 1fr; }
+  .user-create-form, .user-profile-form, .user-password-form { grid-template-columns: 1fr; }
+  .user-activity-grid { grid-template-columns: 1fr 1fr; }
+  .user-card-actions .danger-button { margin-left: 0; }
+  .session-row { align-items: start; }
+  .session-row small { white-space: normal; }
   .upload-queue-item { grid-template-columns: 58px 1fr; }
   .upload-queue-item .job-progress { grid-column: 1 / -1; }
   .topbar { align-items: flex-start; }
