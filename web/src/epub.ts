@@ -46,3 +46,10 @@ export function normalizeEPUBWheelDelta(deltaX: number, deltaY: number, deltaMod
   if (deltaMode === 2) return dominantDelta * Math.max(1, viewportHeight)
   return dominantDelta
 }
+
+export function resolveEPUBProgress(generated: number | undefined, reported: number | undefined, fallback: number): number {
+  for (const value of [generated, reported, fallback]) {
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1) return value
+  }
+  return 0
+}

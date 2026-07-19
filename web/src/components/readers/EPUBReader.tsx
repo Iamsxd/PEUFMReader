@@ -6,6 +6,7 @@ import {
   EPUB_PREFERENCES_KEY,
   normalizeEPUBWheelDelta,
   parseEPUBPreferences,
+  resolveEPUBProgress,
 } from '../../epub'
 import type { EPUBPageFlow, EPUBPageLayout, EPUBReaderPreferences, EPUBTheme } from '../../epub'
 import type { BookFile, ReadingState } from '../../types'
@@ -41,6 +42,8 @@ const EPUB_THEMES: Record<EPUBTheme, Record<string, Record<string, string>>> = {
   },
 }
 
+const EPUB_DISPLAY_TIMEOUT_MS = 15_000
+
 function readPreferences(): EPUBReaderPreferences {
   try {
     return parseEPUBPreferences(window.localStorage.getItem(EPUB_PREFERENCES_KEY))
@@ -57,6 +60,8 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
   const wheelResetTimerRef = useRef<number | null>(null)
   const wheelAccumulatorRef = useRef(0)
   const wheelLockedUntilRef = useRef(0)
+  const locationsReadyRef = useRef(false)
+  const lastProgressRef = useRef(clampProgress(initialState.overallProgress))
   const [preferences, setPreferences] = useState(readPreferences)
   const preferencesRef = useRef(preferences)
   const [isNarrow, setIsNarrow] = useState(window.innerWidth <= 780)
@@ -137,6 +142,8 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
     setError('')
     setLoading(true)
     setProgress(clampProgress(initialState.overallProgress))
+    lastProgressRef.current = clampProgress(initialState.overallProgress)
+    locationsReadyRef.current = false
     setAtStart(initialState.overallProgress <= 0)
     setAtEnd(initialState.overallProgress >= 0.999)
     const epub = ePub(api.contentURL(book.id), { requestCredentials: true })
@@ -172,14 +179,33 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
     rendition.hooks.content.register(attachContentEvents)
 
     const initialCFI = typeof initialState.position.cfi === 'string' ? initialState.position.cfi : undefined
-    void epub.ready.then(async () => {
-      await epub.locations.generate(1600)
-      if (disposed) return
-      await rendition.display(initialCFI)
+    const displayTimeout = window.setTimeout(() => {
       if (disposed) return
       setLoading(false)
+      setError('EPUB 加载时间过长，请返回后重试。')
+    }, EPUB_DISPLAY_TIMEOUT_MS)
+    void epub.ready.then(async () => {
+      if (disposed) return
+      try {
+        await rendition.display(initialCFI)
+      } catch (reason) {
+        if (!initialCFI) throw reason
+        console.warn('Saved EPUB location is no longer valid; opening the first section instead.', reason)
+        await rendition.display()
+      }
+      if (disposed) return
+      window.clearTimeout(displayTimeout)
+      setError('')
+      setLoading(false)
+
+      void epub.locations.generate(1600).then(() => {
+        if (!disposed) locationsReadyRef.current = true
+      }).catch((reason: unknown) => {
+        if (!disposed) console.warn('EPUB location generation failed; using rendition progress.', reason)
+      })
     }).catch((reason: unknown) => {
       if (disposed) return
+      window.clearTimeout(displayTimeout)
       console.error('EPUB loading failed', reason)
       setLoading(false)
       setError('EPUB 加载失败。')
@@ -188,13 +214,16 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
     const relocated = (location: RelocatedLocation) => {
       if (disposed) return
       const cfi = location.start.cfi
-      let nextProgress = location.start.percentage ?? 0
-      try {
-        nextProgress = epub.locations.percentageFromCfi(cfi)
-      } catch {
-        // Some fixed-layout EPUBs do not expose generated locations.
+      let generatedProgress: number | undefined
+      if (locationsReadyRef.current) {
+        try {
+          generatedProgress = epub.locations.percentageFromCfi(cfi)
+        } catch {
+          // Some fixed-layout EPUBs do not expose generated locations.
+        }
       }
-      nextProgress = clampProgress(nextProgress)
+      const nextProgress = clampProgress(resolveEPUBProgress(generatedProgress, location.start.percentage, lastProgressRef.current))
+      lastProgressRef.current = nextProgress
       setProgress(nextProgress)
       setAtStart(Boolean(location.atStart) || nextProgress <= 0)
       setAtEnd(Boolean(location.atEnd) || nextProgress >= 0.999)
@@ -213,6 +242,7 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
 
     return () => {
       disposed = true
+      window.clearTimeout(displayTimeout)
       if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
       if (wheelResetTimerRef.current !== null) window.clearTimeout(wheelResetTimerRef.current)
       wheelCleanups.forEach((cleanup) => cleanup())

@@ -3,6 +3,7 @@ import {
   clampEPUBFontSize,
   normalizeEPUBWheelDelta,
   parseEPUBPreferences,
+  resolveEPUBProgress,
 } from './epub'
 
 describe('EPUB reading preferences', () => {
@@ -28,5 +29,12 @@ describe('EPUB reading preferences', () => {
     expect(normalizeEPUBWheelDelta(4, 30, 0, 800)).toBe(30)
     expect(normalizeEPUBWheelDelta(-5, -3, 1, 800)).toBe(-80)
     expect(normalizeEPUBWheelDelta(0, 1, 2, 900)).toBe(900)
+  })
+
+  it('keeps progress stable while locations are generated in the background', () => {
+    expect(resolveEPUBProgress(undefined, undefined, 0.42)).toBe(0.42)
+    expect(resolveEPUBProgress(undefined, 0.25, 0.42)).toBe(0.25)
+    expect(resolveEPUBProgress(0.7, 0.25, 0.42)).toBe(0.7)
+    expect(resolveEPUBProgress(-1, Number.NaN, 0.42)).toBe(0.42)
   })
 })
