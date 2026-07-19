@@ -15,6 +15,7 @@ import (
 
 var (
 	ErrUserNotFound    = errors.New("user not found")
+	ErrSessionNotFound = errors.New("session not found")
 	ErrLastActiveAdmin = errors.New("cannot remove the last active administrator")
 )
 
@@ -33,6 +34,7 @@ type ManagedUser struct {
 }
 
 type UserSessionInfo struct {
+	ID         int64     `json:"id"`
 	CreatedAt  time.Time `json:"createdAt"`
 	LastSeenAt time.Time `json:"lastSeenAt"`
 	ExpiresAt  time.Time `json:"expiresAt"`
@@ -214,6 +216,24 @@ func (s *Store) RevokeUserSessions(ctx context.Context, userID int64) error {
 	return nil
 }
 
+func (s *Store) RevokeUserSession(ctx context.Context, userID, sessionID int64) error {
+	result, err := s.pool.Exec(ctx, "DELETE FROM user_sessions WHERE user_id=$1 AND id=$2", userID, sessionID)
+	if err != nil {
+		return fmt.Errorf("revoke user session: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		var exists bool
+		if err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE id=$1)", userID).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return ErrUserNotFound
+		}
+		return ErrSessionNotFound
+	}
+	return nil
+}
+
 func (s *Store) DeleteManagedUser(ctx context.Context, userID int64) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -257,7 +277,7 @@ func (s *Store) GetUserAccessInfo(ctx context.Context, userID int64, currentRawT
 	}
 	currentHash := sha256.Sum256([]byte(currentRawToken))
 	rows, err := s.pool.Query(ctx, `
-		SELECT created_at,last_seen_at,expires_at,created_ip,user_agent,token_hash=$2
+		SELECT id,created_at,last_seen_at,expires_at,created_ip,user_agent,token_hash=$2
 		FROM user_sessions
 		WHERE user_id=$1 AND expires_at > now()
 		ORDER BY last_seen_at DESC`, userID, currentHash[:])
@@ -267,7 +287,7 @@ func (s *Store) GetUserAccessInfo(ctx context.Context, userID int64, currentRawT
 	info := UserAccessInfo{Sessions: make([]UserSessionInfo, 0), RecentLogins: make([]UserLoginEvent, 0)}
 	for rows.Next() {
 		var item UserSessionInfo
-		if err := rows.Scan(&item.CreatedAt, &item.LastSeenAt, &item.ExpiresAt, &item.ClientIP, &item.UserAgent, &item.Current); err != nil {
+		if err := rows.Scan(&item.ID, &item.CreatedAt, &item.LastSeenAt, &item.ExpiresAt, &item.ClientIP, &item.UserAgent, &item.Current); err != nil {
 			rows.Close()
 			return UserAccessInfo{}, err
 		}

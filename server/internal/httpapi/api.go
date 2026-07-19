@@ -97,6 +97,7 @@ func (a *API) routes() {
 	a.mux.Handle("GET /api/v1/users/{id}/access", a.requireAuth(http.HandlerFunc(a.userAccessInfo), "admin", false))
 	a.mux.Handle("POST /api/v1/users/{id}/password", a.requireAuth(http.HandlerFunc(a.resetUserPassword), "admin", true))
 	a.mux.Handle("DELETE /api/v1/users/{id}/sessions", a.requireAuth(http.HandlerFunc(a.revokeUserSessions), "admin", true))
+	a.mux.Handle("DELETE /api/v1/users/{id}/sessions/{sessionId}", a.requireAuth(http.HandlerFunc(a.revokeUserSession), "admin", true))
 	a.mux.Handle("GET /api/v1/home", a.requireAuth(http.HandlerFunc(a.homeDashboard), "", false))
 	a.mux.Handle("GET /api/v1/favorites", a.requireAuth(http.HandlerFunc(a.listFavorites), "", false))
 	a.mux.Handle("GET /api/v1/recommendations", a.requireAuth(http.HandlerFunc(a.listRecommendations), "", false))
@@ -348,6 +349,22 @@ func (a *API) revokeUserSessions(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (a *API) revokeUserSession(w http.ResponseWriter, r *http.Request) {
+	userID, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	sessionID, ok := parseID(w, r.PathValue("sessionId"))
+	if !ok {
+		return
+	}
+	if err := a.store.RevokeUserSession(r.Context(), userID, sessionID); err != nil {
+		writeUserManagementError(w, err, "session_not_revoked")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (a *API) userAccessInfo(w http.ResponseWriter, r *http.Request) {
 	userID, ok := parseID(w, r.PathValue("id"))
 	if !ok {
@@ -369,6 +386,8 @@ func writeUserManagementError(w http.ResponseWriter, err error, fallbackCode str
 	switch {
 	case errors.Is(err, store.ErrUserNotFound):
 		writeError(w, http.StatusNotFound, "user_not_found", "user not found")
+	case errors.Is(err, store.ErrSessionNotFound):
+		writeError(w, http.StatusNotFound, "session_not_found", "session not found")
 	case errors.Is(err, store.ErrLastActiveAdmin):
 		writeError(w, http.StatusConflict, "last_active_admin", "at least one active administrator must remain")
 	default:
