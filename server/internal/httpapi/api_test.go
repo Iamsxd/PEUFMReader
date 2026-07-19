@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 )
@@ -35,6 +36,46 @@ func TestParseIDRejectsInvalidValues(t *testing.T) {
 		}
 		if recorder.Code != 400 {
 			t.Fatalf("parseID(%q) status=%d", value, recorder.Code)
+		}
+	}
+}
+
+func TestParseCatalogQuery(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/book-files?q=%E4%B8%89%E4%BD%93&category=science-fiction&format=pdf&status=reading&sort=hot&page=2&pageSize=36", nil)
+	query, err := parseCatalogQuery(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if query.Query != "三体" || query.CategorySlug != "science-fiction" || query.Format != "pdf" || query.Status != "reading" || query.Sort != "hot" {
+		t.Fatalf("filters not parsed: %#v", query)
+	}
+	if query.Page != 2 || query.PageSize != 36 {
+		t.Fatalf("pagination not parsed: %#v", query)
+	}
+}
+
+func TestParseCatalogQueryDefaultsToRelevance(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/book-files?q=reader", nil)
+	query, err := parseCatalogQuery(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if query.Sort != "relevance" || query.Page != 1 || query.PageSize != 24 {
+		t.Fatalf("unexpected defaults: %#v", query)
+	}
+}
+
+func TestParseCatalogQueryRejectsInvalidPaginationAndFilters(t *testing.T) {
+	for _, target := range []string{
+		"/api/v1/book-files?page=0",
+		"/api/v1/book-files?pageSize=101",
+		"/api/v1/book-files?format=mobi",
+		"/api/v1/book-files?status=unknown",
+		"/api/v1/book-files?sort=random",
+	} {
+		request := httptest.NewRequest(http.MethodGet, target, nil)
+		if _, err := parseCatalogQuery(request); err == nil {
+			t.Fatalf("parseCatalogQuery accepted %s", target)
 		}
 	}
 }

@@ -78,6 +78,7 @@ func (a *API) routes() {
 	a.mux.Handle("POST /api/v1/auth/logout", a.requireAuth(http.HandlerFunc(a.logout), "", true))
 	a.mux.Handle("GET /api/v1/users", a.requireAuth(http.HandlerFunc(a.listUsers), "admin", false))
 	a.mux.Handle("POST /api/v1/users", a.requireAuth(http.HandlerFunc(a.createUser), "admin", true))
+	a.mux.Handle("GET /api/v1/home", a.requireAuth(http.HandlerFunc(a.homeDashboard), "", false))
 	a.mux.Handle("GET /api/v1/book-files", a.requireAuth(http.HandlerFunc(a.listBookFiles), "", false))
 	a.mux.Handle("POST /api/v1/book-files", a.requireAuth(http.HandlerFunc(a.uploadBookFile), "admin", true))
 	a.mux.Handle("GET /api/v1/book-files/{id}/content", a.requireAuth(http.HandlerFunc(a.bookContent), "", false))
@@ -211,15 +212,86 @@ func (a *API) createUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) listBookFiles(w http.ResponseWriter, r *http.Request) {
-	books, err := a.store.ListCatalogBooks(r.Context())
+	query, err := parseCatalogQuery(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_catalog_query", err.Error())
+		return
+	}
+	userSession := sessionFromContext(r.Context())
+	page, err := a.store.SearchCatalogBooks(r.Context(), userSession.User.ID, query)
 	if err != nil {
 		a.internalError(w, err)
 		return
 	}
-	for index := range books {
-		a.decorateBook(&books[index])
+	for index := range page.Items {
+		a.decorateBook(&page.Items[index])
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": books})
+	writeJSON(w, http.StatusOK, page)
+}
+
+func (a *API) homeDashboard(w http.ResponseWriter, r *http.Request) {
+	userSession := sessionFromContext(r.Context())
+	dashboard, err := a.store.GetHomeDashboard(r.Context(), userSession.User.ID)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	for index := range dashboard.ContinueReading {
+		a.decorateBook(&dashboard.ContinueReading[index].Book)
+	}
+	for index := range dashboard.HotBooks {
+		a.decorateBook(&dashboard.HotBooks[index].Book)
+	}
+	for index := range dashboard.RecentlyAdded {
+		a.decorateBook(&dashboard.RecentlyAdded[index])
+	}
+	for index := range dashboard.Categories {
+		dashboard.Categories[index].CoverURLs = make([]string, 0, len(dashboard.Categories[index].CoverBookIDs))
+		for _, bookFileID := range dashboard.Categories[index].CoverBookIDs {
+			dashboard.Categories[index].CoverURLs = append(dashboard.Categories[index].CoverURLs, fmt.Sprintf("/api/v1/book-files/%d/cover", bookFileID))
+		}
+	}
+	writeJSON(w, http.StatusOK, dashboard)
+}
+
+func parseCatalogQuery(r *http.Request) (store.CatalogQuery, error) {
+	values := r.URL.Query()
+	query := store.CatalogQuery{
+		Query: values.Get("q"), CategorySlug: values.Get("category"), Format: values.Get("format"),
+		Status: values.Get("status"), Sort: values.Get("sort"), Page: 1, PageSize: store.DefaultCatalogPageSize,
+	}
+	if len(query.Query) > 200 || len(query.CategorySlug) > 100 {
+		return store.CatalogQuery{}, fmt.Errorf("search query is too long")
+	}
+	if value := values.Get("page"); value != "" {
+		page, err := strconv.Atoi(value)
+		if err != nil || page < 1 {
+			return store.CatalogQuery{}, fmt.Errorf("page must be a positive integer")
+		}
+		query.Page = page
+	}
+	if value := values.Get("pageSize"); value != "" {
+		pageSize, err := strconv.Atoi(value)
+		if err != nil || pageSize < 1 || pageSize > store.MaxCatalogPageSize {
+			return store.CatalogQuery{}, fmt.Errorf("pageSize must be between 1 and %d", store.MaxCatalogPageSize)
+		}
+		query.PageSize = pageSize
+	}
+	if query.Format != "" && query.Format != "pdf" && query.Format != "epub" {
+		return store.CatalogQuery{}, fmt.Errorf("format must be pdf or epub")
+	}
+	validStatuses := map[string]bool{"": true, "unread": true, "reading": true, "paused": true, "finished": true, "abandoned": true}
+	if !validStatuses[query.Status] {
+		return store.CatalogQuery{}, fmt.Errorf("status is invalid")
+	}
+	if query.Sort == "" && strings.TrimSpace(query.Query) != "" {
+		query.Sort = "relevance"
+	}
+	validSorts := map[string]bool{"": true, "relevance": true, "title": true, "newest": true, "hot": true}
+	if !validSorts[query.Sort] {
+		return store.CatalogQuery{}, fmt.Errorf("sort is invalid")
+	}
+	return store.NormalizeCatalogQuery(query), nil
 }
 
 func (a *API) uploadBookFile(w http.ResponseWriter, r *http.Request) {

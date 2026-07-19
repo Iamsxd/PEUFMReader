@@ -93,6 +93,9 @@ const catalogBookSelect = `
 			WHERE cd.edition_id=e.id AND cd.status='accepted'),'[]'::jsonb),
 		(w.review_status='pending' OR EXISTS(
 			SELECT 1 FROM classification_decisions pending_cd WHERE pending_cd.edition_id=e.id AND pending_cd.status='suggested'))
+	` + catalogBookFrom
+
+const catalogBookFrom = `
 	FROM book_files bf
 	JOIN editions e ON e.id=bf.edition_id
 	JOIN works w ON w.id=e.work_id`
