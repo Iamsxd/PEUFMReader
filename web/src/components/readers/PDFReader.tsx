@@ -220,32 +220,32 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
   return (
     <div className="pdf-reader">
       <div
-        className={`pdf-toolbar${chromeVisible ? '' : ' is-hidden'}`}
+        className={`reader-toolbar pdf-toolbar${chromeVisible ? '' : ' is-hidden'}`}
         role="toolbar"
         aria-label="PDF 阅读工具"
         aria-hidden={!chromeVisible}
         onPointerDown={onChromeActivity}
         onFocusCapture={onChromeActivity}
       >
-        <button className="pdf-toolbar-collapse" onClick={onHideChrome} title="收起阅读工具" aria-label="收起阅读工具">收起</button>
-        <div className="pdf-tool-group" aria-label="阅读方式">
+        <button className="reader-toolbar-collapse" onClick={onHideChrome} title="收起阅读工具" aria-label="收起阅读工具">收起</button>
+        <div className="reader-tool-group" aria-label="阅读方式">
           <button className={preferences.flow === 'paged' ? 'active' : ''} aria-pressed={preferences.flow === 'paged'} onClick={() => setFlow('paged')}>分页</button>
           <button className={preferences.flow === 'continuous' ? 'active' : ''} aria-pressed={preferences.flow === 'continuous'} onClick={() => setFlow('continuous')}>连续滚动</button>
         </div>
-        <span className="pdf-toolbar-divider" />
-        <div className="pdf-tool-group" aria-label="页面版式">
+        <span className="reader-toolbar-divider" />
+        <div className="reader-tool-group" aria-label="页面版式">
           <button className={preferences.layout === 'single' ? 'active' : ''} aria-pressed={preferences.layout === 'single'} onClick={() => setLayout('single')}>单页</button>
           <button className={preferences.layout === 'spread' ? 'active' : ''} aria-pressed={preferences.layout === 'spread'} disabled={isNarrow} title={isNarrow ? '窄屏设备使用单页显示' : '双页书籍模式'} onClick={() => setLayout('spread')}>双页书籍</button>
         </div>
-        <span className="pdf-toolbar-divider" />
-        <div className="pdf-tool-group pdf-zoom-tools" aria-label="页面缩放">
+        <span className="reader-toolbar-divider" />
+        <div className="reader-tool-group reader-zoom-tools" aria-label="页面缩放">
           <button title="缩小（-）" aria-label="缩小" onClick={() => updateZoom(-10)}>−</button>
-          <button className="pdf-zoom-value" title="恢复 100%" onClick={() => setPreferences((current) => ({ ...current, zoomMode: 'custom', zoomPercent: 100 }))}>{displayedZoom}%</button>
+          <button className="reader-zoom-value" title="恢复 100%" onClick={() => setPreferences((current) => ({ ...current, zoomMode: 'custom', zoomPercent: 100 }))}>{displayedZoom}%</button>
           <button title="放大（+）" aria-label="放大" onClick={() => updateZoom(10)}>＋</button>
           <button className={preferences.zoomMode === 'fit-width' ? 'active' : ''} aria-pressed={preferences.zoomMode === 'fit-width'} onClick={() => setPreferences((current) => ({ ...current, zoomMode: 'fit-width' }))}>适宽</button>
           <button className={preferences.zoomMode === 'fit-page' ? 'active' : ''} aria-pressed={preferences.zoomMode === 'fit-page'} onClick={() => setPreferences((current) => ({ ...current, zoomMode: 'fit-page' }))}>适页</button>
         </div>
-        <span className="pdf-shortcuts">← → 翻页 · + − 缩放</span>
+        <span className="reader-shortcuts">← → 翻页 · + − 缩放</span>
       </div>
 
       {error && <div className="notice error pdf-error">{error}</div>}

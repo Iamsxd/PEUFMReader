@@ -15,59 +15,59 @@ interface Props {
 export function Reader({ book, onClose }: Props) {
   const [state, setState] = useState<ReadingState | null>(null)
   const [error, setError] = useState('')
-  const [pdfChromeVisible, setPDFChromeVisible] = useState(book.format === 'pdf')
-  const pdfChromeTimerRef = useRef<number | null>(null)
-  const isPDF = book.format === 'pdf'
+  const [readerChromeVisible, setReaderChromeVisible] = useState(true)
+  const readerChromeTimerRef = useRef<number | null>(null)
+  const isImmersiveReader = book.format === 'pdf' || book.format === 'epub'
   useReadingSession(book.id)
 
-  const clearPDFChromeTimer = useCallback(() => {
-    if (pdfChromeTimerRef.current !== null) {
-      window.clearTimeout(pdfChromeTimerRef.current)
-      pdfChromeTimerRef.current = null
+  const clearReaderChromeTimer = useCallback(() => {
+    if (readerChromeTimerRef.current !== null) {
+      window.clearTimeout(readerChromeTimerRef.current)
+      readerChromeTimerRef.current = null
     }
   }, [])
 
-  const hidePDFChrome = useCallback(() => {
-    clearPDFChromeTimer()
-    setPDFChromeVisible(false)
-  }, [clearPDFChromeTimer])
+  const hideReaderChrome = useCallback(() => {
+    clearReaderChromeTimer()
+    setReaderChromeVisible(false)
+  }, [clearReaderChromeTimer])
 
-  const showPDFChrome = useCallback(() => {
-    if (!isPDF) return
-    clearPDFChromeTimer()
-    setPDFChromeVisible(true)
-    pdfChromeTimerRef.current = window.setTimeout(() => {
-      pdfChromeTimerRef.current = null
-      setPDFChromeVisible(false)
+  const showReaderChrome = useCallback(() => {
+    if (!isImmersiveReader) return
+    clearReaderChromeTimer()
+    setReaderChromeVisible(true)
+    readerChromeTimerRef.current = window.setTimeout(() => {
+      readerChromeTimerRef.current = null
+      setReaderChromeVisible(false)
     }, 3500)
-  }, [clearPDFChromeTimer, isPDF])
+  }, [clearReaderChromeTimer, isImmersiveReader])
 
   useEffect(() => {
     void api.getProgress(book.id).then(setState).catch(() => setError('无法读取上次阅读位置。'))
   }, [book.id])
 
   useEffect(() => {
-    if (!isPDF) {
-      clearPDFChromeTimer()
+    if (!isImmersiveReader) {
+      clearReaderChromeTimer()
       return
     }
 
-    showPDFChrome()
+    showReaderChrome()
     const handlePointerMove = (event: PointerEvent) => {
-      if (event.clientY <= 120) showPDFChrome()
+      if (event.clientY <= 120) showReaderChrome()
     }
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') hidePDFChrome()
-      else if (event.key === 'Tab') showPDFChrome()
+      if (event.key === 'Escape') hideReaderChrome()
+      else if (event.key === 'Tab') showReaderChrome()
     }
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('keydown', handleKeyDown)
     return () => {
-      clearPDFChromeTimer()
+      clearReaderChromeTimer()
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [book.id, clearPDFChromeTimer, hidePDFChrome, isPDF, showPDFChrome])
+  }, [book.id, clearReaderChromeTimer, hideReaderChrome, isImmersiveReader, showReaderChrome])
 
   async function save(position: Record<string, unknown>, overallProgress: number) {
     const next = await api.saveProgress(book.id, {
@@ -79,12 +79,12 @@ export function Reader({ book, onClose }: Props) {
   }
 
   return (
-    <main className={`reader-shell${isPDF ? ' pdf-reader-shell' : ''}`}>
+    <main className={`reader-shell${isImmersiveReader ? ' immersive-reader-shell' : ''}`}>
       <header
-        className={`reader-bar${isPDF ? ` pdf-reader-bar${pdfChromeVisible ? '' : ' is-hidden'}` : ''}`}
-        aria-hidden={isPDF && !pdfChromeVisible}
-        onPointerDown={isPDF ? showPDFChrome : undefined}
-        onFocusCapture={isPDF ? showPDFChrome : undefined}
+        className={`reader-bar${isImmersiveReader ? ` immersive-reader-bar${readerChromeVisible ? '' : ' is-hidden'}` : ''}`}
+        aria-hidden={isImmersiveReader && !readerChromeVisible}
+        onPointerDown={isImmersiveReader ? showReaderChrome : undefined}
+        onFocusCapture={isImmersiveReader ? showReaderChrome : undefined}
       >
         <button className="quiet" onClick={onClose}>← 返回书库</button>
         <div className="reader-title">
@@ -93,8 +93,8 @@ export function Reader({ book, onClose }: Props) {
         </div>
         <span className={`format-badge ${book.format}`}>{book.format.toUpperCase()}</span>
       </header>
-      {isPDF && !pdfChromeVisible && (
-        <button className="pdf-chrome-toggle" onClick={showPDFChrome} aria-label="显示 PDF 阅读工具" title="显示阅读工具">
+      {isImmersiveReader && !readerChromeVisible && (
+        <button className="reader-chrome-toggle" onClick={showReaderChrome} aria-label={`显示 ${book.format.toUpperCase()} 阅读工具`} title="显示阅读工具">
           工具
         </button>
       )}
@@ -105,13 +105,22 @@ export function Reader({ book, onClose }: Props) {
             <PDFReader
               book={book}
               initialState={state}
-              chromeVisible={pdfChromeVisible}
-              onChromeActivity={showPDFChrome}
-              onHideChrome={hidePDFChrome}
+              chromeVisible={readerChromeVisible}
+              onChromeActivity={showReaderChrome}
+              onHideChrome={hideReaderChrome}
               onProgress={save}
             />
           )}
-          {state && book.format === 'epub' && <EPUBReader book={book} initialState={state} onProgress={save} />}
+          {state && book.format === 'epub' && (
+            <EPUBReader
+              book={book}
+              initialState={state}
+              chromeVisible={readerChromeVisible}
+              onChromeActivity={showReaderChrome}
+              onHideChrome={hideReaderChrome}
+              onProgress={save}
+            />
+          )}
         </Suspense>
       </section>
     </main>

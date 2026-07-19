@@ -6,15 +6,30 @@ declare module 'epubjs' {
 
   export interface ThemeManager {
     default(styles: Record<string, Record<string, string>>): void
+    register(name: string, styles: Record<string, Record<string, string>>): void
+    select(name: string): void
+    fontSize(size: string): void
+  }
+
+  export interface Contents {
+    document: Document
+  }
+
+  export interface Hook {
+    register(callback: (contents: Contents) => void): void
+    deregister(callback: (contents: Contents) => void): void
   }
 
   export interface Rendition {
     themes: ThemeManager
+    hooks: { content: Hook }
     display(target?: string): Promise<unknown>
     prev(): Promise<unknown>
     next(): Promise<unknown>
-    on(event: string, callback: (...args: never[]) => void): void
-    off(event: string, callback: (...args: never[]) => void): void
+    flow(flow: 'paginated' | 'scrolled-continuous'): void
+    spread(spread: 'none' | 'auto', minWidth?: number): void
+    on<TArgs extends unknown[]>(event: string, callback: (...args: TArgs) => void): void
+    off<TArgs extends unknown[]>(event: string, callback: (...args: TArgs) => void): void
     destroy(): void
   }
 
