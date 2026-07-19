@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import ePub from 'epubjs'
+import { describe, expect, it, vi } from 'vitest'
 import {
   clampEPUBFontSize,
   normalizeEPUBWheelDelta,
@@ -7,6 +8,18 @@ import {
 } from './epub'
 
 describe('EPUB reading preferences', () => {
+  it('opens extensionless content API routes as EPUB archives', async () => {
+    const request = vi.fn().mockRejectedValue(new Error('stop after request classification'))
+    const book = ePub('/api/v1/book-files/2/content', {
+      openAs: 'epub',
+      requestCredentials: true,
+      requestMethod: request,
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(request).toHaveBeenCalledWith('/api/v1/book-files/2/content', 'binary', true, undefined)
+    book.destroy()
+  })
+
   it('uses safe defaults for missing or malformed preferences', () => {
     expect(parseEPUBPreferences(null)).toEqual({ flow: 'paged', layout: 'single', fontSize: 100, theme: 'paper' })
     expect(parseEPUBPreferences('{')).toEqual({ flow: 'paged', layout: 'single', fontSize: 100, theme: 'paper' })

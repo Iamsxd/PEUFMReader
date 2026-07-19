@@ -146,7 +146,7 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
     locationsReadyRef.current = false
     setAtStart(initialState.overallProgress <= 0)
     setAtEnd(initialState.overallProgress >= 0.999)
-    const epub = ePub(api.contentURL(book.id), { requestCredentials: true })
+    const epub = ePub(api.contentURL(book.id), { requestCredentials: true, openAs: 'epub' })
     const initialPreferences = preferencesRef.current
     const rendition = epub.renderTo(host, {
       width: '100%',

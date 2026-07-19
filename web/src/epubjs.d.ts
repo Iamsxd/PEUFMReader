@@ -42,6 +42,8 @@ declare module 'epubjs' {
 
   export interface BookOptions {
     requestCredentials?: boolean
+    openAs?: 'epub' | 'binary' | 'base64' | 'opf' | 'json' | 'directory'
+    requestMethod?: (url: string, type?: string, withCredentials?: boolean, headers?: Record<string, string>) => Promise<unknown>
   }
 
   export default function ePub(input: string | ArrayBuffer, options?: BookOptions): Book
