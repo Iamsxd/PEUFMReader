@@ -5,6 +5,107 @@ export class PDFContentError extends Error {
   }
 }
 
+export type PDFPageFlow = 'paged' | 'continuous'
+export type PDFPageLayout = 'single' | 'spread'
+export type PDFZoomMode = 'fit-width' | 'fit-page' | 'custom'
+
+export interface PDFReaderPreferences {
+  flow: PDFPageFlow
+  layout: PDFPageLayout
+  zoomMode: PDFZoomMode
+  zoomPercent: number
+}
+
+export const PDF_PREFERENCES_KEY = 'peufmreader.pdf.preferences.v1'
+export const DEFAULT_PDF_PREFERENCES: PDFReaderPreferences = {
+  flow: 'paged',
+  layout: 'single',
+  zoomMode: 'fit-width',
+  zoomPercent: 100,
+}
+
+export function clampPDFPage(page: number, pageCount: number): number {
+  if (pageCount < 1) return 1
+  return Math.min(pageCount, Math.max(1, Math.round(Number.isFinite(page) ? page : 1)))
+}
+
+export function getPDFViewPages(page: number, pageCount: number, layout: PDFPageLayout): number[] {
+  const current = clampPDFPage(page, pageCount)
+  if (pageCount < 1) return []
+  if (layout === 'single' || current === 1) return [current]
+  const spreadStart = current % 2 === 0 ? current : current - 1
+  return [spreadStart, spreadStart + 1].filter((candidate) => candidate <= pageCount)
+}
+
+export function movePDFPage(
+  page: number,
+  pageCount: number,
+  layout: PDFPageLayout,
+  direction: -1 | 1,
+): number {
+  const current = clampPDFPage(page, pageCount)
+  if (layout === 'single') return clampPDFPage(current + direction, pageCount)
+  const spreadStart = current === 1 ? 1 : current % 2 === 0 ? current : current - 1
+  if (direction > 0) {
+    const nextSpread = spreadStart === 1 ? 2 : spreadStart + 2
+    return nextSpread > pageCount ? spreadStart : nextSpread
+  }
+  return clampPDFPage(spreadStart <= 2 ? 1 : spreadStart - 2, pageCount)
+}
+
+export function clampPDFZoom(zoomPercent: number): number {
+  return Math.min(300, Math.max(40, Math.round(Number.isFinite(zoomPercent) ? zoomPercent : 100)))
+}
+
+interface PDFScaleOptions {
+  zoomMode: PDFZoomMode
+  zoomPercent: number
+  pageWidth: number
+  pageHeight: number
+  containerWidth: number
+  availableHeight: number
+  layout: PDFPageLayout
+}
+
+export function calculatePDFScale({
+  zoomMode,
+  zoomPercent,
+  pageWidth,
+  pageHeight,
+  containerWidth,
+  availableHeight,
+  layout,
+}: PDFScaleOptions): number {
+  if (pageWidth <= 0 || pageHeight <= 0) return 1
+  const horizontalPadding = 48
+  const spreadGap = layout === 'spread' ? 18 : 0
+  const pageSlots = layout === 'spread' ? 2 : 1
+  const pageSlotWidth = Math.max(160, (containerWidth - horizontalPadding - spreadGap) / pageSlots)
+  const widthScale = pageSlotWidth / pageWidth
+  const heightScale = Math.max(0.35, (availableHeight - 32) / pageHeight)
+  const scale = zoomMode === 'custom'
+    ? clampPDFZoom(zoomPercent) / 100
+    : zoomMode === 'fit-page'
+      ? Math.min(widthScale, heightScale)
+      : widthScale
+  return Math.min(3, Math.max(0.35, scale))
+}
+
+export function parsePDFPreferences(value: string | null): PDFReaderPreferences {
+  if (!value) return { ...DEFAULT_PDF_PREFERENCES }
+  try {
+    const parsed = JSON.parse(value) as Partial<PDFReaderPreferences>
+    return {
+      flow: parsed.flow === 'continuous' ? 'continuous' : 'paged',
+      layout: parsed.layout === 'spread' ? 'spread' : 'single',
+      zoomMode: parsed.zoomMode === 'fit-page' || parsed.zoomMode === 'custom' ? parsed.zoomMode : 'fit-width',
+      zoomPercent: clampPDFZoom(typeof parsed.zoomPercent === 'number' ? parsed.zoomPercent : 100),
+    }
+  } catch {
+    return { ...DEFAULT_PDF_PREFERENCES }
+  }
+}
+
 export async function fetchPDFBytes(url: string, signal?: AbortSignal): Promise<Uint8Array> {
   const response = await fetch(url, {
     method: 'GET',
@@ -13,7 +114,7 @@ export async function fetchPDFBytes(url: string, signal?: AbortSignal): Promise<
     signal,
   })
   if (!response.ok) {
-    throw new PDFContentError(`PDF 文件请求失败（HTTP ${response.status}）`, response.status)
+    throw new PDFContentError(`PDF 文件请求失败（HTTP ${response.status}）。`, response.status)
   }
   const bytes = new Uint8Array(await response.arrayBuffer())
   if (bytes.length < 5 || String.fromCharCode(...bytes.subarray(0, 5)) !== '%PDF-') {
@@ -35,8 +136,8 @@ export function describePDFError(reason: unknown): string {
       case 'UnexpectedResponseException':
         return 'PDF 文件请求返回了异常响应。'
     }
-	const detail = `${reason.name || 'Error'}: ${reason.message || '未知错误'}`.replace(/\s+/g, ' ').slice(0, 240)
-	return `PDF 加载失败（${detail}）`
+    const detail = `${reason.name || 'Error'}: ${reason.message || '未知错误'}`.replace(/\s+/g, ' ').slice(0, 240)
+    return `PDF 加载失败（${detail}）。`
   }
-  return `PDF 加载失败（${String(reason).replace(/\s+/g, ' ').slice(0, 240)}）`
+  return `PDF 加载失败（${String(reason).replace(/\s+/g, ' ').slice(0, 240)}）。`
 }

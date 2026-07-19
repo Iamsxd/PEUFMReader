@@ -1,5 +1,48 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { describePDFError, fetchPDFBytes, PDFContentError } from './pdf'
+import {
+  calculatePDFScale,
+  describePDFError,
+  fetchPDFBytes,
+  getPDFViewPages,
+  movePDFPage,
+  parsePDFPreferences,
+  PDFContentError,
+} from './pdf'
+
+describe('PDF reading model', () => {
+  it('keeps the cover alone and creates conventional two-page spreads', () => {
+    expect(getPDFViewPages(1, 8, 'spread')).toEqual([1])
+    expect(getPDFViewPages(2, 8, 'spread')).toEqual([2, 3])
+    expect(getPDFViewPages(3, 8, 'spread')).toEqual([2, 3])
+    expect(getPDFViewPages(8, 8, 'spread')).toEqual([8])
+  })
+
+  it('moves between spreads without skipping the cover', () => {
+    expect(movePDFPage(1, 8, 'spread', 1)).toBe(2)
+    expect(movePDFPage(2, 8, 'spread', 1)).toBe(4)
+    expect(movePDFPage(4, 8, 'spread', -1)).toBe(2)
+    expect(movePDFPage(2, 8, 'spread', -1)).toBe(1)
+    expect(movePDFPage(6, 7, 'spread', 1)).toBe(6)
+  })
+
+  it('calculates fit-width, fit-page and custom zoom scales', () => {
+    const base = { pageWidth: 600, pageHeight: 800, containerWidth: 1248, availableHeight: 832, layout: 'single' as const }
+    expect(calculatePDFScale({ ...base, zoomMode: 'fit-width', zoomPercent: 100 })).toBe(2)
+    expect(calculatePDFScale({ ...base, zoomMode: 'fit-page', zoomPercent: 100 })).toBe(1)
+    expect(calculatePDFScale({ ...base, zoomMode: 'custom', zoomPercent: 150 })).toBe(1.5)
+    expect(calculatePDFScale({ ...base, layout: 'spread', zoomMode: 'fit-width', zoomPercent: 100 })).toBeCloseTo(0.985)
+  })
+
+  it('sanitizes persisted reader preferences', () => {
+    expect(parsePDFPreferences('{"flow":"continuous","layout":"spread","zoomMode":"custom","zoomPercent":900}')).toEqual({
+      flow: 'continuous',
+      layout: 'spread',
+      zoomMode: 'custom',
+      zoomPercent: 300,
+    })
+    expect(parsePDFPreferences('not-json')).toEqual({ flow: 'paged', layout: 'single', zoomMode: 'fit-width', zoomPercent: 100 })
+  })
+})
 
 describe('fetchPDFBytes', () => {
   afterEach(() => vi.unstubAllGlobals())
@@ -33,7 +76,7 @@ describe('fetchPDFBytes', () => {
 
 describe('describePDFError', () => {
   it('keeps actionable content errors', () => {
-    expect(describePDFError(new PDFContentError('PDF 文件请求失败（HTTP 401）', 401))).toContain('401')
+    expect(describePDFError(new PDFContentError('PDF 文件请求失败（HTTP 401）。', 401))).toContain('401')
   })
 
   it('maps PDF.js parser errors', () => {
