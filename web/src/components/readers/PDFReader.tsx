@@ -23,6 +23,9 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerURL
 interface Props {
   book: BookFile
   initialState: ReadingState
+  chromeVisible: boolean
+  onChromeActivity: () => void
+  onHideChrome: () => void
   onProgress: (position: Record<string, unknown>, progress: number) => Promise<void>
 }
 
@@ -34,7 +37,7 @@ function readPreferences(): PDFReaderPreferences {
   }
 }
 
-export function PDFReader({ book, initialState, onProgress }: Props) {
+export function PDFReader({ book, initialState, chromeVisible, onChromeActivity, onHideChrome, onProgress }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const loadingTaskRef = useRef<pdfjs.PDFDocumentLoadingTask | null>(null)
   const visiblePagesRef = useRef(new Map<number, number>())
@@ -43,7 +46,7 @@ export function PDFReader({ book, initialState, onProgress }: Props) {
   const [pageNumber, setPageNumber] = useState(Math.max(1, initialPage))
   const [basePageSize, setBasePageSize] = useState({ width: 612, height: 792 })
   const [containerWidth, setContainerWidth] = useState(window.innerWidth)
-  const [availableHeight, setAvailableHeight] = useState(Math.max(320, window.innerHeight - 180))
+  const [availableHeight, setAvailableHeight] = useState(Math.max(320, window.innerHeight - 96))
   const [isNarrow, setIsNarrow] = useState(window.innerWidth <= 720)
   const [preferences, setPreferences] = useState(readPreferences)
   const [error, setError] = useState('')
@@ -106,7 +109,7 @@ export function PDFReader({ book, initialState, onProgress }: Props) {
     if (!viewport) return
     const measure = () => {
       setContainerWidth(viewport.clientWidth || window.innerWidth)
-      setAvailableHeight(Math.max(320, window.innerHeight - 180))
+      setAvailableHeight(Math.max(320, window.innerHeight - 96))
       setIsNarrow(window.innerWidth <= 720)
     }
     measure()
@@ -216,7 +219,15 @@ export function PDFReader({ book, initialState, onProgress }: Props) {
 
   return (
     <div className="pdf-reader">
-      <div className="pdf-toolbar" role="toolbar" aria-label="PDF 阅读工具">
+      <div
+        className={`pdf-toolbar${chromeVisible ? '' : ' is-hidden'}`}
+        role="toolbar"
+        aria-label="PDF 阅读工具"
+        aria-hidden={!chromeVisible}
+        onPointerDown={onChromeActivity}
+        onFocusCapture={onChromeActivity}
+      >
+        <button className="pdf-toolbar-collapse" onClick={onHideChrome} title="收起阅读工具" aria-label="收起阅读工具">收起</button>
         <div className="pdf-tool-group" aria-label="阅读方式">
           <button className={preferences.flow === 'paged' ? 'active' : ''} aria-pressed={preferences.flow === 'paged'} onClick={() => setFlow('paged')}>分页</button>
           <button className={preferences.flow === 'continuous' ? 'active' : ''} aria-pressed={preferences.flow === 'continuous'} onClick={() => setFlow('continuous')}>连续滚动</button>
