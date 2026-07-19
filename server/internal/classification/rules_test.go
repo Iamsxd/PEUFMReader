@@ -13,9 +13,9 @@ func TestClassifyAcceptsExactEmbeddedSubject(t *testing.T) {
 	}
 }
 
-func TestClassifyKeepsTitleMatchForReview(t *testing.T) {
+func TestClassifyUsesSpecificProgrammingCategoryForTitleMatch(t *testing.T) {
 	result := Classify(metadata.Result{Title: "A Programming Handbook"})
-	if len(result) == 0 || result[0].CategorySlug != "technology" || result[0].Status != "suggested" {
+	if len(result) == 0 || result[0].CategorySlug != "programming" || result[0].Status != "suggested" {
 		t.Fatalf("unexpected classification: %+v", result)
 	}
 }

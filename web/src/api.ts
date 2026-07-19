@@ -114,6 +114,27 @@ class APIClient {
     return result.items
   }
 
+  async listAdminCategories(): Promise<Category[]> {
+    const result = await this.request<{ items: Category[] }>('/api/v1/admin/categories')
+    return result.items
+  }
+
+  createCategory(input: { slug: string; name: string; parentId?: number }): Promise<Category> {
+    return this.request('/api/v1/admin/categories', {
+      method: 'POST',
+      body: JSON.stringify(input),
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  updateCategory(categoryID: number, input: { name: string; parentId?: number; active: boolean }): Promise<Category> {
+    return this.request(`/api/v1/admin/categories/${categoryID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ...input, parentId: input.parentId ?? null }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   async listReviewQueue(): Promise<ReviewItem[]> {
     const result = await this.request<{ items: ReviewItem[] }>('/api/v1/review-queue')
     return result.items

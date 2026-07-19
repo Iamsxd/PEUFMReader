@@ -20,6 +20,7 @@ interface UploadItem {
 
 export function AdminPage({ initialEditionID }: Props) {
   const [categories, setCategories] = useState<Category[]>([])
+  const [adminCategories, setAdminCategories] = useState<Category[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
   const [manualReviewItem, setManualReviewItem] = useState<ReviewItem | null>(null)
@@ -41,10 +42,11 @@ export function AdminPage({ initialEditionID }: Props) {
 
   async function refreshAdmin() {
     try {
-      const [categoryItems, userItems, queueItems, jobs, asyncJobs, audits] = await Promise.all([
-        api.listCategories(), api.listUsers(), api.listReviewQueue(), api.listImportJobs(), api.listBackgroundJobs(), api.listAuditEvents(),
+      const [categoryItems, managedCategories, userItems, queueItems, jobs, asyncJobs, audits] = await Promise.all([
+        api.listCategories(), api.listAdminCategories(), api.listUsers(), api.listReviewQueue(), api.listImportJobs(), api.listBackgroundJobs(), api.listAuditEvents(),
       ])
       setCategories(categoryItems)
+      setAdminCategories(managedCategories)
       setUsers(userItems)
       setReviewItems(queueItems)
       setImportJobs(jobs)
@@ -255,6 +257,16 @@ export function AdminPage({ initialEditionID }: Props) {
         )}
       </section>
 
+      <CategoryManager
+        categories={adminCategories}
+        onError={setError}
+        onChanged={async () => {
+          const [active, all] = await Promise.all([api.listCategories(), api.listAdminCategories()])
+          setCategories(active)
+          setAdminCategories(all)
+        }}
+      />
+
       <ReviewQueue categories={categories} items={visibleReviewItems} onChanged={reviewChanged} />
 
       <section className="integration-panel">
@@ -385,6 +397,104 @@ function auditActionLabel(action: string): string {
     'POST /api/v1/editions/{id}/bibliography-search': '查询外部书目',
     'POST /api/v1/background-jobs/{id}/retry': '重试后台任务',
     'POST /api/v1/calibre/import': '启动 Calibre 迁移',
+    'POST /api/v1/admin/categories': '创建题材分类',
+    'PATCH /api/v1/admin/categories/{id}': '修改题材分类',
   }
   return labels[action] ?? action
+}
+
+function CategoryManager({ categories, onChanged, onError }: { categories: Category[]; onChanged: () => Promise<void>; onError: (message: string) => void }) {
+  const [slug, setSlug] = useState('')
+  const [name, setName] = useState('')
+  const [parentID, setParentID] = useState('')
+  const [creating, setCreating] = useState(false)
+  const activeCount = categories.filter((category) => category.active).length
+  const roots = categories.filter((category) => !category.parentId && category.active)
+
+  async function create(event: FormEvent) {
+    event.preventDefault()
+    setCreating(true)
+    onError('')
+    try {
+      await api.createCategory({ slug, name, parentId: parentID ? Number(parentID) : undefined })
+      setSlug('')
+      setName('')
+      setParentID('')
+      await onChanged()
+    } catch (reason) {
+      onError(reason instanceof APIError ? reason.message : '分类创建失败。')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return (
+    <section className="integration-panel category-management-panel">
+      <div className="section-title">
+        <div><p className="eyebrow">固定题材体系</p><h2>{activeCount} 个启用分类 · {roots.length} 个主类</h2><p className="muted">父类筛选会包含全部子类；停用不会删除已有书籍分类记录。</p></div>
+      </div>
+      <form className="category-create-form" onSubmit={create}>
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="分类名称，如 建筑设计" maxLength={60} required />
+        <input value={slug} onChange={(event) => setSlug(event.target.value.toLowerCase())} placeholder="固定标识，如 architecture" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength={80} required />
+        <select value={parentID} onChange={(event) => setParentID(event.target.value)} aria-label="父分类">
+          <option value="">作为主类</option>
+          {categories.filter((category) => category.active).map((category) => <option key={category.id} value={category.id}>{category.parentId ? `↳ ${category.name}` : category.name}</option>)}
+        </select>
+        <button className="primary" type="submit" disabled={creating}>{creating ? '添加中…' : '添加分类'}</button>
+      </form>
+      <div className="category-management-list">
+        {categories.map((category) => <CategoryManagementRow key={category.id} category={category} categories={categories} onChanged={onChanged} onError={onError} />)}
+      </div>
+    </section>
+  )
+}
+
+function CategoryManagementRow({ category, categories, onChanged, onError }: { category: Category; categories: Category[]; onChanged: () => Promise<void>; onError: (message: string) => void }) {
+  const [name, setName] = useState(category.name)
+  const [parentID, setParentID] = useState(category.parentId ? String(category.parentId) : '')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setName(category.name)
+    setParentID(category.parentId ? String(category.parentId) : '')
+  }, [category.name, category.parentId])
+
+  async function save(active = Boolean(category.active)) {
+    setSaving(true)
+    onError('')
+    try {
+      await api.updateCategory(category.id, { name, parentId: parentID ? Number(parentID) : undefined, active })
+      await onChanged()
+    } catch (reason) {
+      onError(reason instanceof APIError ? reason.message : '分类更新失败。')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className={`category-management-row${category.active ? '' : ' inactive'}`}>
+      <span className="category-identity"><strong>{category.parentId ? '↳ ' : ''}{category.slug}</strong><small>{category.bookCount ?? 0} 本 · {category.system ? '内置' : '自定义'}</small></span>
+      <input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} aria-label={`${category.slug} 分类名称`} />
+      <select value={parentID} onChange={(event) => setParentID(event.target.value)} aria-label={`${category.slug} 父分类`}>
+        <option value="">主类</option>
+        {categories.filter((candidate) => candidate.id !== category.id && candidate.active && !isDescendantCandidate(candidate, category, categories)).map((candidate) => (
+          <option key={candidate.id} value={candidate.id}>{candidate.parentId ? `↳ ${candidate.name}` : candidate.name}</option>
+        ))}
+      </select>
+      <button className="secondary" type="button" disabled={saving || !name.trim()} onClick={() => void save()}>{saving ? '保存中' : '保存'}</button>
+      <button className={category.active ? 'quiet danger-text' : 'quiet'} type="button" disabled={saving || category.slug === 'other'} onClick={() => void save(!category.active)}>{category.active ? '停用' : '启用'}</button>
+    </div>
+  )
+}
+
+function isDescendantCandidate(candidate: Category, category: Category, categories: Category[]): boolean {
+  let current: Category | undefined = candidate
+  const visited = new Set<number>()
+  while (current?.parentId && !visited.has(current.id)) {
+    if (current.parentId === category.id) return true
+    visited.add(current.id)
+    current = categories.find((item) => item.id === current?.parentId)
+  }
+  return false
 }

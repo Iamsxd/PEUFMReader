@@ -238,6 +238,18 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .review-panel, .jobs-panel, .integration-panel { margin-top: 54px; }
 .integration-panel { padding: 24px; border: 1px solid #cbd7ca; border-radius: 18px; background: #edf2e9; }
 .operations-panel { margin-top: 24px; }
+.category-management-panel { margin: 24px 0 54px; }
+.category-create-form { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(150px, .8fr) minmax(150px, .8fr) auto; gap: 10px; margin-top: 18px; }
+.category-management-list { max-height: 560px; overflow-y: auto; margin-top: 16px; border: 1px solid #d4dcd3; border-radius: 13px; background: #fafbf7; }
+.category-management-row { display: grid; grid-template-columns: minmax(155px, .8fr) minmax(150px, 1fr) minmax(150px, .8fr) auto auto; gap: 9px; align-items: center; padding: 9px 11px; border-bottom: 1px solid #e1e5df; }
+.category-management-row:last-child { border-bottom: 0; }
+.category-management-row.inactive { opacity: .58; background: #eceeea; }
+.category-identity { min-width: 0; display: grid; gap: 2px; }
+.category-identity strong { overflow: hidden; font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
+.category-identity small { color: #758078; font-size: .68rem; }
+.category-management-row input, .category-management-row select { min-width: 0; padding: 8px 9px; font-size: .76rem; }
+.category-management-row button { padding: 8px 10px; font-size: .73rem; }
+.danger-text { color: #9a332d; }
 .integration-actions { display: flex; gap: 10px; }
 .calibre-preview { margin-top: 18px; padding-top: 18px; border-top: 1px solid #d2dbd1; }
 .calibre-preview code { padding: 3px 6px; border-radius: 5px; background: #dfe6dc; }
@@ -443,6 +455,9 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .catalog-pagination { gap: 9px; }
   .admin-heading .upload-button { align-self: flex-start; }
   .upload-drop-zone { grid-template-columns: 1fr; padding: 18px; }
+  .category-create-form { grid-template-columns: 1fr; }
+  .category-management-row { grid-template-columns: 1fr 1fr; }
+  .category-identity { grid-column: 1 / -1; }
   .upload-queue-item { grid-template-columns: 58px 1fr; }
   .upload-queue-item .job-progress { grid-column: 1 / -1; }
   .topbar { align-items: flex-start; }

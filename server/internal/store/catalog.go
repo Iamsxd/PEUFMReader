@@ -17,9 +17,14 @@ import (
 )
 
 type Category struct {
-	ID   int64  `json:"id"`
-	Slug string `json:"slug"`
-	Name string `json:"name"`
+	ID         int64  `json:"id"`
+	Slug       string `json:"slug"`
+	Name       string `json:"name"`
+	ParentID   *int64 `json:"parentId,omitempty"`
+	ParentName string `json:"parentName,omitempty"`
+	Active     bool   `json:"active,omitempty"`
+	System     bool   `json:"system,omitempty"`
+	BookCount  int    `json:"bookCount,omitempty"`
 }
 
 type MetadataCandidate struct {
@@ -305,7 +310,11 @@ func (s *Store) getCatalogBookByHash(ctx context.Context, hash []byte) (BookFile
 }
 
 func (s *Store) ListCategories(ctx context.Context) ([]Category, error) {
-	rows, err := s.pool.Query(ctx, "SELECT id,slug,name FROM categories WHERE active=true ORDER BY name")
+	rows, err := s.pool.Query(ctx, `
+		SELECT child.id,child.slug,child.name,child.parent_id,COALESCE(parent.name,''),child.active,child.system
+		FROM categories child LEFT JOIN categories parent ON parent.id=child.parent_id
+		WHERE child.active=true
+		ORDER BY COALESCE(parent.name,child.name),child.parent_id NULLS FIRST,child.name`)
 	if err != nil {
 		return nil, err
 	}
@@ -313,12 +322,105 @@ func (s *Store) ListCategories(ctx context.Context) ([]Category, error) {
 	categories := make([]Category, 0)
 	for rows.Next() {
 		var category Category
-		if err := rows.Scan(&category.ID, &category.Slug, &category.Name); err != nil {
+		if err := rows.Scan(&category.ID, &category.Slug, &category.Name, &category.ParentID, &category.ParentName, &category.Active, &category.System); err != nil {
 			return nil, err
 		}
 		categories = append(categories, category)
 	}
 	return categories, rows.Err()
+}
+
+func (s *Store) ListAllCategories(ctx context.Context) ([]Category, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT child.id,child.slug,child.name,child.parent_id,COALESCE(parent.name,''),child.active,child.system,
+			(SELECT COUNT(DISTINCT e.id) FROM classification_decisions cd JOIN editions e ON e.id=cd.edition_id
+			 WHERE cd.category_id=child.id AND cd.status='accepted')::int
+		FROM categories child LEFT JOIN categories parent ON parent.id=child.parent_id
+		ORDER BY child.active DESC,COALESCE(parent.name,child.name),child.parent_id NULLS FIRST,child.name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]Category, 0)
+	for rows.Next() {
+		var item Category
+		if err := rows.Scan(&item.ID, &item.Slug, &item.Name, &item.ParentID, &item.ParentName, &item.Active, &item.System, &item.BookCount); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *Store) CreateCategory(ctx context.Context, slug, name string, parentID *int64) (Category, error) {
+	if parentID != nil {
+		var parentActive bool
+		if err := s.pool.QueryRow(ctx, "SELECT active FROM categories WHERE id=$1", *parentID).Scan(&parentActive); err != nil || !parentActive {
+			return Category{}, errors.New("category parent is missing or inactive")
+		}
+	}
+	var item Category
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO categories(slug,name,parent_id,active,system) VALUES ($1,$2,$3,true,false)
+		RETURNING id,slug,name,parent_id,active,system`, strings.TrimSpace(slug), strings.TrimSpace(name), parentID,
+	).Scan(&item.ID, &item.Slug, &item.Name, &item.ParentID, &item.Active, &item.System)
+	if err != nil {
+		return Category{}, fmt.Errorf("create category: %w", err)
+	}
+	if item.ParentID != nil {
+		_ = s.pool.QueryRow(ctx, "SELECT name FROM categories WHERE id=$1", *item.ParentID).Scan(&item.ParentName)
+	}
+	return item, nil
+}
+
+func (s *Store) UpdateCategory(ctx context.Context, id int64, name string, parentID *int64, active bool) (Category, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Category{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if parentID != nil {
+		var invalid bool
+		err := tx.QueryRow(ctx, `
+			WITH RECURSIVE descendants AS (
+				SELECT id FROM categories WHERE id=$1
+				UNION ALL SELECT c.id FROM categories c JOIN descendants d ON c.parent_id=d.id
+			)
+			SELECT EXISTS(SELECT 1 FROM descendants WHERE id=$2)
+				OR NOT EXISTS(SELECT 1 FROM categories WHERE id=$2 AND active=true)`, id, *parentID).Scan(&invalid)
+		if err != nil {
+			return Category{}, err
+		}
+		if invalid {
+			return Category{}, errors.New("category parent would create a cycle")
+		}
+	}
+	var item Category
+	err = tx.QueryRow(ctx, `
+		UPDATE categories SET name=$1,parent_id=$2,active=CASE WHEN slug='other' THEN true ELSE $3 END
+		WHERE id=$4
+		RETURNING id,slug,name,parent_id,active,system`, strings.TrimSpace(name), parentID, active, id,
+	).Scan(&item.ID, &item.Slug, &item.Name, &item.ParentID, &item.Active, &item.System)
+	if err != nil {
+		return Category{}, fmt.Errorf("update category: %w", err)
+	}
+	if !item.Active {
+		if _, err := tx.Exec(ctx, `
+			WITH RECURSIVE descendants AS (
+				SELECT id FROM categories WHERE parent_id=$1
+				UNION ALL SELECT child.id FROM categories child JOIN descendants parent ON child.parent_id=parent.id
+			)
+			UPDATE categories SET active=false WHERE id IN (SELECT id FROM descendants)`, id); err != nil {
+			return Category{}, fmt.Errorf("deactivate child categories: %w", err)
+		}
+	}
+	if item.ParentID != nil {
+		_ = tx.QueryRow(ctx, "SELECT name FROM categories WHERE id=$1", *item.ParentID).Scan(&item.ParentName)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Category{}, err
+	}
+	return item, nil
 }
 
 func (s *Store) ListReviewQueue(ctx context.Context) ([]ReviewItem, error) {

@@ -108,8 +108,13 @@ func buildCatalogWhere(userID int64, query CatalogQuery) (string, []any, string)
 	if query.CategorySlug != "" {
 		placeholder := addArgument(query.CategorySlug)
 		conditions = append(conditions, `EXISTS (
-			SELECT 1 FROM classification_decisions filter_cd JOIN categories filter_cat ON filter_cat.id=filter_cd.category_id
-			WHERE filter_cd.edition_id=e.id AND filter_cd.status='accepted' AND filter_cat.slug=`+placeholder+`)`)
+			WITH RECURSIVE category_tree AS (
+				SELECT id FROM categories WHERE slug=`+placeholder+`
+				UNION ALL SELECT child.id FROM categories child JOIN category_tree parent ON child.parent_id=parent.id
+			)
+			SELECT 1 FROM classification_decisions filter_cd
+			WHERE filter_cd.edition_id=e.id AND filter_cd.status='accepted'
+				AND filter_cd.category_id IN (SELECT id FROM category_tree))`)
 	}
 	if query.Format != "" {
 		conditions = append(conditions, "bf.format="+addArgument(query.Format))

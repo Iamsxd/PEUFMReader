@@ -133,6 +133,11 @@ export interface Category {
   id: number
   slug: string
   name: string
+  parentId?: number
+  parentName?: string
+  active?: boolean
+  system?: boolean
+  bookCount?: number
 }
 
 export interface MetadataCandidate {

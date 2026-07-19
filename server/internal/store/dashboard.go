@@ -21,6 +21,8 @@ type CategorySummary struct {
 	ID           int64    `json:"id"`
 	Slug         string   `json:"slug"`
 	Name         string   `json:"name"`
+	ParentID     *int64   `json:"parentId,omitempty"`
+	ParentName   string   `json:"parentName,omitempty"`
 	BookCount    int      `json:"bookCount"`
 	CoverURLs    []string `json:"coverUrls"`
 	CoverBookIDs []int64  `json:"-"`
@@ -210,23 +212,33 @@ func (s *Store) listRecentlyAddedIDs(ctx context.Context, limit int) ([]int64, e
 
 func (s *Store) listCategorySummaries(ctx context.Context) ([]CategorySummary, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT cat.id,cat.slug,cat.name,
+		SELECT cat.id,cat.slug,cat.name,cat.parent_id,COALESCE(parent.name,''),
 			(SELECT COUNT(DISTINCT bf.id)
 			 FROM classification_decisions cd
 			 JOIN editions e ON e.id=cd.edition_id
 			 JOIN book_files bf ON bf.edition_id=e.id
-			 WHERE cd.category_id=cat.id AND cd.status='accepted')::int,
+			 WHERE cd.category_id IN (
+				WITH RECURSIVE category_tree AS (
+					SELECT id FROM categories WHERE id=cat.id
+					UNION ALL SELECT child.id FROM categories child JOIN category_tree tree ON child.parent_id=tree.id
+				) SELECT id FROM category_tree
+			 ) AND cd.status='accepted')::int,
 			COALESCE((SELECT array_agg(recent.id) FROM (
 				SELECT DISTINCT bf.id,bf.created_at
 				FROM classification_decisions cd
 				JOIN editions e ON e.id=cd.edition_id
 				JOIN book_files bf ON bf.edition_id=e.id
-				WHERE cd.category_id=cat.id AND cd.status='accepted' AND bf.cover_path IS NOT NULL
+				WHERE cd.category_id IN (
+					WITH RECURSIVE category_tree AS (
+						SELECT id FROM categories WHERE id=cat.id
+						UNION ALL SELECT child.id FROM categories child JOIN category_tree tree ON child.parent_id=tree.id
+					) SELECT id FROM category_tree
+				) AND cd.status='accepted' AND bf.cover_path IS NOT NULL
 				ORDER BY bf.created_at DESC LIMIT 4
 			) recent),'{}'::bigint[])
-		FROM categories cat
+		FROM categories cat LEFT JOIN categories parent ON parent.id=cat.parent_id
 		WHERE cat.active=true
-		ORDER BY 4 DESC,cat.name`)
+		ORDER BY 6 DESC,COALESCE(parent.name,cat.name),cat.parent_id NULLS FIRST,cat.name`)
 	if err != nil {
 		return nil, fmt.Errorf("list category summaries: %w", err)
 	}
@@ -234,7 +246,7 @@ func (s *Store) listCategorySummaries(ctx context.Context) ([]CategorySummary, e
 	items := make([]CategorySummary, 0)
 	for rows.Next() {
 		var item CategorySummary
-		if err := rows.Scan(&item.ID, &item.Slug, &item.Name, &item.BookCount, &item.CoverBookIDs); err != nil {
+		if err := rows.Scan(&item.ID, &item.Slug, &item.Name, &item.ParentID, &item.ParentName, &item.BookCount, &item.CoverBookIDs); err != nil {
 			return nil, err
 		}
 		item.CoverURLs = []string{}

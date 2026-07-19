@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,8 @@ import (
 )
 
 const sessionCookieName = "peufm_session"
+
+var categorySlugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 type API struct {
 	store          *store.Store
@@ -103,6 +106,9 @@ func (a *API) routes() {
 	a.mux.Handle("POST /api/v1/book-files/{id}/reading-sessions", a.requireAuth(http.HandlerFunc(a.startReadingSession), "", true))
 	a.mux.Handle("PATCH /api/v1/reading-sessions/{id}", a.requireAuth(http.HandlerFunc(a.advanceReadingSession), "", true))
 	a.mux.Handle("GET /api/v1/categories", a.requireAuth(http.HandlerFunc(a.listCategories), "", false))
+	a.mux.Handle("GET /api/v1/admin/categories", a.requireAuth(http.HandlerFunc(a.listAdminCategories), "admin", false))
+	a.mux.Handle("POST /api/v1/admin/categories", a.requireAuth(http.HandlerFunc(a.createCategory), "admin", true))
+	a.mux.Handle("PATCH /api/v1/admin/categories/{id}", a.requireAuth(http.HandlerFunc(a.updateCategory), "admin", true))
 	a.mux.Handle("GET /api/v1/review-queue", a.requireAuth(http.HandlerFunc(a.listReviewQueue), "admin", false))
 	a.mux.Handle("GET /api/v1/editions/{id}/review", a.requireAuth(http.HandlerFunc(a.getEditionReview), "admin", false))
 	a.mux.Handle("PUT /api/v1/editions/{id}/review", a.requireAuth(http.HandlerFunc(a.reviewEdition), "admin", true))
@@ -614,6 +620,66 @@ func (a *API) listCategories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": categories})
+}
+
+func (a *API) listAdminCategories(w http.ResponseWriter, r *http.Request) {
+	items, err := a.store.ListAllCategories(r.Context())
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (a *API) createCategory(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Slug     string `json:"slug"`
+		Name     string `json:"name"`
+		ParentID *int64 `json:"parentId"`
+	}
+	if err := readJSON(w, r, &input, 32<<10); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	input.Slug = strings.ToLower(strings.TrimSpace(input.Slug))
+	input.Name = strings.TrimSpace(input.Name)
+	if !categorySlugPattern.MatchString(input.Slug) || len(input.Slug) > 80 || input.Name == "" || len([]rune(input.Name)) > 60 || (input.ParentID != nil && *input.ParentID <= 0) {
+		writeError(w, http.StatusBadRequest, "invalid_category", "category slug, name, or parent is invalid")
+		return
+	}
+	item, err := a.store.CreateCategory(r.Context(), input.Slug, input.Name, input.ParentID)
+	if err != nil {
+		writeError(w, http.StatusConflict, "category_not_created", "slug already exists or parent is invalid")
+		return
+	}
+	writeJSON(w, http.StatusCreated, item)
+}
+
+func (a *API) updateCategory(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	var input struct {
+		Name     string `json:"name"`
+		ParentID *int64 `json:"parentId"`
+		Active   *bool  `json:"active"`
+	}
+	if err := readJSON(w, r, &input, 32<<10); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	input.Name = strings.TrimSpace(input.Name)
+	if input.Name == "" || len([]rune(input.Name)) > 60 || input.Active == nil || (input.ParentID != nil && *input.ParentID <= 0) {
+		writeError(w, http.StatusBadRequest, "invalid_category", "category name, parent, or active state is invalid")
+		return
+	}
+	item, err := a.store.UpdateCategory(r.Context(), id, input.Name, input.ParentID, *input.Active)
+	if err != nil {
+		writeError(w, http.StatusConflict, "category_not_updated", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
 }
 
 func (a *API) listReviewQueue(w http.ResponseWriter, r *http.Request) {

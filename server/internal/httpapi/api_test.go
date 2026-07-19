@@ -28,6 +28,19 @@ func TestClientIPOnlyTrustsForwardingHeaderFromConfiguredProxy(t *testing.T) {
 	}
 }
 
+func TestCategorySlugPattern(t *testing.T) {
+	for _, valid := range []string{"literature", "science-fiction", "ai-data-2"} {
+		if !categorySlugPattern.MatchString(valid) {
+			t.Fatalf("valid category slug rejected: %s", valid)
+		}
+	}
+	for _, invalid := range []string{"", "中文", "Bad-Slug", "two words", "-leading", "trailing-"} {
+		if categorySlugPattern.MatchString(invalid) {
+			t.Fatalf("invalid category slug accepted: %s", invalid)
+		}
+	}
+}
+
 func TestValidPosition(t *testing.T) {
 	tests := []struct {
 		name  string
