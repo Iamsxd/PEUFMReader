@@ -18,6 +18,17 @@ export function formatDuration(totalSeconds: number): string {
   return `${minutes} 分钟`
 }
 
+export function formatRelativeTime(value: string | Date, now = new Date()): string {
+  const date = value instanceof Date ? value : new Date(value)
+  const elapsedSeconds = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 1000))
+  if (!Number.isFinite(elapsedSeconds) || Number.isNaN(date.getTime())) return ''
+  if (elapsedSeconds < 60) return '刚刚'
+  if (elapsedSeconds < 3600) return `${Math.floor(elapsedSeconds / 60)} 分钟前`
+  if (elapsedSeconds < 86400) return `${Math.floor(elapsedSeconds / 3600)} 小时前`
+  if (elapsedSeconds < 86400 * 30) return `${Math.floor(elapsedSeconds / 86400)} 天前`
+  return date.toLocaleDateString('zh-CN')
+}
+
 export function clampProgress(value: number): number {
   if (!Number.isFinite(value)) return 0
   return Math.min(1, Math.max(0, value))

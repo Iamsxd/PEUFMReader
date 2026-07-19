@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampProgress, formatBytes, formatDuration } from './utils'
+import { clampProgress, formatBytes, formatDuration, formatRelativeTime } from './utils'
 
 describe('formatting helpers', () => {
   it('formats file sizes', () => {
@@ -16,5 +16,11 @@ describe('formatting helpers', () => {
     expect(clampProgress(0.45)).toBe(0.45)
     expect(clampProgress(2)).toBe(1)
     expect(clampProgress(Number.NaN)).toBe(0)
+  })
+
+  it('formats recent activity relative to the current time', () => {
+    const now = new Date('2026-07-19T12:00:00Z')
+    expect(formatRelativeTime('2026-07-19T11:55:00Z', now)).toBe('5 分钟前')
+    expect(formatRelativeTime('2026-07-17T12:00:00Z', now)).toBe('2 天前')
   })
 })

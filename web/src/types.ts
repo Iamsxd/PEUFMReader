@@ -35,6 +35,56 @@ export interface BookFile {
   createdAt: string
 }
 
+export interface CatalogQuery {
+  q?: string
+  category?: string
+  format?: '' | 'pdf' | 'epub'
+  status?: '' | 'unread' | 'reading' | 'paused' | 'finished' | 'abandoned'
+  sort?: 'relevance' | 'title' | 'newest' | 'hot'
+  page?: number
+  pageSize?: number
+}
+
+export interface CatalogPage {
+  items: BookFile[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+export interface HomeBook {
+  book: BookFile
+  overallProgress?: number
+  status?: ReadingState['status']
+  totalActiveSeconds?: number
+  lastReadAt?: string
+  readerCount?: number
+  sessionCount?: number
+  heatScore?: number
+}
+
+export interface CategorySummary extends Category {
+  bookCount: number
+  coverUrls: string[]
+}
+
+export interface PersonalStats {
+  totalBooks: number
+  readingBooks: number
+  finishedBooks: number
+  totalActiveSeconds: number
+  weekActiveSeconds: number
+}
+
+export interface HomeDashboard {
+  continueReading: HomeBook[]
+  hotBooks: HomeBook[]
+  recentlyAdded: BookFile[]
+  categories: CategorySummary[]
+  stats: PersonalStats
+}
+
 export interface Category {
   id: number
   slug: string

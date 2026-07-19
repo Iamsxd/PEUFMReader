@@ -1,4 +1,4 @@
-import type { BackgroundJob, BibliographySearchResult, BookFile, CalibreImportResult, CalibrePreview, Category, ImportJob, ReadingSession, ReadingState, ReviewInput, ReviewItem, Session, User } from './types'
+import type { BackgroundJob, BibliographySearchResult, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, HomeDashboard, ImportJob, ReadingSession, ReadingState, ReviewInput, ReviewItem, Session, User } from './types'
 
 interface ErrorBody {
   error?: { code?: string; message?: string }
@@ -42,9 +42,17 @@ class APIClient {
     this.setSession(null)
   }
 
-  async listBooks(): Promise<BookFile[]> {
-    const result = await this.request<{ items: BookFile[] }>('/api/v1/book-files')
-    return result.items
+  getHomeDashboard(): Promise<HomeDashboard> {
+    return this.request('/api/v1/home')
+  }
+
+  listBooks(query: CatalogQuery = {}): Promise<CatalogPage> {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    }
+    const suffix = params.size > 0 ? `?${params.toString()}` : ''
+    return this.request(`/api/v1/book-files${suffix}`)
   }
 
   async uploadBook(file: File): Promise<{ bookFile: BookFile; duplicate: boolean }> {
