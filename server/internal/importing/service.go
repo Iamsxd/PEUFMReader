@@ -10,6 +10,7 @@ import (
 	"peufmreader/internal/classification"
 	"peufmreader/internal/library"
 	"peufmreader/internal/metadata"
+	"peufmreader/internal/pdfassets"
 	"peufmreader/internal/store"
 )
 
@@ -80,6 +81,11 @@ func (s *Service) Import(
 	if err != nil {
 		s.library.RemoveIfCreated(stored)
 		return fail(err)
+	}
+	if book.Format == "pdf" && (!duplicate || book.PageCount == nil) {
+		if _, _, enqueueErr := pdfassets.Enqueue(ctx, s.store, &userID, book.ID); enqueueErr != nil {
+			_ = s.store.AppendImportJobWarning(ctx, job.ID, "PDF 封面/OCR 后台任务排队失败："+enqueueErr.Error())
+		}
 	}
 	return Result{Book: book, Duplicate: duplicate, ImportJobID: job.ID}, nil
 }

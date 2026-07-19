@@ -24,6 +24,10 @@ export interface BookFile {
   categories: Category[]
   reviewRequired: boolean
   coverUrl?: string
+  textUrl?: string
+  textAvailable: boolean
+  textExtractionMethod?: 'embedded' | 'ocr'
+  pageCount?: number
   originalFilename: string
   format: 'pdf' | 'epub'
   mimeType: string

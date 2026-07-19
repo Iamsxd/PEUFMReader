@@ -23,6 +23,7 @@ import (
 	"peufmreader/internal/importing"
 	"peufmreader/internal/jobs"
 	"peufmreader/internal/library"
+	"peufmreader/internal/pdfassets"
 	"peufmreader/internal/store"
 )
 
@@ -64,9 +65,19 @@ func main() {
 	}
 	importService := importing.New(dataStore, libraryManager)
 	calibreScanner := calibre.NewScanner(cfg.CalibreRoot)
+	pdfProcessor := pdfassets.NewProcessor(pdfassets.Config{
+		OCRMode: cfg.PDFOCRMode, OCRLanguages: cfg.PDFOCRLanguages,
+		OCRMaxPages: cfg.PDFOCRMaxPages, OCRDPI: cfg.PDFOCRDPI,
+	})
+	if queued, enqueueErr := pdfassets.EnqueueMissing(ctx, dataStore, 10000); enqueueErr != nil {
+		logger.Warn("PDF asset backfill failed", "error", enqueueErr)
+	} else if queued > 0 {
+		logger.Info("PDF asset jobs queued", "count", queued)
+	}
 	workerID := fmt.Sprintf("%s-%d", hostname(), os.Getpid())
 	worker := jobs.New(dataStore, map[string]jobs.Handler{
 		calibre.ImportJobKind: calibre.ImportHandler(calibreScanner, importService),
+		pdfassets.JobKind:     pdfassets.Handler(dataStore, libraryManager, pdfProcessor),
 	}, logger, workerID)
 	workerDone := make(chan struct{})
 	go func() {

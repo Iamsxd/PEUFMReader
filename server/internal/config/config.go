@@ -33,6 +33,10 @@ type Config struct {
 	GoogleBooksBaseURL    string
 	GoogleBooksAPIKey     string
 	BibliographyTimeout   time.Duration
+	PDFOCRMode            string
+	PDFOCRLanguages       string
+	PDFOCRMaxPages        int
+	PDFOCRDPI             int
 }
 
 func Load() (Config, error) {
@@ -59,6 +63,10 @@ func Load() (Config, error) {
 		GoogleBooksBaseURL:    strings.TrimRight(envOr("GOOGLE_BOOKS_BASE_URL", "https://www.googleapis.com/books/v1"), "/"),
 		GoogleBooksAPIKey:     os.Getenv("GOOGLE_BOOKS_API_KEY"),
 		BibliographyTimeout:   12 * time.Second,
+		PDFOCRMode:            strings.ToLower(strings.TrimSpace(envOr("PDF_OCR_MODE", "auto"))),
+		PDFOCRLanguages:       strings.TrimSpace(envOr("PDF_OCR_LANGUAGES", "chi_sim+eng")),
+		PDFOCRMaxPages:        500,
+		PDFOCRDPI:             180,
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -137,6 +145,21 @@ func Load() (Config, error) {
 		cfg.BibliographyTimeout, err = time.ParseDuration(raw)
 		if err != nil || cfg.BibliographyTimeout <= 0 || cfg.BibliographyTimeout > time.Minute {
 			return Config{}, fmt.Errorf("BIBLIOGRAPHY_TIMEOUT must be between 1ns and 1m")
+		}
+	}
+	if cfg.PDFOCRMode != "auto" && cfg.PDFOCRMode != "always" && cfg.PDFOCRMode != "disabled" {
+		return Config{}, fmt.Errorf("PDF_OCR_MODE must be auto, always, or disabled")
+	}
+	if raw := os.Getenv("PDF_OCR_MAX_PAGES"); raw != "" {
+		cfg.PDFOCRMaxPages, err = strconv.Atoi(raw)
+		if err != nil || cfg.PDFOCRMaxPages < 1 || cfg.PDFOCRMaxPages > 5000 {
+			return Config{}, fmt.Errorf("PDF_OCR_MAX_PAGES must be between 1 and 5000")
+		}
+	}
+	if raw := os.Getenv("PDF_OCR_DPI"); raw != "" {
+		cfg.PDFOCRDPI, err = strconv.Atoi(raw)
+		if err != nil || cfg.PDFOCRDPI < 100 || cfg.PDFOCRDPI > 400 {
+			return Config{}, fmt.Errorf("PDF_OCR_DPI must be between 100 and 400")
 		}
 	}
 

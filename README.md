@@ -14,6 +14,7 @@
 - 每次成功、重复或失败导入都保留任务审计记录。
 - Calibre `metadata.opf` 只读预检与批量迁移，来源文件不会被修改或删除。
 - PostgreSQL 持久后台任务、租约、自动重试和服务重启恢复。
+- PDF 首页封面、原生文本提取，以及扫描件的可选中英文 OCR。
 
 目标环境是 Unraid Docker Compose，按约 10 个用户、3000 本书（典型 PDF 约 20 MB）设计。Calibre 不是运行依赖，也可以继续使用浏览器上传。
 
@@ -84,6 +85,19 @@ GOOGLE_BOOKS_API_KEY=your-restricted-api-key
 ```
 
 外部查询会把上述书目信息发送到对应服务，请根据书库隐私要求决定是否启用。
+
+## PDF 封面与 OCR
+
+PDF 导入后会在后台生成首页封面，并先尝试提取原生文本。默认 `PDF_OCR_MODE=auto`，仅当文本过少、疑似扫描件时逐页运行 Tesseract `chi_sim+eng`；每次只渲染一页，避免大型 PDF 填满临时目录。可在 `.env` 调整：
+
+```dotenv
+PDF_OCR_MODE=auto
+PDF_OCR_LANGUAGES=chi_sim+eng
+PDF_OCR_MAX_PAGES=500
+PDF_OCR_DPI=180
+```
+
+OCR、封面和文本都属于可再生缓存，原始 PDF 不会被修改。处理失败会自动重试三次，也可以在管理员“处理队列”中人工重试。
 
 ## 公网访问边界
 

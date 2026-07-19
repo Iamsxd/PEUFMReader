@@ -46,6 +46,12 @@ type BookFile struct {
 	ReviewRequired   bool       `json:"reviewRequired"`
 	CoverPath        string     `json:"-"`
 	CoverURL         string     `json:"coverUrl,omitempty"`
+	SHA256           []byte     `json:"-"`
+	TextPath         string     `json:"-"`
+	TextURL          string     `json:"textUrl,omitempty"`
+	TextAvailable    bool       `json:"textAvailable"`
+	TextMethod       string     `json:"textExtractionMethod,omitempty"`
+	PageCount        *int       `json:"pageCount,omitempty"`
 	OriginalFilename string     `json:"originalFilename"`
 	StoragePath      string     `json:"-"`
 	Format           string     `json:"format"`

@@ -47,6 +47,10 @@ services:
       GOOGLE_BOOKS_BASE_URL: ${GOOGLE_BOOKS_BASE_URL:-https://www.googleapis.com/books/v1}
       GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY:-}
       BIBLIOGRAPHY_TIMEOUT: ${BIBLIOGRAPHY_TIMEOUT:-12s}
+      PDF_OCR_MODE: ${PDF_OCR_MODE:-auto}
+      PDF_OCR_LANGUAGES: ${PDF_OCR_LANGUAGES:-chi_sim+eng}
+      PDF_OCR_MAX_PAGES: ${PDF_OCR_MAX_PAGES:-500}
+      PDF_OCR_DPI: ${PDF_OCR_DPI:-180}
       TZ: ${TZ:-Asia/Shanghai}
     ports:
       - "${APP_PORT:-8080}:8080"

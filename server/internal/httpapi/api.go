@@ -82,6 +82,7 @@ func (a *API) routes() {
 	a.mux.Handle("POST /api/v1/book-files", a.requireAuth(http.HandlerFunc(a.uploadBookFile), "admin", true))
 	a.mux.Handle("GET /api/v1/book-files/{id}/content", a.requireAuth(http.HandlerFunc(a.bookContent), "", false))
 	a.mux.Handle("GET /api/v1/book-files/{id}/cover", a.requireAuth(http.HandlerFunc(a.bookCover), "", false))
+	a.mux.Handle("GET /api/v1/book-files/{id}/text", a.requireAuth(http.HandlerFunc(a.bookExtractedText), "", false))
 	a.mux.Handle("GET /api/v1/book-files/{id}/progress", a.requireAuth(http.HandlerFunc(a.getProgress), "", false))
 	a.mux.Handle("PUT /api/v1/book-files/{id}/progress", a.requireAuth(http.HandlerFunc(a.saveProgress), "", true))
 	a.mux.Handle("POST /api/v1/book-files/{id}/reading-sessions", a.requireAuth(http.HandlerFunc(a.startReadingSession), "", true))
@@ -263,6 +264,9 @@ func (a *API) decorateBook(book *store.BookFile) {
 	if book.CoverPath != "" {
 		book.CoverURL = fmt.Sprintf("/api/v1/book-files/%d/cover", book.ID)
 	}
+	if book.TextPath != "" {
+		book.TextURL = fmt.Sprintf("/api/v1/book-files/%d/text", book.ID)
+	}
 }
 
 func (a *API) bookContent(w http.ResponseWriter, r *http.Request) {
@@ -339,6 +343,46 @@ func (a *API) bookCover(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, err)
 		return
 	}
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	http.ServeContent(w, r, filepath.Base(absolutePath), info.ModTime(), file)
+}
+
+func (a *API) bookExtractedText(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	book, found, err := a.store.GetCatalogBook(r.Context(), id)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !found || book.TextPath == "" {
+		writeError(w, http.StatusNotFound, "text_not_found", "extracted PDF text not found")
+		return
+	}
+	absolutePath, err := a.library.ResolveExtractedText(book.TextPath)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	file, err := os.Open(absolutePath)
+	if errors.Is(err, os.ErrNotExist) {
+		writeError(w, http.StatusGone, "text_missing", "cached PDF text is missing")
+		return
+	}
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", "inline; filename*=UTF-8''"+url.PathEscape(book.Title+".txt"))
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	http.ServeContent(w, r, filepath.Base(absolutePath), info.ModTime(), file)
 }

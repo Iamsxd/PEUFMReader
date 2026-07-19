@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -94,5 +95,26 @@ func TestStoreCover(t *testing.T) {
 	}
 	if _, err := os.Stat(absolutePath); err != nil {
 		t.Fatalf("cached cover missing: %v", err)
+	}
+}
+
+func TestStoreExtractedText(t *testing.T) {
+	root := t.TempDir()
+	manager, err := NewManager(filepath.Join(root, "library"), filepath.Join(root, "staging"), filepath.Join(root, "cache"), 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := strings.Repeat("a", 64)
+	relativePath, err := manager.StoreExtractedText(hash, []byte("第一页 OCR 文本"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	absolutePath, err := manager.ResolveExtractedText(relativePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(absolutePath)
+	if err != nil || string(content) != "第一页 OCR 文本" {
+		t.Fatalf("unexpected text cache %q err=%v", content, err)
 	}
 }

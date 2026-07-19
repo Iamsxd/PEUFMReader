@@ -266,7 +266,7 @@ func extractPDF(filePath string) (Result, error) {
 		result.Confidence = 0.35
 		result.Warnings = append(result.Warnings, "PDF 未找到可用的 Info 元数据")
 	}
-	result.Warnings = append(result.Warnings, "PDF 封面生成尚未启用")
+	result.Warnings = append(result.Warnings, "PDF 封面与文本将在后台生成")
 	return result, nil
 }
 

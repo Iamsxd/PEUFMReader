@@ -322,15 +322,22 @@ function BookCard({ book, isAdmin, onOpen, onEdit }: { book: BookFile; isAdmin: 
         <span className="book-card-content">
           <span className="card-badges">
             <span className={`format-badge ${book.format}`}>{book.format.toUpperCase()}</span>
+            {book.textExtractionMethod === 'ocr' && <span className="format-badge ocr">OCR</span>}
+            {book.textExtractionMethod === 'embedded' && <span className="format-badge text">文本</span>}
             {isAdmin && book.reviewRequired && <span className="review-badge">待整理</span>}
           </span>
           <span className="book-title">{book.title}</span>
           <span className="book-authors">{book.authors.join('、') || '未知作者'}{book.publishedYear ? ` · ${book.publishedYear}` : ''}</span>
           {book.categories.length > 0 && <span className="category-chips">{book.categories.map((category) => <span key={category.id}>{category.name}</span>)}</span>}
-          <span className="book-meta">{formatBytes(book.sizeBytes)}</span>
+          <span className="book-meta">{formatBytes(book.sizeBytes)}{book.pageCount ? ` · ${book.pageCount} 页` : ''}</span>
         </span>
       </button>
-      {isAdmin && <button className="manage-book" onClick={() => void onEdit(book)}>整理元数据与分类</button>}
+      {(isAdmin || book.textUrl) && (
+        <div className="book-card-actions">
+          {book.textUrl && <a href={book.textUrl} target="_blank" rel="noreferrer">查看提取文本</a>}
+          {isAdmin && <button onClick={() => void onEdit(book)}>整理元数据与分类</button>}
+        </div>
+      )}
     </article>
   )
 }

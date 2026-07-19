@@ -82,8 +82,9 @@ type ImportJob struct {
 }
 
 const catalogBookSelect = `
-	SELECT bf.id,w.id,e.id,w.title,bf.original_filename,bf.storage_path,bf.format,bf.mime_type,bf.size_bytes,bf.created_at,
+	SELECT bf.id,w.id,e.id,w.title,bf.original_filename,bf.storage_path,bf.sha256,bf.format,bf.mime_type,bf.size_bytes,bf.created_at,
 		e.published_year,COALESCE(e.language,''),COALESCE(e.isbn,''),COALESCE(e.publisher,''),COALESCE(bf.cover_path,''),
+		COALESCE(bf.extracted_text_path,''),COALESCE(bf.text_extraction_method,''),bf.page_count,
 		COALESCE((SELECT jsonb_agg(c.name ORDER BY ec.position,c.id)
 			FROM edition_creators ec JOIN creators c ON c.id=ec.creator_id
 			WHERE ec.edition_id=e.id AND ec.role='author'),'[]'::jsonb),
@@ -104,9 +105,10 @@ func scanCatalogBook(row scanner) (BookFile, error) {
 	var book BookFile
 	var authorsJSON, categoriesJSON []byte
 	err := row.Scan(
-		&book.ID, &book.WorkID, &book.EditionID, &book.Title, &book.OriginalFilename, &book.StoragePath,
+		&book.ID, &book.WorkID, &book.EditionID, &book.Title, &book.OriginalFilename, &book.StoragePath, &book.SHA256,
 		&book.Format, &book.MIMEType, &book.SizeBytes, &book.CreatedAt, &book.PublishedYear, &book.Language,
-		&book.ISBN, &book.Publisher, &book.CoverPath, &authorsJSON, &categoriesJSON, &book.ReviewRequired,
+		&book.ISBN, &book.Publisher, &book.CoverPath, &book.TextPath, &book.TextMethod, &book.PageCount,
+		&authorsJSON, &categoriesJSON, &book.ReviewRequired,
 	)
 	if err != nil {
 		return BookFile{}, err
@@ -123,6 +125,7 @@ func scanCatalogBook(row scanner) (BookFile, error) {
 	if book.Categories == nil {
 		book.Categories = []Category{}
 	}
+	book.TextAvailable = book.TextPath != ""
 	return book, nil
 }
 
@@ -150,6 +153,12 @@ func (s *Store) CompleteImportJob(ctx context.Context, jobID, bookFileID int64, 
 	_, err := s.pool.Exec(ctx, `
 		UPDATE import_jobs SET state='completed',book_file_id=$1,warnings=$2,error_message=NULL,updated_at=now() WHERE id=$3`,
 		bookFileID, encodedWarnings, jobID)
+	return err
+}
+
+func (s *Store) AppendImportJobWarning(ctx context.Context, jobID int64, warning string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE import_jobs SET warnings=warnings || jsonb_build_array($1::text),updated_at=now() WHERE id=$2`, warning, jobID)
 	return err
 }
 

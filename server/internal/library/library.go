@@ -239,6 +239,61 @@ func (m *Manager) ResolveCover(relativePath string) (string, error) {
 	return SecureResolve(m.cacheRoot, filepath.FromSlash(relativePath))
 }
 
+func (m *Manager) StoreExtractedText(sha256Hex string, content []byte) (string, error) {
+	if len(content) == 0 || len(content) > 128<<20 {
+		return "", fmt.Errorf("extracted text size is invalid")
+	}
+	if decoded, err := hex.DecodeString(sha256Hex); err != nil || len(decoded) != sha256.Size {
+		return "", fmt.Errorf("text cache hash is invalid")
+	}
+	relativePath := filepath.Join("texts", sha256Hex[:2], sha256Hex+".txt")
+	absolutePath, err := SecureResolve(m.cacheRoot, relativePath)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(absolutePath), 0o750); err != nil {
+		return "", fmt.Errorf("create text cache directory: %w", err)
+	}
+	temp, err := os.CreateTemp(filepath.Dir(absolutePath), ".text-*.part")
+	if err != nil {
+		return "", fmt.Errorf("create text cache temporary file: %w", err)
+	}
+	tempPath := temp.Name()
+	committed := false
+	defer func() {
+		_ = temp.Close()
+		if !committed {
+			_ = os.Remove(tempPath)
+		}
+	}()
+	if _, err := temp.Write(content); err != nil {
+		return "", fmt.Errorf("write text cache: %w", err)
+	}
+	if err := temp.Sync(); err != nil {
+		return "", fmt.Errorf("sync text cache: %w", err)
+	}
+	if err := temp.Chmod(0o640); err != nil {
+		return "", fmt.Errorf("set text cache permissions: %w", err)
+	}
+	if err := temp.Close(); err != nil {
+		return "", fmt.Errorf("close text cache: %w", err)
+	}
+	if err := os.Rename(tempPath, absolutePath); err != nil {
+		if removeErr := os.Remove(absolutePath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			return "", fmt.Errorf("replace text cache: %w", removeErr)
+		}
+		if err := os.Rename(tempPath, absolutePath); err != nil {
+			return "", fmt.Errorf("commit text cache: %w", err)
+		}
+	}
+	committed = true
+	return filepath.ToSlash(relativePath), nil
+}
+
+func (m *Manager) ResolveExtractedText(relativePath string) (string, error) {
+	return SecureResolve(m.cacheRoot, filepath.FromSlash(relativePath))
+}
+
 func (m *Manager) RemoveIfCreated(stored StoredFile) {
 	if stored.Created {
 		_ = os.Remove(stored.AbsolutePath)
