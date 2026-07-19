@@ -1,10 +1,20 @@
-import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, type DragEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
 import { APIError, api } from '../api'
 import type { BackgroundJob, CalibrePreview, Category, ImportJob, ReviewItem, User } from '../types'
 import { ReviewQueue } from './ReviewQueue'
 
 interface Props {
   initialEditionID?: number
+}
+
+type UploadState = 'queued' | 'uploading' | 'processing' | 'completed' | 'duplicate' | 'failed'
+
+interface UploadItem {
+  id: string
+  file: File
+  state: UploadState
+  progress: number
+  message: string
 }
 
 export function AdminPage({ initialEditionID }: Props) {
@@ -18,6 +28,8 @@ export function AdminPage({ initialEditionID }: Props) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [draggingFiles, setDraggingFiles] = useState(false)
+  const [uploads, setUploads] = useState<UploadItem[]>([])
   const [scanningCalibre, setScanningCalibre] = useState(false)
   const [migratingCalibre, setMigratingCalibre] = useState(false)
   const [newUsername, setNewUsername] = useState('')
@@ -58,7 +70,7 @@ export function AdminPage({ initialEditionID }: Props) {
           setImportJobs(imports)
         }
       }).catch(() => undefined)
-    }, 4000)
+    }, 2000)
     return () => window.clearInterval(timer)
   }, [])
 
@@ -67,22 +79,75 @@ export function AdminPage({ initialEditionID }: Props) {
     return [manualReviewItem, ...reviewItems]
   }, [manualReviewItem, reviewItems])
 
-  async function upload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (!file) return
+  function changeUpload(id: string, update: Partial<Omit<UploadItem, 'id' | 'file'>>) {
+    setUploads((current) => current.map((item) => item.id === id ? { ...item, ...update } : item))
+  }
+
+  async function uploadFiles(files: File[]) {
+    if (uploading || files.length === 0) return
+    const accepted = files.filter((file) => /\.(pdf|epub)$/i.test(file.name))
+    const rejected = files.length - accepted.length
+    if (accepted.length === 0) {
+      setError('请选择 PDF 或 EPUB 文件。')
+      return
+    }
+    const batch = accepted.map((file, index): UploadItem => ({
+      id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
+      file,
+      state: 'queued',
+      progress: 0,
+      message: '等待上传',
+    }))
+    setUploads(batch)
     setUploading(true)
     setError('')
     setNotice('')
-    try {
-      const result = await api.uploadBook(file)
-      setNotice(result.duplicate ? '文件已存在，沿用原有书籍记录。' : `已导入《${result.bookFile.title}》，元数据和分类建议已生成。`)
-      await refreshAdmin()
-    } catch (reason) {
-      setError(reason instanceof APIError ? reason.message : '上传失败。')
-    } finally {
-      setUploading(false)
-      event.target.value = ''
+
+    let cursor = 0
+    let completed = 0
+    let duplicated = 0
+    let failed = 0
+    async function worker() {
+      while (cursor < batch.length) {
+        const item = batch[cursor++]
+        changeUpload(item.id, { state: 'uploading', message: '正在上传' })
+        try {
+          const result = await api.uploadBook(item.file, (progress) => {
+            changeUpload(item.id, {
+              progress,
+              state: progress >= 100 ? 'processing' : 'uploading',
+              message: progress >= 100 ? '正在提取元数据并分类' : `正在上传 ${progress}%`,
+            })
+          })
+          if (result.duplicate) {
+            duplicated++
+            changeUpload(item.id, { state: 'duplicate', progress: 100, message: '文件已存在，沿用原记录' })
+          } else {
+            completed++
+            changeUpload(item.id, { state: 'completed', progress: 100, message: `已导入《${result.bookFile.title}》` })
+          }
+        } catch (reason) {
+          failed++
+          changeUpload(item.id, { state: 'failed', message: reason instanceof APIError ? reason.message : '上传失败' })
+        }
+      }
     }
+    await Promise.all(Array.from({ length: Math.min(2, batch.length) }, () => worker()))
+    setUploading(false)
+    setNotice(`批量导入完成：新增 ${completed} 本，重复 ${duplicated} 本，失败 ${failed} 本${rejected ? `，忽略 ${rejected} 个非 PDF/EPUB 文件` : ''}。`)
+    await refreshAdmin()
+  }
+
+  function selectFiles(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    void uploadFiles(files)
+  }
+
+  function dropFiles(event: DragEvent<HTMLElement>) {
+    event.preventDefault()
+    setDraggingFiles(false)
+    if (!uploading) void uploadFiles(Array.from(event.dataTransfer.files))
   }
 
   async function createReader(event: FormEvent) {
@@ -144,13 +209,34 @@ export function AdminPage({ initialEditionID }: Props) {
       <section className="page-heading admin-heading">
         <div><p className="eyebrow">系统管理</p><h1>管理后台</h1><p className="muted">导入书籍、确认分类、管理用户和检查后台任务。</p></div>
         <label className={`upload-button ${uploading ? 'disabled' : ''}`}>
-          {uploading ? '正在提取与分类…' : '导入 EPUB / PDF'}
-          <input type="file" accept=".epub,.pdf,application/epub+zip,application/pdf" onChange={upload} disabled={uploading} />
+          {uploading ? '正在批量导入…' : '选择 EPUB / PDF'}
+          <input type="file" multiple accept=".epub,.pdf,application/epub+zip,application/pdf" onChange={selectFiles} disabled={uploading} />
         </label>
       </section>
 
       {error && <div className="notice error" role="alert">{error}</div>}
       {notice && <div className="notice success" role="status">{notice}</div>}
+
+      <section
+        className={`upload-drop-zone${draggingFiles ? ' dragging' : ''}${uploading ? ' busy' : ''}`}
+        onDragEnter={(event) => { event.preventDefault(); if (!uploading) setDraggingFiles(true) }}
+        onDragOver={(event) => event.preventDefault()}
+        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingFiles(false) }}
+        onDrop={dropFiles}
+      >
+        <div><p className="eyebrow">批量导入</p><h2>{uploading ? '正在处理导入队列' : '拖放 PDF / EPUB 到这里'}</h2><p className="muted">每次最多 2 本并行处理；文件会复制到应用书库，原上传文件不受影响。</p></div>
+        {uploads.length > 0 && (
+          <div className="upload-queue" aria-live="polite">
+            {uploads.map((item) => (
+              <div className="upload-queue-item" key={item.id}>
+                <span className={`job-state ${item.state}`}>{uploadStateLabel(item.state)}</span>
+                <span><strong>{item.file.name}</strong><small>{item.message}</small></span>
+                <span className="job-progress"><i><b style={{ width: `${item.progress}%` }} /></i><small>{item.progress}%</small></span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <ReviewQueue categories={categories} items={visibleReviewItems} onChanged={reviewChanged} />
 
@@ -184,8 +270,8 @@ export function AdminPage({ initialEditionID }: Props) {
           {backgroundJobs.slice(0, 20).map((job) => (
             <div className="job-row background-job-row" key={job.id}>
               <span className={`job-state ${job.state}`}>{jobStateLabel(job.state)}</span>
-              <span><strong>{jobKindLabel(job.kind)}</strong><small>{job.dedupeKey}</small></span>
-              <span>{job.lastError || `尝试 ${job.attempts} / ${job.maxAttempts}`}</span>
+              <span><strong>{jobKindLabel(job.kind)}</strong><small>{jobSourceLabel(job)}</small></span>
+              <span className="job-progress"><span>{job.lastError || job.progressMessage || `尝试 ${job.attempts} / ${job.maxAttempts}`}</span><i><b style={{ width: `${job.progress}%` }} /></i><small>{job.progress}%</small></span>
               {job.state === 'failed' && <button className="secondary" type="button" onClick={() => void retryJob(job.id)}>重试</button>}
             </div>
           ))}
@@ -218,5 +304,14 @@ function jobStateLabel(state: BackgroundJob['state']): string {
 }
 
 function jobKindLabel(kind: string): string {
-  return { 'calibre-import': 'Calibre 迁移', 'pdf-assets': 'PDF 封面 / OCR' }[kind] ?? kind
+  return { 'calibre-import': 'Calibre 迁移', 'inbox-import': '收件箱导入', 'pdf-assets': 'PDF 封面 / OCR' }[kind] ?? kind
+}
+
+function jobSourceLabel(job: BackgroundJob): string {
+  const source = job.payload.sourcePath
+  return typeof source === 'string' && source ? source : job.dedupeKey
+}
+
+function uploadStateLabel(state: UploadState): string {
+  return { queued: '等待', uploading: '上传', processing: '处理', completed: '完成', duplicate: '重复', failed: '失败' }[state]
 }

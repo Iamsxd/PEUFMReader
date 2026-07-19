@@ -201,6 +201,8 @@ export interface BackgroundJob {
   dedupeKey: string
   payload: Record<string, unknown>
   result: Record<string, unknown>
+  progress: number
+  progressMessage?: string
   attempts: number
   maxAttempts: number
   availableAt: string

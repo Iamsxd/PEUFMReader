@@ -4,6 +4,12 @@ interface ErrorBody {
   error?: { code?: string; message?: string }
 }
 
+interface UploadBookResult {
+  bookFile: BookFile
+  duplicate: boolean
+  importJobId: number
+}
+
 export class APIError extends Error {
   constructor(
     public readonly status: number,
@@ -71,10 +77,36 @@ class APIClient {
     return this.request(`/api/v1/recommendations?limit=${limit}`)
   }
 
-  async uploadBook(file: File): Promise<{ bookFile: BookFile; duplicate: boolean }> {
-    const form = new FormData()
-    form.append('file', file)
-    return this.request('/api/v1/book-files', { method: 'POST', body: form })
+  uploadBook(file: File, onProgress?: (progress: number) => void): Promise<UploadBookResult> {
+    return new Promise((resolve, reject) => {
+      const form = new FormData()
+      form.append('file', file)
+      const request = new XMLHttpRequest()
+      request.open('POST', '/api/v1/book-files')
+      request.withCredentials = true
+      if (this.csrfToken) request.setRequestHeader('X-CSRF-Token', this.csrfToken)
+      request.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)))
+      })
+      request.upload.addEventListener('load', () => onProgress?.(100))
+      request.addEventListener('load', () => {
+        let body: UploadBookResult | ErrorBody | null = null
+        try {
+          body = JSON.parse(request.responseText) as UploadBookResult | ErrorBody
+        } catch {
+          // A proxy may return a non-JSON error page.
+        }
+        if (request.status >= 200 && request.status < 300 && body && 'bookFile' in body) {
+          resolve(body)
+          return
+        }
+        const error = body && 'error' in body ? body.error : undefined
+        reject(new APIError(request.status, error?.code ?? 'request_failed', error?.message ?? `Request failed (${request.status})`))
+      })
+      request.addEventListener('error', () => reject(new APIError(0, 'network_error', '上传连接中断。')))
+      request.addEventListener('abort', () => reject(new APIError(0, 'upload_aborted', '上传已取消。')))
+      request.send(form)
+    })
   }
 
   async listCategories(): Promise<Category[]> {
