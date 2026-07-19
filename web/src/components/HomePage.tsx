@@ -7,11 +7,14 @@ import { BookCard } from './BookCard'
 interface Props {
   username: string
   onOpenBook: (book: BookFile) => void
+  onViewBook: (book: BookFile) => void
   onBrowse: (query?: CatalogQuery) => void
   onCategories: () => void
+  onFavorites: () => void
+  onRecommendations: () => void
 }
 
-export function HomePage({ username, onOpenBook, onBrowse, onCategories }: Props) {
+export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategories, onFavorites, onRecommendations }: Props) {
   const [dashboard, setDashboard] = useState<HomeDashboard | null>(null)
   const [query, setQuery] = useState('')
   const [error, setError] = useState('')
@@ -62,7 +65,7 @@ export function HomePage({ username, onOpenBook, onBrowse, onCategories }: Props
         <section className="continue-panel">
           <SectionHeading eyebrow="个人书架" title="继续阅读" actionLabel="查看全部" onAction={() => onBrowse({ status: 'reading', sort: 'newest' })} />
           {primaryReading ? (
-            <ContinueCard item={primaryReading} onOpen={onOpenBook} />
+            <ContinueCard item={primaryReading} onOpen={onOpenBook} onDetails={onViewBook} />
           ) : (
             <div className="continue-empty">
               <strong>还没有正在阅读的书</strong>
@@ -71,11 +74,20 @@ export function HomePage({ username, onOpenBook, onBrowse, onCategories }: Props
             </div>
           )}
         </section>
-        <ReadingStats dashboard={dashboard} />
+        <ReadingStats dashboard={dashboard} onFavorites={onFavorites} />
       </div>
 
       {otherReading.length > 0 && (
-        <BookShelf title="最近阅读" eyebrow="继续你的节奏" items={otherReading} onOpen={onOpenBook} />
+        <BookShelf title="最近阅读" eyebrow="继续你的节奏" items={otherReading} onOpen={onOpenBook} onDetails={onViewBook} />
+      )}
+
+      {dashboard.recommendations.length > 0 && (
+        <section className="dashboard-section recommendation-section">
+          <SectionHeading eyebrow="你的阅读偏好" title="为你推荐" actionLabel="查看全部" onAction={onRecommendations} />
+          <div className="book-shelf">
+            {dashboard.recommendations.map((item) => <BookCard key={item.book.id} book={item.book} onOpen={onOpenBook} onDetails={onViewBook} recommendationReason={item.reason} compact />)}
+          </div>
+        </section>
       )}
 
       <section className="dashboard-section">
@@ -88,20 +100,20 @@ export function HomePage({ username, onOpenBook, onBrowse, onCategories }: Props
       </section>
 
       {dashboard.hotBooks.length > 0 && (
-        <BookShelf title="近 30 天热门" eyebrow="大家最近在读" items={dashboard.hotBooks} onOpen={onOpenBook} hot />
+        <BookShelf title="近 30 天热门" eyebrow="大家最近在读" items={dashboard.hotBooks} onOpen={onOpenBook} onDetails={onViewBook} hot />
       )}
 
       <section className="dashboard-section">
         <SectionHeading eyebrow="书库动态" title="最近加入" actionLabel="查看全部" onAction={() => onBrowse({ sort: 'newest' })} />
         <div className="book-shelf">
-          {dashboard.recentlyAdded.map((book) => <BookCard key={book.id} book={book} onOpen={onOpenBook} compact />)}
+          {dashboard.recentlyAdded.map((book) => <BookCard key={book.id} book={book} onOpen={onOpenBook} onDetails={onViewBook} compact />)}
         </div>
       </section>
     </div>
   )
 }
 
-function ContinueCard({ item, onOpen }: { item: HomeBook; onOpen: (book: BookFile) => void }) {
+function ContinueCard({ item, onOpen, onDetails }: { item: HomeBook; onOpen: (book: BookFile) => void; onDetails: (book: BookFile) => void }) {
   const progress = Math.round((item.overallProgress ?? 0) * 100)
   return (
     <article className="continue-card">
@@ -112,13 +124,13 @@ function ContinueCard({ item, onOpen }: { item: HomeBook; onOpen: (book: BookFil
         <p>{item.book.authors.join('、') || '未知作者'}</p>
         <div className="continue-progress"><span><i style={{ width: `${progress}%` }} /></span><strong>{progress}%</strong></div>
         <small>{item.lastReadAt ? `${formatRelativeTime(item.lastReadAt)}阅读过` : '最近阅读'}{item.totalActiveSeconds ? ` · 累计 ${formatDuration(item.totalActiveSeconds)}` : ''}</small>
-        <button className="primary" onClick={() => onOpen(item.book)}>继续阅读</button>
+        <div className="continue-actions"><button className="primary" onClick={() => onOpen(item.book)}>继续阅读</button><button className="quiet" onClick={() => onDetails(item.book)}>查看详情</button></div>
       </div>
     </article>
   )
 }
 
-function ReadingStats({ dashboard }: { dashboard: HomeDashboard }) {
+function ReadingStats({ dashboard, onFavorites }: { dashboard: HomeDashboard; onFavorites: () => void }) {
   const stats = dashboard.stats
   return (
     <section className="reading-stats-panel">
@@ -126,13 +138,14 @@ function ReadingStats({ dashboard }: { dashboard: HomeDashboard }) {
       <div className="reading-stat primary-stat"><strong>{formatDuration(stats.weekActiveSeconds)}</strong><span>最近 7 天</span></div>
       <div className="reading-stat"><strong>{stats.readingBooks}</strong><span>正在阅读</span></div>
       <div className="reading-stat"><strong>{stats.finishedBooks}</strong><span>已经读完</span></div>
+      <button className="reading-stat" onClick={onFavorites}><strong>{stats.favoriteBooks}</strong><span>我的收藏 →</span></button>
       <div className="reading-stat"><strong>{formatDuration(stats.totalActiveSeconds)}</strong><span>累计时长</span></div>
       <div className="reading-stat"><strong>{stats.totalBooks}</strong><span>书库藏书</span></div>
     </section>
   )
 }
 
-function BookShelf({ title, eyebrow, items, onOpen, hot = false }: { title: string; eyebrow: string; items: HomeBook[]; onOpen: (book: BookFile) => void; hot?: boolean }) {
+function BookShelf({ title, eyebrow, items, onOpen, onDetails, hot = false }: { title: string; eyebrow: string; items: HomeBook[]; onOpen: (book: BookFile) => void; onDetails: (book: BookFile) => void; hot?: boolean }) {
   return (
     <section className="dashboard-section">
       <SectionHeading eyebrow={eyebrow} title={title} />
@@ -142,6 +155,7 @@ function BookShelf({ title, eyebrow, items, onOpen, hot = false }: { title: stri
             key={item.book.id}
             book={item.book}
             onOpen={onOpen}
+            onDetails={onDetails}
             compact
             progress={hot ? undefined : item.overallProgress}
             activeSeconds={hot ? undefined : item.totalActiveSeconds}

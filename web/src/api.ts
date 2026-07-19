@@ -1,4 +1,4 @@
-import type { BackgroundJob, BibliographySearchResult, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, HomeDashboard, ImportJob, ReadingSession, ReadingState, ReviewInput, ReviewItem, Session, User } from './types'
+import type { BackgroundJob, BibliographySearchResult, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Session, User } from './types'
 
 interface ErrorBody {
   error?: { code?: string; message?: string }
@@ -53,6 +53,22 @@ class APIClient {
     }
     const suffix = params.size > 0 ? `?${params.toString()}` : ''
     return this.request(`/api/v1/book-files${suffix}`)
+  }
+
+  getBookDetail(bookFileID: number): Promise<BookDetail> {
+    return this.request(`/api/v1/book-files/${bookFileID}`)
+  }
+
+  listFavorites(page = 1, pageSize = 24): Promise<FavoritePage> {
+    return this.request(`/api/v1/favorites?page=${page}&pageSize=${pageSize}`)
+  }
+
+  setFavorite(bookFileID: number, favorite: boolean): Promise<FavoriteState> {
+    return this.request(`/api/v1/book-files/${bookFileID}/favorite`, { method: favorite ? 'PUT' : 'DELETE' })
+  }
+
+  getRecommendations(limit = 12): Promise<RecommendationPage> {
+    return this.request(`/api/v1/recommendations?limit=${limit}`)
   }
 
   async uploadBook(file: File): Promise<{ bookFile: BookFile; duplicate: boolean }> {

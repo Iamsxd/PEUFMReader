@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { BookFile, CatalogQuery, Session } from '../types'
 import { AdminPage } from './AdminPage'
+import { BookDetailPage } from './BookDetailPage'
 import { CatalogPage } from './CatalogPage'
 import { CategoriesPage } from './CategoriesPage'
+import { FavoritesPage } from './FavoritesPage'
 import { HomePage } from './HomePage'
+import { RecommendationsPage } from './RecommendationsPage'
 
 interface Props {
   session: Session
@@ -11,12 +14,14 @@ interface Props {
   onLogout: () => void
 }
 
-type LibraryView = 'home' | 'books' | 'categories' | 'admin'
+type LibraryView = 'home' | 'books' | 'categories' | 'favorites' | 'recommendations' | 'book' | 'admin'
+type NavigationView = Exclude<LibraryView, 'book'>
 
 interface LibraryRoute {
   view: LibraryView
   params: URLSearchParams
   key: string
+  bookID?: number
 }
 
 export function Library({ session, onOpenBook, onLogout }: Props) {
@@ -30,7 +35,7 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [])
 
-  const navigate = useCallback((view: LibraryView, query: CatalogQuery = {}) => {
+  const navigate = useCallback((view: NavigationView, query: CatalogQuery = {}) => {
     const path = view === 'books' ? 'books' : view
     const params = new URLSearchParams()
     if (view === 'books') {
@@ -39,6 +44,10 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
       }
     }
     window.location.hash = `/${path}${params.size > 0 ? `?${params.toString()}` : ''}`
+  }, [])
+
+  const viewBook = useCallback((book: BookFile) => {
+    window.location.hash = `/book/${book.id}`
   }, [])
 
   const activeView = route.view === 'admin' && !isAdmin ? 'home' : route.view
@@ -52,6 +61,8 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
         <nav className="app-navigation" aria-label="主导航">
           <button className={activeView === 'home' ? 'active' : ''} onClick={() => navigate('home')}>首页</button>
           <button className={activeView === 'books' ? 'active' : ''} onClick={() => navigate('books')}>全部书籍</button>
+          <button className={activeView === 'recommendations' ? 'active' : ''} onClick={() => navigate('recommendations')}>为你推荐</button>
+          <button className={activeView === 'favorites' ? 'active' : ''} onClick={() => navigate('favorites')}>我的收藏</button>
           <button className={activeView === 'categories' ? 'active' : ''} onClick={() => navigate('categories')}>分类</button>
           {isAdmin && <button className={activeView === 'admin' ? 'active' : ''} onClick={() => navigate('admin')}>管理后台</button>}
         </nav>
@@ -66,8 +77,11 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
           <HomePage
             username={session.user.username}
             onOpenBook={onOpenBook}
+            onViewBook={viewBook}
             onBrowse={(query) => navigate('books', query)}
             onCategories={() => navigate('categories')}
+            onFavorites={() => navigate('favorites')}
+            onRecommendations={() => navigate('recommendations')}
           />
         )}
         {activeView === 'books' && (
@@ -76,12 +90,27 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
             initialQuery={catalogQueryFromParams(route.params)}
             isAdmin={isAdmin}
             onOpenBook={onOpenBook}
+            onViewBook={viewBook}
             onManageBook={(book) => {
               window.location.hash = `/admin?edition=${book.editionId}`
             }}
           />
         )}
         {activeView === 'categories' && <CategoriesPage onBrowse={(query) => navigate('books', query)} />}
+        {activeView === 'favorites' && <FavoritesPage onOpenBook={onOpenBook} onViewBook={viewBook} onBrowse={() => navigate('books')} />}
+        {activeView === 'recommendations' && <RecommendationsPage onOpenBook={onOpenBook} onViewBook={viewBook} onBrowse={() => navigate('books')} />}
+        {activeView === 'book' && route.bookID && (
+          <BookDetailPage
+            key={route.bookID}
+            bookID={route.bookID}
+            isAdmin={isAdmin}
+            onBack={() => navigate('books')}
+            onOpenBook={onOpenBook}
+            onViewBook={viewBook}
+            onManageBook={(book) => { window.location.hash = `/admin?edition=${book.editionId}` }}
+            onBrowseCategory={(category) => navigate('books', { category, sort: 'title' })}
+          />
+        )}
         {activeView === 'admin' && isAdmin && <AdminPage initialEditionID={positiveInteger(route.params.get('edition'))} />}
       </div>
     </main>
@@ -91,7 +120,13 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
 function readRoute(): LibraryRoute {
   const raw = window.location.hash.replace(/^#\/?/, '') || 'home'
   const [path, search = ''] = raw.split('?', 2)
-  const view: LibraryView = path === 'books' || path === 'categories' || path === 'admin' ? path : 'home'
+  const parts = path.split('/').filter(Boolean)
+  if (parts[0] === 'book') {
+    const bookID = positiveInteger(parts[1] ?? null)
+    if (bookID) return { view: 'book', bookID, params: new URLSearchParams(search), key: raw }
+  }
+  const candidate = parts[0]
+  const view: LibraryView = candidate === 'books' || candidate === 'categories' || candidate === 'favorites' || candidate === 'recommendations' || candidate === 'admin' ? candidate : 'home'
   return { view, params: new URLSearchParams(search), key: raw }
 }
 

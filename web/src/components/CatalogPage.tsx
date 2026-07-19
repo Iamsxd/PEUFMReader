@@ -7,12 +7,13 @@ interface Props {
   initialQuery?: CatalogQuery
   isAdmin: boolean
   onOpenBook: (book: BookFile) => void
+  onViewBook: (book: BookFile) => void
   onManageBook: (book: BookFile) => void
 }
 
 const emptyResult: CatalogResult = { items: [], total: 0, page: 1, pageSize: 24, totalPages: 0 }
 
-export function CatalogPage({ initialQuery = {}, isAdmin, onOpenBook, onManageBook }: Props) {
+export function CatalogPage({ initialQuery = {}, isAdmin, onOpenBook, onViewBook, onManageBook }: Props) {
   const [query, setQuery] = useState(initialQuery.q ?? '')
   const [debouncedQuery, setDebouncedQuery] = useState(initialQuery.q ?? '')
   const [category, setCategory] = useState(initialQuery.category ?? '')
@@ -104,7 +105,7 @@ export function CatalogPage({ initialQuery = {}, isAdmin, onOpenBook, onManageBo
       ) : (
         <>
           <div className={`book-grid catalog-grid${loading ? ' is-updating' : ''}`}>
-            {result.items.map((book) => <BookCard key={book.id} book={book} onOpen={onOpenBook} onEdit={isAdmin ? onManageBook : undefined} />)}
+            {result.items.map((book) => <BookCard key={book.id} book={book} onOpen={onOpenBook} onDetails={onViewBook} onEdit={isAdmin ? onManageBook : undefined} />)}
           </div>
           <nav className="catalog-pagination" aria-label="书库分页">
             <button className="secondary" disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))}>上一页</button>

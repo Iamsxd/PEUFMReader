@@ -73,6 +73,7 @@ export interface PersonalStats {
   totalBooks: number
   readingBooks: number
   finishedBooks: number
+  favoriteBooks: number
   totalActiveSeconds: number
   weekActiveSeconds: number
 }
@@ -80,9 +81,52 @@ export interface PersonalStats {
 export interface HomeDashboard {
   continueReading: HomeBook[]
   hotBooks: HomeBook[]
+  recommendations: Recommendation[]
   recentlyAdded: BookFile[]
   categories: CategorySummary[]
   stats: PersonalStats
+}
+
+export interface BookDetail {
+  book: BookFile
+  description: string
+  readingState: ReadingState
+  favorite: boolean
+  favoritedAt?: string
+  readerCount: number
+  favoriteCount: number
+  totalActiveSeconds: number
+}
+
+export interface FavoriteState {
+  bookFileId: number
+  favorite: boolean
+  createdAt?: string
+}
+
+export interface FavoriteBook {
+  book: BookFile
+  favoritedAt: string
+}
+
+export interface FavoritePage {
+  items: FavoriteBook[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+export interface Recommendation {
+  book: BookFile
+  reason: string
+  score: number
+  personalized: boolean
+}
+
+export interface RecommendationPage {
+  items: Recommendation[]
+  personalized: boolean
 }
 
 export interface Category {
