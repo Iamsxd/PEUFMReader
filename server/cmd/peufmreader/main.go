@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"peufmreader/internal/bibliography"
 	"peufmreader/internal/calibre"
 	"peufmreader/internal/classification"
 	"peufmreader/internal/config"
@@ -73,7 +75,17 @@ func main() {
 	}()
 
 	advisor := classification.NewAdvisor(cfg.AIProvider, cfg.AIBaseURL, cfg.AIModel, cfg.AIAPIKey, cfg.AITimeout)
-	api := httpapi.New(dataStore, libraryManager, importService, calibreScanner, advisor, cfg.WebRoot, cfg.CookieSecure, cfg.SessionTTL, cfg.MaxUploadBytes, logger)
+	bibliographyProviders := make([]bibliography.Provider, 0, 2)
+	for _, provider := range strings.Split(cfg.BibliographyProviders, ",") {
+		switch strings.TrimSpace(provider) {
+		case "openlibrary":
+			bibliographyProviders = append(bibliographyProviders, bibliography.NewOpenLibrary(cfg.OpenLibraryBaseURL, cfg.BibliographyTimeout))
+		case "google-books":
+			bibliographyProviders = append(bibliographyProviders, bibliography.NewGoogleBooks(cfg.GoogleBooksBaseURL, cfg.GoogleBooksAPIKey, cfg.BibliographyTimeout))
+		}
+	}
+	bibliographyService := bibliography.NewService(bibliographyProviders...)
+	api := httpapi.New(dataStore, libraryManager, importService, calibreScanner, bibliographyService, advisor, cfg.WebRoot, cfg.CookieSecure, cfg.SessionTTL, cfg.MaxUploadBytes, logger)
 	server := &http.Server{
 		Addr:              cfg.Address,
 		Handler:           api.Handler(),

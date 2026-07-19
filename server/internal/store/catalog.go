@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"peufmreader/internal/bibliography"
 	"peufmreader/internal/classification"
 	"peufmreader/internal/library"
 	"peufmreader/internal/metadata"
@@ -471,6 +472,54 @@ func (s *Store) AddClassificationSuggestions(ctx context.Context, editionID int6
 		}
 		if command.RowsAffected() == 0 {
 			return fmt.Errorf("unknown category %q", suggestion.CategorySlug)
+		}
+	}
+	if _, err := tx.Exec(ctx, "UPDATE works SET review_status='pending',updated_at=now() WHERE id=$1", workID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) AddBibliographySuggestions(ctx context.Context, editionID int64, matches []bibliography.Match) error {
+	if len(matches) == 0 {
+		return nil
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var workID int64
+	if err := tx.QueryRow(ctx, "SELECT work_id FROM editions WHERE id=$1", editionID).Scan(&workID); err != nil {
+		return err
+	}
+	for _, match := range matches {
+		source := match.Source + ":" + match.SourceID
+		if _, err := tx.Exec(ctx, `DELETE FROM metadata_candidates WHERE edition_id=$1 AND source=$2 AND status='suggested'`, editionID, source); err != nil {
+			return err
+		}
+		values := []struct {
+			field string
+			value any
+		}{
+			{"title", match.Title}, {"authors", match.Authors}, {"publishedYear", match.PublishedYear},
+			{"language", match.Language}, {"isbn", match.ISBN}, {"publisher", match.Publisher},
+			{"description", match.Description}, {"subjects", match.Subjects},
+		}
+		for _, candidate := range values {
+			if isEmptyCandidate(candidate.value) {
+				continue
+			}
+			encoded, marshalErr := json.Marshal(candidate.value)
+			if marshalErr != nil {
+				return marshalErr
+			}
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO metadata_candidates(edition_id,field_name,value,source,confidence,reason,status)
+				VALUES ($1,$2,$3,$4,$5,$6,'suggested')`,
+				editionID, candidate.field, encoded, source, match.Confidence, match.Reason); err != nil {
+				return fmt.Errorf("save external metadata candidate: %w", err)
+			}
 		}
 	}
 	if _, err := tx.Exec(ctx, "UPDATE works SET review_status='pending',updated_at=now() WHERE id=$1", workID); err != nil {

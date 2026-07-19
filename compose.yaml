@@ -42,6 +42,11 @@ services:
       AI_API_KEY: ${AI_API_KEY:-}
       AI_TIMEOUT: ${AI_TIMEOUT:-45s}
       CALIBRE_LIBRARY_ROOT: /import/calibre
+      BIBLIOGRAPHY_PROVIDERS: ${BIBLIOGRAPHY_PROVIDERS-openlibrary}
+      OPEN_LIBRARY_BASE_URL: ${OPEN_LIBRARY_BASE_URL:-https://openlibrary.org}
+      GOOGLE_BOOKS_BASE_URL: ${GOOGLE_BOOKS_BASE_URL:-https://www.googleapis.com/books/v1}
+      GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY:-}
+      BIBLIOGRAPHY_TIMEOUT: ${BIBLIOGRAPHY_TIMEOUT:-12s}
       TZ: ${TZ:-Asia/Shanghai}
     ports:
       - "${APP_PORT:-8080}:8080"

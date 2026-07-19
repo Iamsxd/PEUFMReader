@@ -1,4 +1,4 @@
-import type { BackgroundJob, BookFile, CalibreImportResult, CalibrePreview, Category, ImportJob, ReadingSession, ReadingState, ReviewInput, ReviewItem, Session, User } from './types'
+import type { BackgroundJob, BibliographySearchResult, BookFile, CalibreImportResult, CalibrePreview, Category, ImportJob, ReadingSession, ReadingState, ReviewInput, ReviewItem, Session, User } from './types'
 
 interface ErrorBody {
   error?: { code?: string; message?: string }
@@ -77,6 +77,10 @@ class APIClient {
 
   aiClassifyEdition(editionID: number): Promise<ReviewItem> {
     return this.request(`/api/v1/editions/${editionID}/ai-classify`, { method: 'POST' })
+  }
+
+  searchBibliography(editionID: number): Promise<BibliographySearchResult> {
+    return this.request(`/api/v1/editions/${editionID}/bibliography-search`, { method: 'POST' })
   }
 
   async listImportJobs(): Promise<ImportJob[]> {

@@ -10,45 +10,55 @@ import (
 )
 
 type Config struct {
-	Address          string
-	DatabaseURL      string
-	LibraryRoot      string
-	StagingRoot      string
-	CacheRoot        string
-	CalibreRoot      string
-	WebRoot          string
-	AdminUsername    string
-	AdminPassword    string
-	CookieSecure     bool
-	SessionTTL       time.Duration
-	MaxUploadBytes   int64
-	TrustedProxyCIDR string
-	AIProvider       string
-	AIBaseURL        string
-	AIModel          string
-	AIAPIKey         string
-	AITimeout        time.Duration
+	Address               string
+	DatabaseURL           string
+	LibraryRoot           string
+	StagingRoot           string
+	CacheRoot             string
+	CalibreRoot           string
+	WebRoot               string
+	AdminUsername         string
+	AdminPassword         string
+	CookieSecure          bool
+	SessionTTL            time.Duration
+	MaxUploadBytes        int64
+	TrustedProxyCIDR      string
+	AIProvider            string
+	AIBaseURL             string
+	AIModel               string
+	AIAPIKey              string
+	AITimeout             time.Duration
+	BibliographyProviders string
+	OpenLibraryBaseURL    string
+	GoogleBooksBaseURL    string
+	GoogleBooksAPIKey     string
+	BibliographyTimeout   time.Duration
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		Address:          envOr("ADDRESS", ":8080"),
-		DatabaseURL:      os.Getenv("DATABASE_URL"),
-		LibraryRoot:      envOr("LIBRARY_ROOT", "/data/library"),
-		StagingRoot:      envOr("STAGING_ROOT", "/data/staging"),
-		CacheRoot:        envOr("CACHE_ROOT", "/data/cache"),
-		CalibreRoot:      envOr("CALIBRE_LIBRARY_ROOT", "/import/calibre"),
-		WebRoot:          envOr("WEB_ROOT", "/app/web"),
-		AdminUsername:    strings.ToLower(strings.TrimSpace(envOr("ADMIN_USERNAME", "admin"))),
-		AdminPassword:    os.Getenv("ADMIN_PASSWORD"),
-		SessionTTL:       30 * 24 * time.Hour,
-		MaxUploadBytes:   500 << 20,
-		TrustedProxyCIDR: os.Getenv("TRUSTED_PROXY_CIDR"),
-		AIProvider:       strings.ToLower(strings.TrimSpace(os.Getenv("AI_PROVIDER"))),
-		AIBaseURL:        strings.TrimRight(strings.TrimSpace(os.Getenv("AI_BASE_URL")), "/"),
-		AIModel:          strings.TrimSpace(os.Getenv("AI_MODEL")),
-		AIAPIKey:         os.Getenv("AI_API_KEY"),
-		AITimeout:        45 * time.Second,
+		Address:               envOr("ADDRESS", ":8080"),
+		DatabaseURL:           os.Getenv("DATABASE_URL"),
+		LibraryRoot:           envOr("LIBRARY_ROOT", "/data/library"),
+		StagingRoot:           envOr("STAGING_ROOT", "/data/staging"),
+		CacheRoot:             envOr("CACHE_ROOT", "/data/cache"),
+		CalibreRoot:           envOr("CALIBRE_LIBRARY_ROOT", "/import/calibre"),
+		WebRoot:               envOr("WEB_ROOT", "/app/web"),
+		AdminUsername:         strings.ToLower(strings.TrimSpace(envOr("ADMIN_USERNAME", "admin"))),
+		AdminPassword:         os.Getenv("ADMIN_PASSWORD"),
+		SessionTTL:            30 * 24 * time.Hour,
+		MaxUploadBytes:        500 << 20,
+		TrustedProxyCIDR:      os.Getenv("TRUSTED_PROXY_CIDR"),
+		AIProvider:            strings.ToLower(strings.TrimSpace(os.Getenv("AI_PROVIDER"))),
+		AIBaseURL:             strings.TrimRight(strings.TrimSpace(os.Getenv("AI_BASE_URL")), "/"),
+		AIModel:               strings.TrimSpace(os.Getenv("AI_MODEL")),
+		AIAPIKey:              os.Getenv("AI_API_KEY"),
+		AITimeout:             45 * time.Second,
+		BibliographyProviders: strings.ToLower(strings.TrimSpace(envOrIfUnset("BIBLIOGRAPHY_PROVIDERS", "openlibrary"))),
+		OpenLibraryBaseURL:    strings.TrimRight(envOr("OPEN_LIBRARY_BASE_URL", "https://openlibrary.org"), "/"),
+		GoogleBooksBaseURL:    strings.TrimRight(envOr("GOOGLE_BOOKS_BASE_URL", "https://www.googleapis.com/books/v1"), "/"),
+		GoogleBooksAPIKey:     os.Getenv("GOOGLE_BOOKS_API_KEY"),
+		BibliographyTimeout:   12 * time.Second,
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -114,12 +124,34 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("AI_TIMEOUT must be between 1ns and 5m")
 		}
 	}
+	for _, provider := range strings.Split(cfg.BibliographyProviders, ",") {
+		provider = strings.TrimSpace(provider)
+		if provider != "" && provider != "openlibrary" && provider != "google-books" {
+			return Config{}, fmt.Errorf("BIBLIOGRAPHY_PROVIDERS supports openlibrary and google-books")
+		}
+		if provider == "google-books" && cfg.GoogleBooksAPIKey == "" {
+			return Config{}, fmt.Errorf("GOOGLE_BOOKS_API_KEY is required when google-books is enabled")
+		}
+	}
+	if raw := os.Getenv("BIBLIOGRAPHY_TIMEOUT"); raw != "" {
+		cfg.BibliographyTimeout, err = time.ParseDuration(raw)
+		if err != nil || cfg.BibliographyTimeout <= 0 || cfg.BibliographyTimeout > time.Minute {
+			return Config{}, fmt.Errorf("BIBLIOGRAPHY_TIMEOUT must be between 1ns and 1m")
+		}
+	}
 
 	return cfg, nil
 }
 
 func envOr(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func envOrIfUnset(key, fallback string) string {
+	if value, exists := os.LookupEnv(key); exists {
 		return value
 	}
 	return fallback

@@ -145,6 +145,28 @@ export interface CalibreImportResult {
   jobIds: number[]
 }
 
+export interface BibliographyMatch {
+  source: 'openlibrary' | 'google-books' | string
+  sourceId: string
+  title: string
+  authors: string[]
+  publishedYear?: number
+  language?: string
+  isbn?: string
+  publisher?: string
+  description?: string
+  subjects: string[]
+  coverUrl?: string
+  confidence: number
+  reason: string
+}
+
+export interface BibliographySearchResult {
+  matches: BibliographyMatch[]
+  warnings: string[]
+  reviewItem: ReviewItem
+}
+
 export interface ReadingState {
   bookFileId: number
   position: Record<string, unknown>

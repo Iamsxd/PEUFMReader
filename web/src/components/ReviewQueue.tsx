@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { APIError, api } from '../api'
-import type { Category, ReviewInput, ReviewItem } from '../types'
+import type { BibliographyMatch, Category, ReviewInput, ReviewItem } from '../types'
 
 interface Props {
   categories: Category[]
@@ -43,9 +43,16 @@ function ReviewCard({ item, categories, onChanged }: { item: ReviewItem; categor
   const [form, setForm] = useState<ReviewInput>(() => toForm(item))
   const [saving, setSaving] = useState(false)
   const [askingAI, setAskingAI] = useState(false)
+  const [searchingBibliography, setSearchingBibliography] = useState(false)
+  const [bibliographyMatches, setBibliographyMatches] = useState<BibliographyMatch[]>([])
+  const [bibliographyWarnings, setBibliographyWarnings] = useState<string[]>([])
   const [error, setError] = useState('')
 
-  useEffect(() => setForm(toForm(item)), [item])
+  useEffect(() => {
+    setForm(toForm(item))
+    setBibliographyMatches([])
+    setBibliographyWarnings([])
+  }, [item])
 
   function update<K extends keyof ReviewInput>(key: K, value: ReviewInput[K]) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -84,6 +91,34 @@ function ReviewCard({ item, categories, onChanged }: { item: ReviewItem; categor
     }
   }
 
+  async function searchBibliography() {
+    setSearchingBibliography(true)
+    setError('')
+    try {
+      const result = await api.searchBibliography(item.editionId)
+      setBibliographyMatches(result.matches)
+      setBibliographyWarnings(result.warnings)
+      if (result.matches.length === 0) setError('外部书目服务没有找到匹配结果。')
+    } catch (reason) {
+      setError(reason instanceof APIError ? reason.message : '外部书目查询失败。')
+    } finally {
+      setSearchingBibliography(false)
+    }
+  }
+
+  function applyBibliographyMatch(match: BibliographyMatch) {
+    setForm((current) => ({
+      ...current,
+      title: match.title || current.title,
+      authors: match.authors.length > 0 ? match.authors : current.authors,
+      publishedYear: match.publishedYear ?? current.publishedYear,
+      language: match.language || current.language,
+      isbn: match.isbn || current.isbn,
+      publisher: match.publisher || current.publisher,
+      description: match.description || current.description,
+    }))
+  }
+
   const suggested = item.classifications.filter((decision) => decision.status === 'suggested')
 
   return (
@@ -93,12 +128,33 @@ function ReviewCard({ item, categories, onChanged }: { item: ReviewItem; categor
           <span className="format-badge">Edition {item.editionId}</span>
           <h3>{item.title}</h3>
         </div>
-        <button className="quiet ai-button" type="button" onClick={() => void askAI()} disabled={askingAI}>
-          {askingAI ? 'AI 判断中…' : '请求 AI 建议'}
-        </button>
+        <div className="review-provider-actions">
+          <button className="quiet external-metadata-button" type="button" onClick={() => void searchBibliography()} disabled={searchingBibliography}>
+            {searchingBibliography ? '查询中…' : '查询外部书目'}
+          </button>
+          <button className="quiet ai-button" type="button" onClick={() => void askAI()} disabled={askingAI}>
+            {askingAI ? 'AI 判断中…' : '请求 AI 建议'}
+          </button>
+        </div>
       </div>
 
       {error && <div className="notice error" role="alert">{error}</div>}
+
+      {bibliographyMatches.length > 0 && (
+        <section className="bibliography-results" aria-label="外部书目候选">
+          <div><strong>外部书目候选</strong><span>点击候选会填入表单，保存前仍可编辑。</span></div>
+          <div className="bibliography-match-list">
+            {bibliographyMatches.map((match) => (
+              <button className="bibliography-match" type="button" key={`${match.source}:${match.sourceId}`} onClick={() => applyBibliographyMatch(match)}>
+                <span><strong>{match.title}</strong><small>{match.authors.join('、') || '未知作者'}{match.publishedYear ? ` · ${match.publishedYear}` : ''}</small></span>
+                <span><b>{Math.round(match.confidence * 100)}%</b><small>{providerLabel(match.source)} · {match.reason}</small></span>
+                <small>{[match.publisher, match.isbn, ...match.subjects.slice(0, 3)].filter(Boolean).join(' · ')}</small>
+              </button>
+            ))}
+          </div>
+          {bibliographyWarnings.length > 0 && <p className="muted">部分服务异常：{bibliographyWarnings.join('；')}</p>}
+        </section>
+      )}
 
       <div className="metadata-form-grid">
         <label>书名<input value={form.title} onChange={(event) => update('title', event.target.value)} required /></label>
@@ -138,7 +194,7 @@ function ReviewCard({ item, categories, onChanged }: { item: ReviewItem; categor
         <summary>查看 {item.candidates.length} 条元数据证据</summary>
         <ul>
           {item.candidates.map((candidate) => (
-            <li key={candidate.id}><strong>{candidate.fieldName}</strong> · {candidate.source} · {Math.round(candidate.confidence * 100)}% · {candidate.status}</li>
+            <li key={candidate.id}><strong>{candidate.fieldName}</strong> · {formatCandidateValue(candidate.value)} · {candidate.source} · {Math.round(candidate.confidence * 100)}% · {candidate.status}</li>
           ))}
         </ul>
       </details>
@@ -166,4 +222,13 @@ function toForm(item: ReviewItem): ReviewInput {
 
 function splitAuthors(value: string): string[] {
   return value.split(/[;；]/).map((part) => part.trim()).filter(Boolean)
+}
+
+function providerLabel(source: string): string {
+  return { openlibrary: 'Open Library', 'google-books': 'Google Books' }[source] ?? source
+}
+
+function formatCandidateValue(value: unknown): string {
+  const text = Array.isArray(value) ? value.join('、') : typeof value === 'string' ? value : JSON.stringify(value)
+  return (text || '—').slice(0, 120)
 }

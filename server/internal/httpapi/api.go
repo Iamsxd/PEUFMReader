@@ -19,6 +19,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"peufmreader/internal/bibliography"
 	"peufmreader/internal/calibre"
 	"peufmreader/internal/classification"
 	"peufmreader/internal/importing"
@@ -38,6 +39,7 @@ type API struct {
 	advisor        *classification.Advisor
 	importer       *importing.Service
 	calibre        *calibre.Scanner
+	bibliography   *bibliography.Service
 	logger         *slog.Logger
 	mux            *http.ServeMux
 }
@@ -46,7 +48,7 @@ type contextKey string
 
 const sessionContextKey contextKey = "session"
 
-func New(store *store.Store, libraryManager *library.Manager, importer *importing.Service, calibreScanner *calibre.Scanner, advisor *classification.Advisor, webRoot string, cookieSecure bool, sessionTTL time.Duration, maxUploadBytes int64, logger *slog.Logger) *API {
+func New(store *store.Store, libraryManager *library.Manager, importer *importing.Service, calibreScanner *calibre.Scanner, bibliographyService *bibliography.Service, advisor *classification.Advisor, webRoot string, cookieSecure bool, sessionTTL time.Duration, maxUploadBytes int64, logger *slog.Logger) *API {
 	api := &API{
 		store:          store,
 		library:        libraryManager,
@@ -57,6 +59,7 @@ func New(store *store.Store, libraryManager *library.Manager, importer *importin
 		advisor:        advisor,
 		importer:       importer,
 		calibre:        calibreScanner,
+		bibliography:   bibliographyService,
 		logger:         logger,
 		mux:            http.NewServeMux(),
 	}
@@ -88,6 +91,7 @@ func (a *API) routes() {
 	a.mux.Handle("GET /api/v1/editions/{id}/review", a.requireAuth(http.HandlerFunc(a.getEditionReview), "admin", false))
 	a.mux.Handle("PUT /api/v1/editions/{id}/review", a.requireAuth(http.HandlerFunc(a.reviewEdition), "admin", true))
 	a.mux.Handle("POST /api/v1/editions/{id}/ai-classify", a.requireAuth(http.HandlerFunc(a.aiClassifyEdition), "admin", true))
+	a.mux.Handle("POST /api/v1/editions/{id}/bibliography-search", a.requireAuth(http.HandlerFunc(a.searchBibliography), "admin", true))
 	a.mux.Handle("GET /api/v1/import-jobs", a.requireAuth(http.HandlerFunc(a.listImportJobs), "admin", false))
 	a.mux.Handle("GET /api/v1/background-jobs", a.requireAuth(http.HandlerFunc(a.listBackgroundJobs), "admin", false))
 	a.mux.Handle("POST /api/v1/background-jobs/{id}/retry", a.requireAuth(http.HandlerFunc(a.retryBackgroundJob), "admin", true))
@@ -462,6 +466,44 @@ func (a *API) aiClassifyEdition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, item)
+}
+
+func (a *API) searchBibliography(w http.ResponseWriter, r *http.Request) {
+	if !a.bibliography.Available() {
+		writeError(w, http.StatusConflict, "bibliography_not_configured", "external bibliography search is not configured")
+		return
+	}
+	editionID, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	book, found, err := a.store.EditionMetadata(r.Context(), editionID)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "edition_not_found", "edition not found")
+		return
+	}
+	result, err := a.bibliography.Search(r.Context(), bibliography.Query{
+		Title: book.Title, Authors: book.Authors, ISBN: book.ISBN, Language: book.Language,
+	})
+	if err != nil {
+		a.logger.Warn("bibliography search failed", "edition_id", editionID, "error", err)
+		writeError(w, http.StatusBadGateway, "bibliography_search_failed", err.Error())
+		return
+	}
+	if err := a.store.AddBibliographySuggestions(r.Context(), editionID, result.Matches); err != nil {
+		a.internalError(w, err)
+		return
+	}
+	item, _, err := a.store.GetReviewItem(r.Context(), editionID)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"matches": result.Matches, "warnings": result.Warnings, "reviewItem": item})
 }
 
 func (a *API) listImportJobs(w http.ResponseWriter, r *http.Request) {
