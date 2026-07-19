@@ -79,8 +79,13 @@ func (a *API) routes() {
 	a.mux.Handle("GET /api/v1/users", a.requireAuth(http.HandlerFunc(a.listUsers), "admin", false))
 	a.mux.Handle("POST /api/v1/users", a.requireAuth(http.HandlerFunc(a.createUser), "admin", true))
 	a.mux.Handle("GET /api/v1/home", a.requireAuth(http.HandlerFunc(a.homeDashboard), "", false))
+	a.mux.Handle("GET /api/v1/favorites", a.requireAuth(http.HandlerFunc(a.listFavorites), "", false))
+	a.mux.Handle("GET /api/v1/recommendations", a.requireAuth(http.HandlerFunc(a.listRecommendations), "", false))
 	a.mux.Handle("GET /api/v1/book-files", a.requireAuth(http.HandlerFunc(a.listBookFiles), "", false))
 	a.mux.Handle("POST /api/v1/book-files", a.requireAuth(http.HandlerFunc(a.uploadBookFile), "admin", true))
+	a.mux.Handle("GET /api/v1/book-files/{id}", a.requireAuth(http.HandlerFunc(a.bookDetail), "", false))
+	a.mux.Handle("PUT /api/v1/book-files/{id}/favorite", a.requireAuth(http.HandlerFunc(a.favoriteBook), "", true))
+	a.mux.Handle("DELETE /api/v1/book-files/{id}/favorite", a.requireAuth(http.HandlerFunc(a.unfavoriteBook), "", true))
 	a.mux.Handle("GET /api/v1/book-files/{id}/content", a.requireAuth(http.HandlerFunc(a.bookContent), "", false))
 	a.mux.Handle("GET /api/v1/book-files/{id}/cover", a.requireAuth(http.HandlerFunc(a.bookCover), "", false))
 	a.mux.Handle("GET /api/v1/book-files/{id}/text", a.requireAuth(http.HandlerFunc(a.bookExtractedText), "", false))
@@ -242,6 +247,9 @@ func (a *API) homeDashboard(w http.ResponseWriter, r *http.Request) {
 	for index := range dashboard.HotBooks {
 		a.decorateBook(&dashboard.HotBooks[index].Book)
 	}
+	for index := range dashboard.Recommendations {
+		a.decorateBook(&dashboard.Recommendations[index].Book)
+	}
 	for index := range dashboard.RecentlyAdded {
 		a.decorateBook(&dashboard.RecentlyAdded[index])
 	}
@@ -252,6 +260,113 @@ func (a *API) homeDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, dashboard)
+}
+
+func (a *API) bookDetail(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	userSession := sessionFromContext(r.Context())
+	detail, found, err := a.store.GetBookDetail(r.Context(), userSession.User.ID, id)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "book_not_found", "book file not found")
+		return
+	}
+	a.decorateBook(&detail.Book)
+	writeJSON(w, http.StatusOK, detail)
+}
+
+func (a *API) listFavorites(w http.ResponseWriter, r *http.Request) {
+	page, pageSize, err := parsePagination(r, store.DefaultCatalogPageSize, store.MaxCatalogPageSize)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_pagination", err.Error())
+		return
+	}
+	userSession := sessionFromContext(r.Context())
+	result, err := a.store.ListFavoriteBooks(r.Context(), userSession.User.ID, page, pageSize)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	for index := range result.Items {
+		a.decorateBook(&result.Items[index].Book)
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (a *API) favoriteBook(w http.ResponseWriter, r *http.Request) {
+	a.setFavorite(w, r, true)
+}
+
+func (a *API) unfavoriteBook(w http.ResponseWriter, r *http.Request) {
+	a.setFavorite(w, r, false)
+}
+
+func (a *API) setFavorite(w http.ResponseWriter, r *http.Request, favorite bool) {
+	id, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if _, found, err := a.store.GetCatalogBook(r.Context(), id); err != nil {
+		a.internalError(w, err)
+		return
+	} else if !found {
+		writeError(w, http.StatusNotFound, "book_not_found", "book file not found")
+		return
+	}
+	userSession := sessionFromContext(r.Context())
+	state, err := a.store.SetFavorite(r.Context(), userSession.User.ID, id, favorite)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, state)
+}
+
+func (a *API) listRecommendations(w http.ResponseWriter, r *http.Request) {
+	limit := 12
+	if value := r.URL.Query().Get("limit"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > 24 {
+			writeError(w, http.StatusBadRequest, "invalid_limit", "limit must be between 1 and 24")
+			return
+		}
+		limit = parsed
+	}
+	userSession := sessionFromContext(r.Context())
+	result, err := a.store.GetRecommendations(r.Context(), userSession.User.ID, limit)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	for index := range result.Items {
+		a.decorateBook(&result.Items[index].Book)
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func parsePagination(r *http.Request, defaultPageSize, maxPageSize int) (int, int, error) {
+	page, pageSize := 1, defaultPageSize
+	if value := r.URL.Query().Get("page"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 {
+			return 0, 0, fmt.Errorf("page must be a positive integer")
+		}
+		page = parsed
+	}
+	if value := r.URL.Query().Get("pageSize"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > maxPageSize {
+			return 0, 0, fmt.Errorf("pageSize must be between 1 and %d", maxPageSize)
+		}
+		pageSize = parsed
+	}
+	return page, pageSize, nil
 }
 
 func parseCatalogQuery(r *http.Request) (store.CatalogQuery, error) {

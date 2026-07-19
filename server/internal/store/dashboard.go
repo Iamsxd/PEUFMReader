@@ -30,6 +30,7 @@ type PersonalStats struct {
 	TotalBooks         int   `json:"totalBooks"`
 	ReadingBooks       int   `json:"readingBooks"`
 	FinishedBooks      int   `json:"finishedBooks"`
+	FavoriteBooks      int   `json:"favoriteBooks"`
 	TotalActiveSeconds int64 `json:"totalActiveSeconds"`
 	WeekActiveSeconds  int64 `json:"weekActiveSeconds"`
 }
@@ -37,6 +38,7 @@ type PersonalStats struct {
 type HomeDashboard struct {
 	ContinueReading []HomeBook        `json:"continueReading"`
 	HotBooks        []HomeBook        `json:"hotBooks"`
+	Recommendations []Recommendation  `json:"recommendations"`
 	RecentlyAdded   []BookFile        `json:"recentlyAdded"`
 	Categories      []CategorySummary `json:"categories"`
 	Stats           PersonalStats     `json:"stats"`
@@ -79,6 +81,10 @@ func (s *Store) GetHomeDashboard(ctx context.Context, userID int64) (HomeDashboa
 	if err != nil {
 		return HomeDashboard{}, err
 	}
+	recommendations, err := s.GetRecommendations(ctx, userID, 8)
+	if err != nil {
+		return HomeDashboard{}, err
+	}
 
 	bookIDs := make([]int64, 0, len(continueMetrics)+len(hotMetrics)+len(recentIDs))
 	seen := make(map[int64]bool)
@@ -105,6 +111,7 @@ func (s *Store) GetHomeDashboard(ctx context.Context, userID int64) (HomeDashboa
 	dashboard := HomeDashboard{
 		ContinueReading: make([]HomeBook, 0, len(continueMetrics)),
 		HotBooks:        make([]HomeBook, 0, len(hotMetrics)),
+		Recommendations: recommendations.Items,
 		RecentlyAdded:   make([]BookFile, 0, len(recentIDs)),
 		Categories:      categories,
 		Stats:           stats,
@@ -243,10 +250,11 @@ func (s *Store) getPersonalStats(ctx context.Context, userID int64) (PersonalSta
 			(SELECT COUNT(*) FROM book_files)::int,
 			COUNT(*) FILTER (WHERE status IN ('reading','paused'))::int,
 			COUNT(*) FILTER (WHERE status='finished')::int,
+			(SELECT COUNT(*) FROM user_favorites WHERE user_id=$1)::int,
 			COALESCE(SUM(total_active_seconds),0)::bigint,
 			COALESCE((SELECT SUM(active_seconds) FROM reading_sessions WHERE user_id=$1 AND started_at >= now()-INTERVAL '7 days'),0)::bigint
 		FROM reading_states WHERE user_id=$1`, userID,
-	).Scan(&stats.TotalBooks, &stats.ReadingBooks, &stats.FinishedBooks, &stats.TotalActiveSeconds, &stats.WeekActiveSeconds)
+	).Scan(&stats.TotalBooks, &stats.ReadingBooks, &stats.FinishedBooks, &stats.FavoriteBooks, &stats.TotalActiveSeconds, &stats.WeekActiveSeconds)
 	if err != nil {
 		return PersonalStats{}, fmt.Errorf("load personal reading stats: %w", err)
 	}

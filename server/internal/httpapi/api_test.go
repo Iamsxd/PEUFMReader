@@ -79,3 +79,28 @@ func TestParseCatalogQueryRejectsInvalidPaginationAndFilters(t *testing.T) {
 		}
 	}
 }
+
+func TestParsePagination(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/favorites?page=3&pageSize=18", nil)
+	page, pageSize, err := parsePagination(request, 24, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page != 3 || pageSize != 18 {
+		t.Fatalf("unexpected pagination: page=%d pageSize=%d", page, pageSize)
+	}
+}
+
+func TestParsePaginationRejectsInvalidValues(t *testing.T) {
+	for _, target := range []string{
+		"/api/v1/favorites?page=0",
+		"/api/v1/favorites?page=nope",
+		"/api/v1/favorites?pageSize=0",
+		"/api/v1/favorites?pageSize=101",
+	} {
+		request := httptest.NewRequest(http.MethodGet, target, nil)
+		if _, _, err := parsePagination(request, 24, 100); err == nil {
+			t.Fatalf("parsePagination accepted %s", target)
+		}
+	}
+}
