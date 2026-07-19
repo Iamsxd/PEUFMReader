@@ -1,6 +1,7 @@
 import { type ChangeEvent, type DragEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
 import { APIError, api } from '../api'
-import type { BackgroundJob, CalibrePreview, Category, ImportJob, ReviewItem, User } from '../types'
+import type { AuditEvent, BackgroundJob, CalibrePreview, Category, ImportJob, ReviewItem, StorageAuditReport, User } from '../types'
+import { formatBytes, formatRelativeTime } from '../utils'
 import { ReviewQueue } from './ReviewQueue'
 
 interface Props {
@@ -24,6 +25,8 @@ export function AdminPage({ initialEditionID }: Props) {
   const [manualReviewItem, setManualReviewItem] = useState<ReviewItem | null>(null)
   const [importJobs, setImportJobs] = useState<ImportJob[]>([])
   const [backgroundJobs, setBackgroundJobs] = useState<BackgroundJob[]>([])
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
+  const [storageReport, setStorageReport] = useState<StorageAuditReport | null>(null)
   const [calibrePreview, setCalibrePreview] = useState<CalibrePreview | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -32,19 +35,21 @@ export function AdminPage({ initialEditionID }: Props) {
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [scanningCalibre, setScanningCalibre] = useState(false)
   const [migratingCalibre, setMigratingCalibre] = useState(false)
+  const [checkingStorage, setCheckingStorage] = useState(false)
   const [newUsername, setNewUsername] = useState('')
   const [newPassword, setNewPassword] = useState('')
 
   async function refreshAdmin() {
     try {
-      const [categoryItems, userItems, queueItems, jobs, asyncJobs] = await Promise.all([
-        api.listCategories(), api.listUsers(), api.listReviewQueue(), api.listImportJobs(), api.listBackgroundJobs(),
+      const [categoryItems, userItems, queueItems, jobs, asyncJobs, audits] = await Promise.all([
+        api.listCategories(), api.listUsers(), api.listReviewQueue(), api.listImportJobs(), api.listBackgroundJobs(), api.listAuditEvents(),
       ])
       setCategories(categoryItems)
       setUsers(userItems)
       setReviewItems(queueItems)
       setImportJobs(jobs)
       setBackgroundJobs(asyncJobs)
+      setAuditEvents(audits)
     } catch (reason) {
       setError(reason instanceof APIError ? reason.message : '无法加载管理后台。')
     }
@@ -199,6 +204,18 @@ export function AdminPage({ initialEditionID }: Props) {
     }
   }
 
+  async function checkStorage(deep: boolean) {
+    setCheckingStorage(true)
+    setError('')
+    try {
+      setStorageReport(await api.auditStorage(deep))
+    } catch (reason) {
+      setError(reason instanceof APIError ? reason.message : '书库一致性检查失败。')
+    } finally {
+      setCheckingStorage(false)
+    }
+  }
+
   async function reviewChanged() {
     setManualReviewItem(null)
     await refreshAdmin()
@@ -287,11 +304,47 @@ export function AdminPage({ initialEditionID }: Props) {
         </form>
       </section>
 
+      <section className="integration-panel operations-panel">
+        <div className="section-title">
+          <div><p className="eyebrow">存储与备份</p><h2>书库一致性</h2><p className="muted">快速检查文件是否缺失或大小异常；深度校验会读取全部书籍并核对 SHA-256。</p></div>
+          <div className="integration-actions">
+            <button className="secondary" type="button" disabled={checkingStorage} onClick={() => void checkStorage(false)}>{checkingStorage ? '检查中…' : '快速检查'}</button>
+            <button className="secondary" type="button" disabled={checkingStorage} onClick={() => void checkStorage(true)}>深度校验</button>
+          </div>
+        </div>
+        {storageReport && (
+          <div className="storage-report">
+            <div><strong>{storageReport.databaseFileCount}</strong><span>数据库文件</span></div>
+            <div><strong>{storageReport.diskFileCount}</strong><span>磁盘文件</span></div>
+            <div className={storageReport.missingCount ? 'has-issue' : ''}><strong>{storageReport.missingCount}</strong><span>缺失</span></div>
+            <div className={storageReport.mismatchCount ? 'has-issue' : ''}><strong>{storageReport.mismatchCount}</strong><span>不一致</span></div>
+            <div className={storageReport.orphanCount ? 'has-issue' : ''}><strong>{storageReport.orphanCount}</strong><span>孤儿文件</span></div>
+            <p>数据库 {formatBytes(storageReport.expectedBytes)} · 磁盘 {formatBytes(storageReport.actualBytes)} · {storageReport.deep ? '已做 SHA-256 深度校验' : '快速检查'} · {formatRelativeTime(storageReport.checkedAt)}</p>
+            {storageReport.issues.length > 0 && <details><summary>查看前 {storageReport.issues.length} 个问题</summary><ul>{storageReport.issues.map((issue, index) => <li key={`${issue.path}-${index}`}>{storageIssueLabel(issue.issue)}：<code>{issue.path}</code></li>)}</ul></details>}
+          </div>
+        )}
+        <p className="backup-hint">一致性无误后，在 Unraid 终端运行 <code>sh scripts/backup.sh</code> 创建停写快照；恢复必须使用 <code>sh scripts/restore.sh 快照名 --yes</code>。</p>
+      </section>
+
       <section className="jobs-panel">
         <div className="section-title"><div><p className="eyebrow">导入审计</p><h2>最近任务</h2></div></div>
         <div className="job-list">
           {importJobs.slice(0, 8).map((job) => (
             <div className="job-row" key={job.id}><span className={`job-state ${job.state}`}>{job.state}</span><strong>{job.sourceName}</strong><span>{job.warnings?.join('；') || '无警告'}</span></div>
+          ))}
+        </div>
+      </section>
+
+      <section className="jobs-panel audit-panel">
+        <div className="section-title"><div><p className="eyebrow">安全审计</p><h2>最近操作</h2></div><span className="muted">登录事件与管理员写操作</span></div>
+        <div className="job-list">
+          {auditEvents.length === 0 && <div className="job-empty">暂无审计事件</div>}
+          {auditEvents.slice(0, 20).map((event) => (
+            <div className="job-row audit-row" key={event.id}>
+              <span className={`job-state ${event.statusCode >= 400 ? 'failed' : 'completed'}`}>{event.statusCode}</span>
+              <span><strong>{auditActionLabel(event.action)}</strong><small>{event.actorName || '未知账号'} · {event.clientIp || '未知地址'}</small></span>
+              <span>{formatRelativeTime(event.createdAt)}</span>
+            </div>
           ))}
         </div>
       </section>
@@ -314,4 +367,24 @@ function jobSourceLabel(job: BackgroundJob): string {
 
 function uploadStateLabel(state: UploadState): string {
   return { queued: '等待', uploading: '上传', processing: '处理', completed: '完成', duplicate: '重复', failed: '失败' }[state]
+}
+
+function storageIssueLabel(issue: string): string {
+  return { missing: '文件缺失', size_mismatch: '大小不符', checksum_mismatch: '校验值不符', unsafe_path: '路径不安全', orphaned: '数据库外文件' }[issue] ?? issue
+}
+
+function auditActionLabel(action: string): string {
+  if (action === 'auth.login.succeeded') return '登录成功'
+  if (action === 'auth.login.failed') return '登录失败'
+  if (action === 'auth.login.blocked') return '登录被限流'
+  const labels: Record<string, string> = {
+    'POST /api/v1/users': '创建用户',
+    'POST /api/v1/book-files': '上传书籍',
+    'PUT /api/v1/editions/{id}/review': '确认书目分类',
+    'POST /api/v1/editions/{id}/ai-classify': '请求 AI 分类',
+    'POST /api/v1/editions/{id}/bibliography-search': '查询外部书目',
+    'POST /api/v1/background-jobs/{id}/retry': '重试后台任务',
+    'POST /api/v1/calibre/import': '启动 Calibre 迁移',
+  }
+  return labels[action] ?? action
 }

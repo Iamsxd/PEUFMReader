@@ -74,4 +74,25 @@ services:
       - no-new-privileges:true
     restart: unless-stopped
 
+  backup:
+    image: postgres:18-alpine
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: peufmreader
+      PGDATABASE: peufmreader
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    user: "${PUID:-99}:${PGID:-100}"
+    volumes:
+      - ${PEUFM_DATA_ROOT:-./data}/library:/restore/library
+      - ${PEUFM_DATA_ROOT:-./data}/cache:/restore/cache
+      - ${PEUFM_IMPORT_ROOT:-./data/import}:/restore/import
+      - ${PEUFM_BACKUP_ROOT:-./backups}:/backup
+      - ./scripts:/tools:ro
+    entrypoint: ["/bin/sh", "/tools/backup-container.sh"]
+    restart: "no"
+
 volumes: {}

@@ -111,6 +111,7 @@ func (a *API) routes() {
 	a.mux.Handle("GET /api/v1/import-jobs", a.requireAuth(http.HandlerFunc(a.listImportJobs), "admin", false))
 	a.mux.Handle("GET /api/v1/background-jobs", a.requireAuth(http.HandlerFunc(a.listBackgroundJobs), "admin", false))
 	a.mux.Handle("GET /api/v1/audit-events", a.requireAuth(http.HandlerFunc(a.listAuditEvents), "admin", false))
+	a.mux.Handle("GET /api/v1/system/storage", a.requireAuth(http.HandlerFunc(a.storageAudit), "admin", false))
 	a.mux.Handle("POST /api/v1/background-jobs/{id}/retry", a.requireAuth(http.HandlerFunc(a.retryBackgroundJob), "admin", true))
 	a.mux.Handle("GET /api/v1/calibre/preview", a.requireAuth(http.HandlerFunc(a.previewCalibre), "admin", false))
 	a.mux.Handle("POST /api/v1/calibre/import", a.requireAuth(http.HandlerFunc(a.importCalibre), "admin", true))
@@ -794,6 +795,26 @@ func (a *API) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (a *API) storageAudit(w http.ResponseWriter, r *http.Request) {
+	records, err := a.store.ListStorageRecords(r.Context())
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	expected := make([]library.ExpectedFile, 0, len(records))
+	for _, record := range records {
+		expected = append(expected, library.ExpectedFile{
+			BookFileID: record.BookFileID, Path: record.Path, SizeBytes: record.SizeBytes, SHA256: record.SHA256,
+		})
+	}
+	report, err := a.library.Audit(expected, r.URL.Query().Get("deep") == "true")
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
 }
 
 func (a *API) retryBackgroundJob(w http.ResponseWriter, r *http.Request) {

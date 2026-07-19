@@ -9,6 +9,7 @@ web/vite.config.js
 web/vite.config.d.ts
 *.log
 data/
+backups/
 tmp/
 server/peufmreader
 server/peufmreader.exe

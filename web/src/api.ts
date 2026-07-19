@@ -1,4 +1,4 @@
-import type { BackgroundJob, BibliographySearchResult, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Session, User } from './types'
+import type { AuditEvent, BackgroundJob, BibliographySearchResult, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Session, StorageAuditReport, User } from './types'
 
 interface ErrorBody {
   error?: { code?: string; message?: string }
@@ -147,6 +147,15 @@ class APIClient {
   async listBackgroundJobs(): Promise<BackgroundJob[]> {
     const result = await this.request<{ items: BackgroundJob[] }>('/api/v1/background-jobs')
     return result.items
+  }
+
+  async listAuditEvents(): Promise<AuditEvent[]> {
+    const result = await this.request<{ items: AuditEvent[] }>('/api/v1/audit-events')
+    return result.items
+  }
+
+  auditStorage(deep = false): Promise<StorageAuditReport> {
+    return this.request(`/api/v1/system/storage${deep ? '?deep=true' : ''}`)
   }
 
   retryBackgroundJob(jobID: number): Promise<BackgroundJob> {

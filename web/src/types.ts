@@ -214,6 +214,36 @@ export interface BackgroundJob {
   completedAt?: string
 }
 
+export interface AuditEvent {
+  id: number
+  actorId?: number
+  actorName: string
+  action: string
+  clientIp: string
+  statusCode: number
+  details: Record<string, unknown>
+  createdAt: string
+}
+
+export interface StorageIssue {
+  bookFileId?: number
+  path: string
+  issue: 'missing' | 'size_mismatch' | 'checksum_mismatch' | 'unsafe_path' | 'orphaned' | string
+}
+
+export interface StorageAuditReport {
+  checkedAt: string
+  deep: boolean
+  databaseFileCount: number
+  diskFileCount: number
+  expectedBytes: number
+  actualBytes: number
+  missingCount: number
+  mismatchCount: number
+  orphanCount: number
+  issues: StorageIssue[]
+}
+
 export interface CalibreRecord {
   sourcePath: string
   metadataPath: string
