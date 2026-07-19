@@ -1,6 +1,7 @@
 declare module 'epubjs' {
   export interface LocationCollection {
     generate(chars?: number): Promise<string[]>
+    cfiFromPercentage(percentage: number): string
     percentageFromCfi(cfi: string): number
   }
 
@@ -23,7 +24,7 @@ declare module 'epubjs' {
   export interface Rendition {
     themes: ThemeManager
     hooks: { content: Hook }
-    display(target?: string): Promise<unknown>
+    display(target?: string | number): Promise<unknown>
     prev(): Promise<unknown>
     next(): Promise<unknown>
     flow(flow: 'paginated' | 'scrolled-continuous'): void
@@ -35,9 +36,41 @@ declare module 'epubjs' {
 
   export interface Book {
     ready: Promise<Book>
+    loaded: { navigation: Promise<Navigation> }
+    spine: Spine
     locations: LocationCollection
+    load(path: string): Promise<Document>
     renderTo(element: Element, options: Record<string, unknown>): Rendition
     destroy(): void
+  }
+
+  export interface NavigationItem {
+    id?: string
+    href: string
+    label: string
+    subitems: NavigationItem[]
+  }
+
+  export interface Navigation {
+    toc: NavigationItem[]
+  }
+
+  export interface SectionSearchResult {
+    cfi: string
+    excerpt: string
+  }
+
+  export interface Section {
+    index: number
+    href: string
+    linear: boolean
+    load(request: (path: string) => Promise<Document>): Promise<unknown>
+    find(query: string): SectionSearchResult[]
+    unload(): void
+  }
+
+  export interface Spine {
+    spineItems: Section[]
   }
 
   export interface BookOptions {

@@ -17,8 +17,10 @@ export function Reader({ book, onClose }: Props) {
   const [error, setError] = useState('')
   const [readerChromeVisible, setReaderChromeVisible] = useState(true)
   const readerChromeTimerRef = useRef<number | null>(null)
+  const stateRef = useRef<ReadingState | null>(null)
   const isImmersiveReader = book.format === 'pdf' || book.format === 'epub'
   useReadingSession(book.id)
+  stateRef.current = state
 
   const clearReaderChromeTimer = useCallback(() => {
     if (readerChromeTimerRef.current !== null) {
@@ -70,12 +72,32 @@ export function Reader({ book, onClose }: Props) {
   }, [book.id, clearReaderChromeTimer, hideReaderChrome, isImmersiveReader, showReaderChrome])
 
   async function save(position: Record<string, unknown>, overallProgress: number) {
+    const previousStatus = stateRef.current?.status
     const next = await api.saveProgress(book.id, {
       position,
       overallProgress,
-      status: overallProgress >= 0.999 ? 'finished' : 'reading',
+      status: overallProgress >= 0.999
+        ? 'finished'
+        : previousStatus === 'finished' || previousStatus === 'abandoned'
+          ? previousStatus
+          : 'reading',
     })
     setState(next)
+  }
+
+  async function changeStatus(status: ReadingState['status']) {
+    if (!state) return
+    try {
+      const next = await api.saveProgress(book.id, {
+        position: state.position,
+        overallProgress: state.overallProgress,
+        status,
+      })
+      setState(next)
+      setError('')
+    } catch {
+      setError('无法更新阅读状态。')
+    }
   }
 
   return (
@@ -109,6 +131,8 @@ export function Reader({ book, onClose }: Props) {
               onChromeActivity={showReaderChrome}
               onHideChrome={hideReaderChrome}
               onProgress={save}
+              readingStatus={state.status}
+              onStatusChange={changeStatus}
             />
           )}
           {state && book.format === 'epub' && (
@@ -119,6 +143,8 @@ export function Reader({ book, onClose }: Props) {
               onChromeActivity={showReaderChrome}
               onHideChrome={hideReaderChrome}
               onProgress={save}
+              readingStatus={state.status}
+              onStatusChange={changeStatus}
             />
           )}
         </Suspense>

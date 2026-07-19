@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   calculatePDFScale,
+  createPDFSearchSnippet,
   describePDFError,
   fetchPDFBytes,
   getPDFViewPages,
@@ -41,6 +42,12 @@ describe('PDF reading model', () => {
       zoomPercent: 300,
     })
     expect(parsePDFPreferences('not-json')).toEqual({ flow: 'paged', layout: 'single', zoomMode: 'fit-width', zoomPercent: 100 })
+  })
+
+  it('creates compact, whitespace-normalized search snippets', () => {
+    expect(createPDFSearchSnippet('前文   关键字\n后文', '关键字')).toBe('前文 关键字 后文')
+    expect(createPDFSearchSnippet('没有匹配内容', '目标')).toBe('')
+    expect(createPDFSearchSnippet(`${'前'.repeat(60)}目标${'后'.repeat(60)}`, '目标', 10)).toBe(`…${'前'.repeat(10)}目标${'后'.repeat(10)}…`)
   })
 })
 

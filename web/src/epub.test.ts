@@ -2,6 +2,8 @@ import ePub from 'epubjs'
 import { describe, expect, it, vi } from 'vitest'
 import {
   clampEPUBFontSize,
+  flattenEPUBNavigation,
+  getEPUBRestoreTargets,
   normalizeEPUBWheelDelta,
   parseEPUBPreferences,
   resolveEPUBProgress,
@@ -49,5 +51,19 @@ describe('EPUB reading preferences', () => {
     expect(resolveEPUBProgress(undefined, 0.25, 0.42)).toBe(0.25)
     expect(resolveEPUBProgress(0.7, 0.25, 0.42)).toBe(0.7)
     expect(resolveEPUBProgress(-1, Number.NaN, 0.42)).toBe(0.42)
+  })
+
+  it('flattens nested navigation without losing chapter depth', () => {
+    expect(flattenEPUBNavigation([{ href: 'one.xhtml', label: ' 第一章 ', subitems: [{ href: 'one-1.xhtml', label: '第一节' }] }]))
+      .toEqual([
+        { id: '0-0-one.xhtml', href: 'one.xhtml', label: '第一章', depth: 0 },
+        { id: '1-0-one-1.xhtml', href: 'one-1.xhtml', label: '第一节', depth: 1 },
+      ])
+  })
+
+  it('builds EPUB restore targets from the most precise to the broadest anchor', () => {
+    expect(getEPUBRestoreTargets({ cfi: 'epubcfi(/6/2)', href: 'chapter.xhtml', chapterIndex: 4 }))
+      .toEqual(['epubcfi(/6/2)', 'chapter.xhtml', 4])
+    expect(getEPUBRestoreTargets({ cfi: '', href: 'chapter.xhtml', chapterIndex: -1 })).toEqual(['chapter.xhtml'])
   })
 })

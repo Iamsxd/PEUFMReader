@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 import workerURL from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 import { api } from '../../api'
@@ -6,6 +6,7 @@ import {
   calculatePDFScale,
   clampPDFPage,
   clampPDFZoom,
+  createPDFSearchSnippet,
   describePDFError,
   fetchPDFBytes,
   getPDFViewPages,
@@ -27,6 +28,43 @@ interface Props {
   onChromeActivity: () => void
   onHideChrome: () => void
   onProgress: (position: Record<string, unknown>, progress: number) => Promise<void>
+  readingStatus: ReadingState['status']
+  onStatusChange: (status: ReadingState['status']) => Promise<void>
+}
+
+type PDFOutlineNode = Awaited<ReturnType<pdfjs.PDFDocumentProxy['getOutline']>>[number]
+
+interface PDFOutlineEntry {
+  id: string
+  title: string
+  page: number | null
+  depth: number
+}
+
+interface PDFSearchResult {
+  page: number
+  excerpt: string
+}
+
+type PDFSidePanel = 'toc' | 'search' | null
+
+async function resolvePDFOutline(document: pdfjs.PDFDocumentProxy, nodes: PDFOutlineNode[], depth = 0): Promise<PDFOutlineEntry[]> {
+  const entries: PDFOutlineEntry[] = []
+  for (const [index, node] of nodes.entries()) {
+    let destination = node.dest
+    if (typeof destination === 'string') destination = await document.getDestination(destination)
+    let page: number | null = null
+    if (Array.isArray(destination) && destination[0]) {
+      try {
+        page = await document.getPageIndex(destination[0]) + 1
+      } catch {
+        // Some documents contain stale or external outline destinations.
+      }
+    }
+    entries.push({ id: `${depth}-${index}-${node.title}`, title: node.title || `第 ${page ?? '?'} 页`, page, depth })
+    if (node.items?.length) entries.push(...await resolvePDFOutline(document, node.items, depth + 1))
+  }
+  return entries
 }
 
 function readPreferences(): PDFReaderPreferences {
@@ -37,10 +75,11 @@ function readPreferences(): PDFReaderPreferences {
   }
 }
 
-export function PDFReader({ book, initialState, chromeVisible, onChromeActivity, onHideChrome, onProgress }: Props) {
+export function PDFReader({ book, initialState, chromeVisible, onChromeActivity, onHideChrome, onProgress, readingStatus, onStatusChange }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const loadingTaskRef = useRef<pdfjs.PDFDocumentLoadingTask | null>(null)
   const visiblePagesRef = useRef(new Map<number, number>())
+  const searchRunRef = useRef(0)
   const initialPage = typeof initialState.position.pageIndex === 'number' ? Number(initialState.position.pageIndex) + 1 : 1
   const [pdfDocument, setPDFDocument] = useState<pdfjs.PDFDocumentProxy | null>(null)
   const [pageNumber, setPageNumber] = useState(Math.max(1, initialPage))
@@ -50,6 +89,13 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
   const [isNarrow, setIsNarrow] = useState(window.innerWidth <= 720)
   const [preferences, setPreferences] = useState(readPreferences)
   const [error, setError] = useState('')
+  const [sidePanel, setSidePanel] = useState<PDFSidePanel>(null)
+  const [outline, setOutline] = useState<PDFOutlineEntry[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<PDFSearchResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [searchProgress, setSearchProgress] = useState('')
+  const [searchError, setSearchError] = useState('')
 
   const pageCount = pdfDocument?.numPages ?? 0
   const effectiveLayout: PDFPageLayout = isNarrow ? 'single' : preferences.layout
@@ -73,8 +119,14 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
     let disposed = false
     const controller = new AbortController()
     visiblePagesRef.current.clear()
+    searchRunRef.current += 1
     setError('')
     setPDFDocument(null)
+    setOutline([])
+    setSearchResults([])
+    setSearching(false)
+    setSearchProgress('')
+    setSearchError('')
 
     void fetchPDFBytes(api.contentURL(book.id), controller.signal).then((bytes) => {
       if (disposed) return null
@@ -89,6 +141,11 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
       setBasePageSize({ width: viewport.width, height: viewport.height })
       setPageNumber(clampPDFPage(initialPage, document.numPages))
       setPDFDocument(document)
+      void document.getOutline().then((nodes) => resolvePDFOutline(document, nodes)).then((entries) => {
+        if (!disposed) setOutline(entries)
+      }).catch((reason: unknown) => {
+        if (!disposed) console.warn('PDF outline loading failed.', reason)
+      })
     }).catch((reason: unknown) => {
       if (controller.signal.aborted) return
       console.error('PDF loading failed', reason)
@@ -97,6 +154,7 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
 
     return () => {
       disposed = true
+      searchRunRef.current += 1
       controller.abort()
       const document = loadingTaskRef.current
       loadingTaskRef.current = null
@@ -217,6 +275,49 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
     }
   }
 
+  function toggleSidePanel(panel: Exclude<PDFSidePanel, null>) {
+    setSidePanel((current) => current === panel ? null : panel)
+    onChromeActivity()
+  }
+
+  function selectPage(page: number) {
+    goToPage(page)
+    setSidePanel(null)
+  }
+
+  async function searchPDF(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const query = searchQuery.trim()
+    if (!pdfDocument || !query) return
+
+    const run = ++searchRunRef.current
+    const results: PDFSearchResult[] = []
+    setSearching(true)
+    setSearchResults([])
+    setSearchError('')
+    try {
+      for (let page = 1; page <= pdfDocument.numPages; page += 1) {
+        if (run !== searchRunRef.current) return
+        setSearchProgress(`正在搜索 ${page} / ${pdfDocument.numPages}`)
+        const pageProxy = await pdfDocument.getPage(page)
+        const content = await pageProxy.getTextContent()
+        const text = content.items.map((item) => 'str' in item ? item.str : '').join(' ')
+        pageProxy.cleanup()
+        const excerpt = createPDFSearchSnippet(text, query)
+        if (excerpt) results.push({ page, excerpt })
+        if (results.length >= 100) break
+      }
+      if (run !== searchRunRef.current) return
+      setSearchResults(results)
+      setSearchProgress(results.length >= 100 ? '已显示前 100 条结果' : `找到 ${results.length} 页匹配内容`)
+    } catch (reason) {
+      console.error('PDF search failed', reason)
+      if (run === searchRunRef.current) setSearchError('书内搜索失败，请稍后重试。')
+    } finally {
+      if (run === searchRunRef.current) setSearching(false)
+    }
+  }
+
   return (
     <div className="pdf-reader">
       <div
@@ -228,6 +329,11 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
         onFocusCapture={onChromeActivity}
       >
         <button className="reader-toolbar-collapse" onClick={onHideChrome} title="收起阅读工具" aria-label="收起阅读工具">收起</button>
+        <div className="reader-tool-group" aria-label="书籍导航">
+          <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={() => toggleSidePanel('toc')}>目录</button>
+          <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={() => toggleSidePanel('search')}>书内搜索</button>
+        </div>
+        <span className="reader-toolbar-divider" />
         <div className="reader-tool-group" aria-label="阅读方式">
           <button className={preferences.flow === 'paged' ? 'active' : ''} aria-pressed={preferences.flow === 'paged'} onClick={() => setFlow('paged')}>分页</button>
           <button className={preferences.flow === 'continuous' ? 'active' : ''} aria-pressed={preferences.flow === 'continuous'} onClick={() => setFlow('continuous')}>连续滚动</button>
@@ -238,6 +344,13 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
           <button className={preferences.layout === 'spread' ? 'active' : ''} aria-pressed={preferences.layout === 'spread'} disabled={isNarrow} title={isNarrow ? '窄屏设备使用单页显示' : '双页书籍模式'} onClick={() => setLayout('spread')}>双页书籍</button>
         </div>
         <span className="reader-toolbar-divider" />
+        <label className="reader-status-control">
+          <span>状态</span>
+          <select value={readingStatus} onChange={(event) => void onStatusChange(event.target.value as ReadingState['status'])}>
+            <option value="unread">未读</option><option value="reading">在读</option><option value="paused">暂停</option><option value="finished">读完</option><option value="abandoned">放弃</option>
+          </select>
+        </label>
+        <span className="reader-toolbar-divider" />
         <div className="reader-tool-group reader-zoom-tools" aria-label="页面缩放">
           <button title="缩小（-）" aria-label="缩小" onClick={() => updateZoom(-10)}>−</button>
           <button className="reader-zoom-value" title="恢复 100%" onClick={() => setPreferences((current) => ({ ...current, zoomMode: 'custom', zoomPercent: 100 }))}>{displayedZoom}%</button>
@@ -247,6 +360,41 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
         </div>
         <span className="reader-shortcuts">← → 翻页 · + − 缩放</span>
       </div>
+
+      {sidePanel && (
+        <aside className="reader-side-panel" aria-label={sidePanel === 'toc' ? 'PDF 目录' : 'PDF 书内搜索'} onPointerDown={onChromeActivity}>
+          <header>
+            <strong>{sidePanel === 'toc' ? '目录' : '书内搜索'}</strong>
+            <button onClick={() => setSidePanel(null)} aria-label="关闭侧栏">×</button>
+          </header>
+          {sidePanel === 'toc' ? (
+            <div className="reader-toc-list">
+              {outline.length === 0 && <p className="reader-panel-empty">这份 PDF 没有可用目录。</p>}
+              {outline.map((entry) => (
+                <button key={entry.id} disabled={entry.page === null} style={{ paddingLeft: `${14 + entry.depth * 16}px` }} onClick={() => entry.page && selectPage(entry.page)}>
+                  <span>{entry.title}</span>{entry.page && <small>{entry.page}</small>}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="reader-search-panel">
+              <form onSubmit={(event) => void searchPDF(event)}>
+                <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="搜索正文" aria-label="搜索 PDF 正文" />
+                <button type="submit" disabled={searching || !searchQuery.trim()}>{searching ? '搜索中' : '搜索'}</button>
+              </form>
+              {(searchProgress || searchError) && <p className={searchError ? 'reader-panel-error' : 'reader-search-progress'}>{searchError || searchProgress}</p>}
+              <div className="reader-search-results">
+                {searchResults.map((result) => (
+                  <button key={result.page} onClick={() => selectPage(result.page)}>
+                    <strong>第 {result.page} 页</strong>
+                    <span>{result.excerpt}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </aside>
+      )}
 
       {error && <div className="notice error pdf-error">{error}</div>}
       {!pdfDocument && !error && <div className="pdf-loading">正在加载 PDF…</div>}

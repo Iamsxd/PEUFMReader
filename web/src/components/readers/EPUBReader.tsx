@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ePub, { type Book, type Contents, type Rendition } from 'epubjs'
 import { api } from '../../api'
 import {
   clampEPUBFontSize,
   EPUB_PREFERENCES_KEY,
+  flattenEPUBNavigation,
+  getEPUBRestoreTargets,
   normalizeEPUBWheelDelta,
   parseEPUBPreferences,
   resolveEPUBProgress,
 } from '../../epub'
-import type { EPUBPageFlow, EPUBPageLayout, EPUBReaderPreferences, EPUBTheme } from '../../epub'
+import type { EPUBPageFlow, EPUBPageLayout, EPUBReaderPreferences, EPUBTheme, EPUBTOCEntry } from '../../epub'
 import type { BookFile, ReadingState } from '../../types'
 import { clampProgress } from '../../utils'
 
@@ -19,13 +21,23 @@ interface Props {
   onChromeActivity: () => void
   onHideChrome: () => void
   onProgress: (position: Record<string, unknown>, progress: number) => Promise<void>
+  readingStatus: ReadingState['status']
+  onStatusChange: (status: ReadingState['status']) => Promise<void>
 }
 
 interface RelocatedLocation {
-  start: { cfi: string; href?: string; percentage?: number }
+  start: { cfi: string; href?: string; index?: number; percentage?: number }
   atStart?: boolean
   atEnd?: boolean
 }
+
+interface EPUBSearchResult {
+  cfi: string
+  excerpt: string
+  sectionLabel: string
+}
+
+type EPUBSidePanel = 'toc' | 'search' | null
 
 const EPUB_THEMES: Record<EPUBTheme, Record<string, Record<string, string>>> = {
   paper: {
@@ -52,7 +64,7 @@ function readPreferences(): EPUBReaderPreferences {
   }
 }
 
-export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity, onHideChrome, onProgress }: Props) {
+export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity, onHideChrome, onProgress, readingStatus, onStatusChange }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const renditionRef = useRef<Rendition | null>(null)
   const bookRef = useRef<Book | null>(null)
@@ -61,6 +73,7 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
   const wheelAccumulatorRef = useRef(0)
   const wheelLockedUntilRef = useRef(0)
   const locationsReadyRef = useRef(false)
+  const searchRunRef = useRef(0)
   const lastProgressRef = useRef(clampProgress(initialState.overallProgress))
   const [preferences, setPreferences] = useState(readPreferences)
   const preferencesRef = useRef(preferences)
@@ -70,6 +83,13 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
   const [atEnd, setAtEnd] = useState(initialState.overallProgress >= 0.999)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [sidePanel, setSidePanel] = useState<EPUBSidePanel>(null)
+  const [toc, setTOC] = useState<EPUBTOCEntry[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<EPUBSearchResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [searchProgress, setSearchProgress] = useState('')
+  const [searchError, setSearchError] = useState('')
   preferencesRef.current = preferences
 
   const effectiveLayout: EPUBPageLayout = preferences.flow === 'continuous' || isNarrow ? 'single' : preferences.layout
@@ -144,6 +164,12 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
     setProgress(clampProgress(initialState.overallProgress))
     lastProgressRef.current = clampProgress(initialState.overallProgress)
     locationsReadyRef.current = false
+    searchRunRef.current += 1
+    setTOC([])
+    setSearchResults([])
+    setSearching(false)
+    setSearchProgress('')
+    setSearchError('')
     setAtStart(initialState.overallProgress <= 0)
     setAtEnd(initialState.overallProgress >= 0.999)
     const epub = ePub(api.contentURL(book.id), { requestCredentials: true, openAs: 'epub' })
@@ -178,7 +204,6 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
     }
     rendition.hooks.content.register(attachContentEvents)
 
-    const initialCFI = typeof initialState.position.cfi === 'string' ? initialState.position.cfi : undefined
     const displayTimeout = window.setTimeout(() => {
       if (disposed) return
       setLoading(false)
@@ -186,23 +211,39 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
     }, EPUB_DISPLAY_TIMEOUT_MS)
     void epub.ready.then(async () => {
       if (disposed) return
-      try {
-        await rendition.display(initialCFI)
-      } catch (reason) {
-        if (!initialCFI) throw reason
-        console.warn('Saved EPUB location is no longer valid; opening the first section instead.', reason)
-        await rendition.display()
+      let restored = false
+      for (const target of getEPUBRestoreTargets(initialState.position)) {
+        try {
+          await rendition.display(target)
+          restored = true
+          break
+        } catch (reason) {
+          console.warn('Saved EPUB restore target is no longer valid.', target, reason)
+        }
       }
+      if (!restored && initialState.overallProgress > 0) {
+        try {
+          await epub.locations.generate(1600)
+          locationsReadyRef.current = true
+          await rendition.display(epub.locations.cfiFromPercentage(clampProgress(initialState.overallProgress)))
+          restored = true
+        } catch (reason) {
+          console.warn('EPUB percentage restore failed; opening the first section.', reason)
+        }
+      }
+      if (!restored) await rendition.display()
       if (disposed) return
       window.clearTimeout(displayTimeout)
       setError('')
       setLoading(false)
 
-      void epub.locations.generate(1600).then(() => {
-        if (!disposed) locationsReadyRef.current = true
-      }).catch((reason: unknown) => {
-        if (!disposed) console.warn('EPUB location generation failed; using rendition progress.', reason)
-      })
+      if (!locationsReadyRef.current) {
+        void epub.locations.generate(1600).then(() => {
+          if (!disposed) locationsReadyRef.current = true
+        }).catch((reason: unknown) => {
+          if (!disposed) console.warn('EPUB location generation failed; using rendition progress.', reason)
+        })
+      }
     }).catch((reason: unknown) => {
       if (disposed) return
       window.clearTimeout(displayTimeout)
@@ -229,7 +270,12 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
       setAtEnd(Boolean(location.atEnd) || nextProgress >= 0.999)
       if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
       saveTimerRef.current = window.setTimeout(() => {
-        void onProgress({ cfi, href: location.start.href ?? '', progression: nextProgress }, nextProgress).catch(() => setError('阅读位置保存失败。'))
+        void onProgress({
+          cfi,
+          href: location.start.href ?? '',
+          chapterIndex: location.start.index,
+          progression: nextProgress,
+        }, nextProgress).catch(() => setError('阅读位置保存失败。'))
       }, 500)
     }
     const contentPointerMove = (event: MouseEvent) => {
@@ -239,9 +285,15 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
     rendition.on('keydown', handleKeyDown)
     rendition.on('mousemove', contentPointerMove)
     host.addEventListener('wheel', handleWheel, { passive: false })
+    void epub.loaded.navigation.then((navigation) => {
+      if (!disposed) setTOC(flattenEPUBNavigation(navigation.toc))
+    }).catch((reason: unknown) => {
+      if (!disposed) console.warn('EPUB navigation loading failed.', reason)
+    })
 
     return () => {
       disposed = true
+      searchRunRef.current += 1
       window.clearTimeout(displayTimeout)
       if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
       if (wheelResetTimerRef.current !== null) window.clearTimeout(wheelResetTimerRef.current)
@@ -320,6 +372,58 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
     setPreferences((current) => ({ ...current, theme }))
   }
 
+  function toggleSidePanel(panel: Exclude<EPUBSidePanel, null>) {
+    setSidePanel((current) => current === panel ? null : panel)
+    onChromeActivity()
+  }
+
+  function displayLocation(target: string | number) {
+    void renditionRef.current?.display(target).then(() => setSidePanel(null)).catch(() => setSearchError('无法定位到该内容。'))
+  }
+
+  async function searchEPUB(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const query = searchQuery.trim()
+    const epub = bookRef.current
+    if (!epub || !query) return
+
+    const run = ++searchRunRef.current
+    setSearching(true)
+    setSearchError('')
+    setSearchResults([])
+    const results: EPUBSearchResult[] = []
+    const sections = epub.spine.spineItems.filter((section) => section.linear !== false)
+    const tocLabels = new Map(toc.map((entry) => [entry.href.split('#')[0], entry.label]))
+    try {
+      for (const [index, section] of sections.entries()) {
+        if (run !== searchRunRef.current) return
+        setSearchProgress(`正在搜索 ${index + 1} / ${sections.length}`)
+        await section.load(epub.load.bind(epub))
+        try {
+          for (const match of section.find(query)) {
+            results.push({
+              cfi: match.cfi,
+              excerpt: match.excerpt,
+              sectionLabel: tocLabels.get(section.href.split('#')[0]) ?? `第 ${section.index + 1} 章`,
+            })
+            if (results.length >= 100) break
+          }
+        } finally {
+          section.unload()
+        }
+        if (results.length >= 100) break
+      }
+      if (run !== searchRunRef.current) return
+      setSearchResults(results)
+      setSearchProgress(results.length >= 100 ? '已显示前 100 条结果' : `找到 ${results.length} 条结果`)
+    } catch (reason) {
+      console.error('EPUB search failed', reason)
+      if (run === searchRunRef.current) setSearchError('书内搜索失败，请稍后重试。')
+    } finally {
+      if (run === searchRunRef.current) setSearching(false)
+    }
+  }
+
   return (
     <div className={`epub-reader theme-${preferences.theme}`}>
       <div
@@ -331,6 +435,11 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
         onFocusCapture={onChromeActivity}
       >
         <button className="reader-toolbar-collapse" onClick={onHideChrome} title="收起阅读工具" aria-label="收起阅读工具">收起</button>
+        <div className="reader-tool-group" aria-label="书籍导航">
+          <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={() => toggleSidePanel('toc')}>目录</button>
+          <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={() => toggleSidePanel('search')}>书内搜索</button>
+        </div>
+        <span className="reader-toolbar-divider" />
         <div className="reader-tool-group" aria-label="阅读方式">
           <button className={preferences.flow === 'paged' ? 'active' : ''} aria-pressed={preferences.flow === 'paged'} onClick={() => setFlow('paged')}>分页</button>
           <button className={preferences.flow === 'continuous' ? 'active' : ''} aria-pressed={preferences.flow === 'continuous'} onClick={() => setFlow('continuous')}>连续滚动</button>
@@ -347,6 +456,13 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
           >双页书籍</button>
         </div>
         <span className="reader-toolbar-divider" />
+        <label className="reader-status-control">
+          <span>状态</span>
+          <select value={readingStatus} onChange={(event) => void onStatusChange(event.target.value as ReadingState['status'])}>
+            <option value="unread">未读</option><option value="reading">在读</option><option value="paused">暂停</option><option value="finished">读完</option><option value="abandoned">放弃</option>
+          </select>
+        </label>
+        <span className="reader-toolbar-divider" />
         <div className="reader-tool-group reader-font-tools" aria-label="正文字号">
           <button title="缩小字号（-）" aria-label="缩小字号" onClick={() => updateFontSize(-10)}>A−</button>
           <button className="reader-font-value" title="恢复默认字号" onClick={() => setPreferences((current) => ({ ...current, fontSize: 100 }))}>{preferences.fontSize}%</button>
@@ -360,6 +476,39 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
         </div>
         <span className="reader-shortcuts">{preferences.flow === 'paged' ? '滚轮 / ← → 翻页 · + − 字号' : '滚轮连续阅读 · + − 字号'}</span>
       </div>
+
+      {sidePanel && (
+        <aside className="reader-side-panel" aria-label={sidePanel === 'toc' ? 'EPUB 目录' : 'EPUB 书内搜索'} onPointerDown={onChromeActivity}>
+          <header>
+            <strong>{sidePanel === 'toc' ? '目录' : '书内搜索'}</strong>
+            <button onClick={() => setSidePanel(null)} aria-label="关闭侧栏">×</button>
+          </header>
+          {sidePanel === 'toc' ? (
+            <div className="reader-toc-list">
+              {toc.length === 0 && <p className="reader-panel-empty">这本书没有可用目录。</p>}
+              {toc.map((entry) => (
+                <button key={entry.id} style={{ paddingLeft: `${14 + entry.depth * 16}px` }} onClick={() => displayLocation(entry.href)}>{entry.label}</button>
+              ))}
+            </div>
+          ) : (
+            <div className="reader-search-panel">
+              <form onSubmit={(event) => void searchEPUB(event)}>
+                <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="搜索正文" aria-label="搜索 EPUB 正文" />
+                <button type="submit" disabled={searching || !searchQuery.trim()}>{searching ? '搜索中' : '搜索'}</button>
+              </form>
+              {(searchProgress || searchError) && <p className={searchError ? 'reader-panel-error' : 'reader-search-progress'}>{searchError || searchProgress}</p>}
+              <div className="reader-search-results">
+                {searchResults.map((result, index) => (
+                  <button key={`${result.cfi}-${index}`} onClick={() => displayLocation(result.cfi)}>
+                    <strong>{result.sectionLabel}</strong>
+                    <span>{result.excerpt}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </aside>
+      )}
 
       {error && <div className="notice error epub-error">{error}</div>}
       {loading && !error && <div className="epub-loading">正在加载 EPUB…</div>}

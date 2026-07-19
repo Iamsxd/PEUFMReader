@@ -141,3 +141,14 @@ export function describePDFError(reason: unknown): string {
   }
   return `PDF 加载失败（${String(reason).replace(/\s+/g, ' ').slice(0, 240)}）。`
 }
+
+export function createPDFSearchSnippet(text: string, query: string, radius = 48): string {
+  const normalizedText = text.replace(/\s+/g, ' ').trim()
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  if (!normalizedText || !normalizedQuery) return ''
+  const index = normalizedText.toLocaleLowerCase().indexOf(normalizedQuery)
+  if (index < 0) return ''
+  const start = Math.max(0, index - radius)
+  const end = Math.min(normalizedText.length, index + query.trim().length + radius)
+  return `${start > 0 ? '…' : ''}${normalizedText.slice(start, end)}${end < normalizedText.length ? '…' : ''}`
+}

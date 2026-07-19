@@ -9,6 +9,20 @@ export interface EPUBReaderPreferences {
   theme: EPUBTheme
 }
 
+export interface EPUBNavigationItem {
+  id?: string
+  href: string
+  label: string
+  subitems?: EPUBNavigationItem[]
+}
+
+export interface EPUBTOCEntry {
+  id: string
+  href: string
+  label: string
+  depth: number
+}
+
 export const EPUB_PREFERENCES_KEY = 'peufmreader.epub.preferences.v1'
 export const EPUB_MIN_FONT_SIZE = 70
 export const EPUB_MAX_FONT_SIZE = 180
@@ -52,4 +66,23 @@ export function resolveEPUBProgress(generated: number | undefined, reported: num
     if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1) return value
   }
   return 0
+}
+
+export function flattenEPUBNavigation(items: EPUBNavigationItem[], depth = 0): EPUBTOCEntry[] {
+  const result: EPUBTOCEntry[] = []
+  for (const [index, item] of items.entries()) {
+    if (item.href && item.label.trim()) {
+      result.push({ id: item.id || `${depth}-${index}-${item.href}`, href: item.href, label: item.label.trim(), depth })
+    }
+    if (item.subitems?.length) result.push(...flattenEPUBNavigation(item.subitems, depth + 1))
+  }
+  return result
+}
+
+export function getEPUBRestoreTargets(position: Record<string, unknown>): Array<string | number> {
+  const targets: Array<string | number> = []
+  if (typeof position.cfi === 'string' && position.cfi.trim()) targets.push(position.cfi)
+  if (typeof position.href === 'string' && position.href.trim() && !targets.includes(position.href)) targets.push(position.href)
+  if (typeof position.chapterIndex === 'number' && Number.isInteger(position.chapterIndex) && position.chapterIndex >= 0) targets.push(position.chapterIndex)
+  return targets
 }
