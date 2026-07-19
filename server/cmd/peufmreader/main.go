@@ -20,6 +20,7 @@ import (
 	"peufmreader/internal/config"
 	"peufmreader/internal/database"
 	"peufmreader/internal/httpapi"
+	"peufmreader/internal/importinbox"
 	"peufmreader/internal/importing"
 	"peufmreader/internal/jobs"
 	"peufmreader/internal/library"
@@ -64,6 +65,16 @@ func main() {
 		os.Exit(1)
 	}
 	importService := importing.New(dataStore, libraryManager)
+	importManager, err := importinbox.NewManager(cfg.ImportRoot)
+	if err != nil {
+		logger.Error("import inbox setup failed", "error", err)
+		os.Exit(1)
+	}
+	adminUser, found, err := dataStore.GetActiveUserByUsername(ctx, cfg.AdminUsername)
+	if err != nil || !found {
+		logger.Error("import inbox actor setup failed", "found", found, "error", err)
+		os.Exit(1)
+	}
 	calibreScanner := calibre.NewScanner(cfg.CalibreRoot)
 	pdfProcessor := pdfassets.NewProcessor(pdfassets.Config{
 		OCRMode: cfg.PDFOCRMode, OCRLanguages: cfg.PDFOCRLanguages,
@@ -77,6 +88,7 @@ func main() {
 	workerID := fmt.Sprintf("%s-%d", hostname(), os.Getpid())
 	worker := jobs.New(dataStore, map[string]jobs.Handler{
 		calibre.ImportJobKind: calibre.ImportHandler(calibreScanner, importService),
+		importinbox.JobKind:   importinbox.Handler(importManager, importService),
 		pdfassets.JobKind:     pdfassets.Handler(dataStore, libraryManager, pdfProcessor),
 	}, logger, workerID)
 	workerDone := make(chan struct{})
@@ -84,6 +96,8 @@ func main() {
 		defer close(workerDone)
 		worker.Run(ctx)
 	}()
+	inboxWatcher := importinbox.NewWatcher(importManager, dataStore, adminUser.ID, cfg.ImportScanInterval, cfg.ImportStableAge, logger)
+	go inboxWatcher.Run(ctx)
 
 	advisor := classification.NewAdvisor(cfg.AIProvider, cfg.AIBaseURL, cfg.AIModel, cfg.AIAPIKey, cfg.AITimeout)
 	bibliographyProviders := make([]bibliography.Provider, 0, 2)

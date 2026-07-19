@@ -17,6 +17,7 @@ type fakeRepository struct {
 	found     bool
 	completed json.RawMessage
 	failed    error
+	progress  []int
 }
 
 func (f *fakeRepository) RequeueExpiredBackgroundJobs(context.Context) (int64, error) { return 0, nil }
@@ -28,6 +29,10 @@ func (f *fakeRepository) ClaimBackgroundJob(context.Context, string, time.Durati
 	return f.job, true, nil
 }
 func (f *fakeRepository) HeartbeatBackgroundJob(context.Context, int64, string, time.Duration) error {
+	return nil
+}
+func (f *fakeRepository) UpdateBackgroundJobProgress(_ context.Context, _ int64, _ string, progress int, _ string) error {
+	f.progress = append(f.progress, progress)
 	return nil
 }
 func (f *fakeRepository) CompleteBackgroundJob(_ context.Context, _ int64, _ string, result json.RawMessage) error {
@@ -42,7 +47,12 @@ func (f *fakeRepository) FailBackgroundJob(_ context.Context, _ store.Background
 func TestWorkerCompletesClaimedJob(t *testing.T) {
 	repository := &fakeRepository{found: true, job: store.BackgroundJob{ID: 7, Kind: "test", Attempts: 1}}
 	worker := New(repository, map[string]Handler{
-		"test": func(context.Context, store.BackgroundJob) (any, error) { return map[string]any{"ok": true}, nil },
+		"test": func(ctx context.Context, _ store.BackgroundJob) (any, error) {
+			if err := ReportProgress(ctx, 45, "halfway"); err != nil {
+				return nil, err
+			}
+			return map[string]any{"ok": true}, nil
+		},
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)), "worker-test")
 
 	processed, err := worker.RunOnce(context.Background())
@@ -51,6 +61,9 @@ func TestWorkerCompletesClaimedJob(t *testing.T) {
 	}
 	if string(repository.completed) != `{"ok":true}` {
 		t.Fatalf("unexpected result %s", repository.completed)
+	}
+	if len(repository.progress) != 1 || repository.progress[0] != 45 {
+		t.Fatalf("unexpected progress updates: %v", repository.progress)
 	}
 }
 

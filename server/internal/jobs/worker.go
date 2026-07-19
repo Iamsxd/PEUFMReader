@@ -15,11 +15,24 @@ type Repository interface {
 	RequeueExpiredBackgroundJobs(context.Context) (int64, error)
 	ClaimBackgroundJob(context.Context, string, time.Duration) (store.BackgroundJob, bool, error)
 	HeartbeatBackgroundJob(context.Context, int64, string, time.Duration) error
+	UpdateBackgroundJobProgress(context.Context, int64, string, int, string) error
 	CompleteBackgroundJob(context.Context, int64, string, json.RawMessage) error
 	FailBackgroundJob(context.Context, store.BackgroundJob, string, error, time.Duration) error
 }
 
 type Handler func(context.Context, store.BackgroundJob) (any, error)
+
+type progressReporterKey struct{}
+
+type progressReporter func(int, string) error
+
+func ReportProgress(ctx context.Context, progress int, message string) error {
+	reporter, _ := ctx.Value(progressReporterKey{}).(progressReporter)
+	if reporter == nil {
+		return nil
+	}
+	return reporter(progress, message)
+}
 
 type Worker struct {
 	repository Repository
@@ -80,6 +93,9 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 	}
 
 	jobCtx, cancel := context.WithCancel(ctx)
+	jobCtx = context.WithValue(jobCtx, progressReporterKey{}, progressReporter(func(progress int, message string) error {
+		return w.repository.UpdateBackgroundJobProgress(jobCtx, job.ID, w.workerID, progress, message)
+	}))
 	done := make(chan struct{})
 	go w.keepLease(jobCtx, job.ID, done)
 	result, handlerErr := handler(jobCtx, job)

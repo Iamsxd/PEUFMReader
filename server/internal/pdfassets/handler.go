@@ -47,6 +47,7 @@ func Handler(dataStore *store.Store, libraryManager *library.Manager, processor 
 		if err := json.Unmarshal(job.Payload, &payload); err != nil || payload.BookFileID <= 0 {
 			return nil, errors.New("PDF asset job payload is invalid")
 		}
+		_ = jobs.ReportProgress(ctx, 10, "读取 PDF 文件")
 		book, found, err := dataStore.GetCatalogBook(ctx, payload.BookFileID)
 		if err != nil {
 			return nil, err
@@ -62,6 +63,7 @@ func Handler(dataStore *store.Store, libraryManager *library.Manager, processor 
 		if err != nil {
 			return nil, err
 		}
+		_ = jobs.ReportProgress(ctx, 75, "保存封面与文本")
 		hash := hex.EncodeToString(book.SHA256)
 		coverPath, err := libraryManager.StoreCover(hash, "jpg", processed.Cover)
 		if err != nil {
@@ -77,6 +79,7 @@ func Handler(dataStore *store.Store, libraryManager *library.Manager, processor 
 		if err := dataStore.UpdatePDFAssets(ctx, book.ID, coverPath, textPath, processed.TextMethod, processed.PageCount); err != nil {
 			return nil, err
 		}
+		_ = jobs.ReportProgress(ctx, 95, "更新 PDF 索引")
 		return map[string]any{
 			"bookFileId": book.ID, "coverPath": coverPath, "textPath": textPath,
 			"textMethod": processed.TextMethod, "pageCount": processed.PageCount,

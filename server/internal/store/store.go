@@ -161,6 +161,21 @@ func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 	return users, rows.Err()
 }
 
+func (s *Store) GetActiveUserByUsername(ctx context.Context, username string) (User, bool, error) {
+	username = strings.ToLower(strings.TrimSpace(username))
+	var user User
+	err := s.pool.QueryRow(ctx, `
+		SELECT id,username,role FROM users WHERE username=$1 AND disabled_at IS NULL`, username,
+	).Scan(&user.ID, &user.Username, &user.Role)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, false, nil
+	}
+	if err != nil {
+		return User{}, false, fmt.Errorf("load active user: %w", err)
+	}
+	return user, true, nil
+}
+
 func (s *Store) CreateSession(ctx context.Context, rawToken, csrfToken string, userID int64, expiresAt time.Time) error {
 	hash := sha256.Sum256([]byte(rawToken))
 	_, err := s.pool.Exec(ctx, `

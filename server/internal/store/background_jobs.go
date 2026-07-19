@@ -12,39 +12,41 @@ import (
 )
 
 type BackgroundJob struct {
-	ID             int64           `json:"id"`
-	Kind           string          `json:"kind"`
-	State          string          `json:"state"`
-	DedupeKey      string          `json:"dedupeKey"`
-	Payload        json.RawMessage `json:"payload"`
-	Result         json.RawMessage `json:"result"`
-	Attempts       int             `json:"attempts"`
-	MaxAttempts    int             `json:"maxAttempts"`
-	AvailableAt    time.Time       `json:"availableAt"`
-	LockedBy       string          `json:"-"`
-	LeaseExpiresAt *time.Time      `json:"leaseExpiresAt,omitempty"`
-	LastError      string          `json:"lastError,omitempty"`
-	CreatedBy      *int64          `json:"createdBy,omitempty"`
-	BookFileID     *int64          `json:"bookFileId,omitempty"`
-	CreatedAt      time.Time       `json:"createdAt"`
-	UpdatedAt      time.Time       `json:"updatedAt"`
-	CompletedAt    *time.Time      `json:"completedAt,omitempty"`
+	ID              int64           `json:"id"`
+	Kind            string          `json:"kind"`
+	State           string          `json:"state"`
+	DedupeKey       string          `json:"dedupeKey"`
+	Payload         json.RawMessage `json:"payload"`
+	Result          json.RawMessage `json:"result"`
+	Progress        int             `json:"progress"`
+	ProgressMessage string          `json:"progressMessage,omitempty"`
+	Attempts        int             `json:"attempts"`
+	MaxAttempts     int             `json:"maxAttempts"`
+	AvailableAt     time.Time       `json:"availableAt"`
+	LockedBy        string          `json:"-"`
+	LeaseExpiresAt  *time.Time      `json:"leaseExpiresAt,omitempty"`
+	LastError       string          `json:"lastError,omitempty"`
+	CreatedBy       *int64          `json:"createdBy,omitempty"`
+	BookFileID      *int64          `json:"bookFileId,omitempty"`
+	CreatedAt       time.Time       `json:"createdAt"`
+	UpdatedAt       time.Time       `json:"updatedAt"`
+	CompletedAt     *time.Time      `json:"completedAt,omitempty"`
 }
 
 const backgroundJobColumns = `
-	id,kind,state,dedupe_key,payload,result,attempts,max_attempts,available_at,
+	id,kind,state,dedupe_key,payload,result,progress,COALESCE(progress_message,''),attempts,max_attempts,available_at,
 	COALESCE(locked_by,''),lease_expires_at,COALESCE(last_error,''),created_by,book_file_id,
 	created_at,updated_at,completed_at`
 
 const claimedBackgroundJobColumns = `
-	j.id,j.kind,j.state,j.dedupe_key,j.payload,j.result,j.attempts,j.max_attempts,j.available_at,
+	j.id,j.kind,j.state,j.dedupe_key,j.payload,j.result,j.progress,COALESCE(j.progress_message,''),j.attempts,j.max_attempts,j.available_at,
 	COALESCE(j.locked_by,''),j.lease_expires_at,COALESCE(j.last_error,''),j.created_by,j.book_file_id,
 	j.created_at,j.updated_at,j.completed_at`
 
 func scanBackgroundJob(row scanner) (BackgroundJob, error) {
 	var job BackgroundJob
 	err := row.Scan(
-		&job.ID, &job.Kind, &job.State, &job.DedupeKey, &job.Payload, &job.Result,
+		&job.ID, &job.Kind, &job.State, &job.DedupeKey, &job.Payload, &job.Result, &job.Progress, &job.ProgressMessage,
 		&job.Attempts, &job.MaxAttempts, &job.AvailableAt, &job.LockedBy, &job.LeaseExpiresAt,
 		&job.LastError, &job.CreatedBy, &job.BookFileID, &job.CreatedAt, &job.UpdatedAt, &job.CompletedAt,
 	)
@@ -98,7 +100,7 @@ func (s *Store) RequeueExpiredBackgroundJobs(ctx context.Context) (int64, error)
 	command, err := s.pool.Exec(ctx, `
 		UPDATE background_jobs SET
 			state='queued',locked_by=NULL,lease_expires_at=NULL,available_at=now(),
-			last_error='任务租约过期，服务重启后自动恢复',updated_at=now()
+			last_error='任务租约过期，服务重启后自动恢复',progress_message='等待恢复处理',updated_at=now()
 		WHERE state='running' AND lease_expires_at < now()`)
 	if err != nil {
 		return 0, fmt.Errorf("recover expired background jobs: %w", err)
@@ -122,7 +124,7 @@ func (s *Store) ClaimBackgroundJob(ctx context.Context, workerID string, lease t
 		)
 		UPDATE background_jobs j SET
 			state='running',attempts=j.attempts+1,locked_by=$1,
-			lease_expires_at=now()+$2::interval,updated_at=now()
+			lease_expires_at=now()+$2::interval,progress=GREATEST(j.progress,1),progress_message='开始处理',updated_at=now()
 		FROM candidate WHERE j.id=candidate.id
 		RETURNING `+claimedBackgroundJobColumns, workerID, lease.String()))
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -147,6 +149,24 @@ func (s *Store) HeartbeatBackgroundJob(ctx context.Context, jobID int64, workerI
 	return nil
 }
 
+func (s *Store) UpdateBackgroundJobProgress(ctx context.Context, jobID int64, workerID string, progress int, message string) error {
+	progress = max(0, min(progress, 99))
+	message = strings.TrimSpace(message)
+	if len(message) > 500 {
+		message = message[:500]
+	}
+	command, err := s.pool.Exec(ctx, `
+		UPDATE background_jobs SET progress=$1,progress_message=$2,updated_at=now()
+		WHERE id=$3 AND state='running' AND locked_by=$4`, progress, message, jobID, workerID)
+	if err != nil {
+		return fmt.Errorf("update background job progress: %w", err)
+	}
+	if command.RowsAffected() == 0 {
+		return errors.New("background job lease is no longer owned by this worker")
+	}
+	return nil
+}
+
 func (s *Store) CompleteBackgroundJob(ctx context.Context, jobID int64, workerID string, result json.RawMessage) error {
 	if len(result) == 0 {
 		result = json.RawMessage(`{}`)
@@ -154,7 +174,7 @@ func (s *Store) CompleteBackgroundJob(ctx context.Context, jobID int64, workerID
 	command, err := s.pool.Exec(ctx, `
 		UPDATE background_jobs SET
 			state='completed',result=$1,last_error=NULL,locked_by=NULL,lease_expires_at=NULL,
-			completed_at=now(),updated_at=now()
+			progress=100,progress_message='处理完成',completed_at=now(),updated_at=now()
 		WHERE id=$2 AND state='running' AND locked_by=$3`, result, jobID, workerID)
 	if err != nil {
 		return fmt.Errorf("complete background job: %w", err)
@@ -177,7 +197,8 @@ func (s *Store) FailBackgroundJob(ctx context.Context, job BackgroundJob, worker
 		UPDATE background_jobs SET
 			state=CASE WHEN attempts < max_attempts THEN 'queued' ELSE 'failed' END,
 			available_at=CASE WHEN attempts < max_attempts THEN now()+$1::interval ELSE available_at END,
-			last_error=$2,locked_by=NULL,lease_expires_at=NULL,updated_at=now()
+			last_error=$2,progress_message=CASE WHEN attempts < max_attempts THEN '等待重试' ELSE '处理失败' END,
+			locked_by=NULL,lease_expires_at=NULL,updated_at=now()
 		WHERE id=$3 AND state='running' AND locked_by=$4`, retryDelay.String(), message, job.ID, workerID)
 	if err != nil {
 		return fmt.Errorf("fail background job: %w", err)
@@ -192,7 +213,7 @@ func (s *Store) RetryBackgroundJob(ctx context.Context, jobID int64) (Background
 	job, err := scanBackgroundJob(s.pool.QueryRow(ctx, `
 		UPDATE background_jobs SET
 			state='queued',attempts=0,available_at=now(),locked_by=NULL,lease_expires_at=NULL,
-			last_error=NULL,completed_at=NULL,updated_at=now()
+			last_error=NULL,progress=0,progress_message='人工重试已排队',completed_at=NULL,updated_at=now()
 		WHERE id=$1 AND state='failed'
 		RETURNING `+backgroundJobColumns, jobID))
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -219,4 +240,12 @@ func (s *Store) ListBackgroundJobs(ctx context.Context, limit int) ([]Background
 		jobs = append(jobs, job)
 	}
 	return jobs, rows.Err()
+}
+
+func (s *Store) BackgroundJobExists(ctx context.Context, kind, dedupeKey string) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM background_jobs WHERE kind=$1 AND dedupe_key=$2
+	)`, strings.TrimSpace(kind), strings.TrimSpace(dedupeKey)).Scan(&exists)
+	return exists, err
 }

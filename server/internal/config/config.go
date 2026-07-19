@@ -16,6 +16,9 @@ type Config struct {
 	StagingRoot           string
 	CacheRoot             string
 	CalibreRoot           string
+	ImportRoot            string
+	ImportScanInterval    time.Duration
+	ImportStableAge       time.Duration
 	WebRoot               string
 	AdminUsername         string
 	AdminPassword         string
@@ -47,6 +50,9 @@ func Load() (Config, error) {
 		StagingRoot:           envOr("STAGING_ROOT", "/data/staging"),
 		CacheRoot:             envOr("CACHE_ROOT", "/data/cache"),
 		CalibreRoot:           envOr("CALIBRE_LIBRARY_ROOT", "/import/calibre"),
+		ImportRoot:            envOr("IMPORT_ROOT", "/data/import"),
+		ImportScanInterval:    10 * time.Second,
+		ImportStableAge:       10 * time.Second,
 		WebRoot:               envOr("WEB_ROOT", "/app/web"),
 		AdminUsername:         strings.ToLower(strings.TrimSpace(envOr("ADMIN_USERNAME", "admin"))),
 		AdminPassword:         os.Getenv("ADMIN_PASSWORD"),
@@ -109,6 +115,18 @@ func Load() (Config, error) {
 		cfg.MaxUploadBytes, err = strconv.ParseInt(raw, 10, 64)
 		if err != nil || cfg.MaxUploadBytes <= 0 {
 			return Config{}, fmt.Errorf("MAX_UPLOAD_BYTES must be a positive integer")
+		}
+	}
+	if raw := os.Getenv("IMPORT_SCAN_INTERVAL"); raw != "" {
+		cfg.ImportScanInterval, err = time.ParseDuration(raw)
+		if err != nil || cfg.ImportScanInterval < time.Second || cfg.ImportScanInterval > time.Hour {
+			return Config{}, fmt.Errorf("IMPORT_SCAN_INTERVAL must be between 1s and 1h")
+		}
+	}
+	if raw := os.Getenv("IMPORT_STABLE_AGE"); raw != "" {
+		cfg.ImportStableAge, err = time.ParseDuration(raw)
+		if err != nil || cfg.ImportStableAge < time.Second || cfg.ImportStableAge > time.Hour {
+			return Config{}, fmt.Errorf("IMPORT_STABLE_AGE must be between 1s and 1h")
 		}
 	}
 	if cfg.AIProvider != "" {

@@ -42,6 +42,9 @@ services:
       AI_API_KEY: ${AI_API_KEY:-}
       AI_TIMEOUT: ${AI_TIMEOUT:-45s}
       CALIBRE_LIBRARY_ROOT: /import/calibre
+      IMPORT_ROOT: /data/import
+      IMPORT_SCAN_INTERVAL: ${IMPORT_SCAN_INTERVAL:-10s}
+      IMPORT_STABLE_AGE: ${IMPORT_STABLE_AGE:-10s}
       BIBLIOGRAPHY_PROVIDERS: ${BIBLIOGRAPHY_PROVIDERS-openlibrary}
       OPEN_LIBRARY_BASE_URL: ${OPEN_LIBRARY_BASE_URL:-https://openlibrary.org}
       GOOGLE_BOOKS_BASE_URL: ${GOOGLE_BOOKS_BASE_URL:-https://www.googleapis.com/books/v1}
@@ -58,6 +61,7 @@ services:
       - ${PEUFM_DATA_ROOT:-./data}/library:/data/library
       - ${PEUFM_DATA_ROOT:-./data}/staging:/data/staging
       - ${PEUFM_DATA_ROOT:-./data}/cache:/data/cache
+      - ${PEUFM_IMPORT_ROOT:-./data/import}:/data/import
       - ${CALIBRE_LIBRARY_PATH:-./data/calibre}:/import/calibre:ro
     user: "${PUID:-99}:${PGID:-100}"
     read_only: true
