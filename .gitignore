@@ -1,15 +1,51 @@
+# Local configuration and secrets
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# IDE and operating-system files
 .idea/
 .vscode/
+.fleet/
+.history/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# JavaScript dependencies and build output
 node_modules/
+**/node_modules/
 web/dist/
 coverage/
 *.tsbuildinfo
 web/vite.config.js
 web/vite.config.d.ts
-*.log
+
+# Go binaries, profiles, and test artifacts
+bin/
+*.test
+*.out
+server/peufmreader
+server/peufmreader.exe
+
+# Runtime data and generated content
 data/
 backups/
 tmp/
-server/peufmreader
-server/peufmreader.exe
+cache/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.tar
+*.tar.gz
+*.tgz
+
+# Ebook files must stay outside the public source repository
+*.pdf
+*.epub
+*.mobi
+*.azw3
