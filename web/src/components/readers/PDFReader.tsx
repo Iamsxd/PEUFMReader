@@ -9,6 +9,7 @@ import {
   createPDFSearchSnippet,
   describePDFError,
   fetchPDFBytes,
+  getPDFJSAssetOptions,
   getPDFViewPages,
   movePDFPage,
   parsePDFPreferences,
@@ -130,7 +131,10 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
 
     void fetchPDFBytes(api.contentURL(book.id), controller.signal).then((bytes) => {
       if (disposed) return null
-      const task = pdfjs.getDocument({ data: bytes })
+      const task = pdfjs.getDocument({
+        data: bytes,
+        ...getPDFJSAssetOptions(import.meta.env.BASE_URL),
+      })
       loadingTaskRef.current = task
       return task.promise
     }).then(async (document) => {

@@ -17,6 +17,7 @@ Desktop.ini
 # JavaScript dependencies and build output
 node_modules/
 **/node_modules/
+**/.pnpm-store/
 web/dist/
 coverage/
 *.tsbuildinfo

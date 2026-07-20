@@ -4,6 +4,7 @@ import {
   createPDFSearchSnippet,
   describePDFError,
   fetchPDFBytes,
+  getPDFJSAssetOptions,
   getPDFViewPages,
   movePDFPage,
   parsePDFPreferences,
@@ -11,6 +12,15 @@ import {
 } from './pdf'
 
 describe('PDF reading model', () => {
+  it('points PDF.js at the bundled decoder and font assets', () => {
+    expect(getPDFJSAssetOptions('/reader')).toEqual({
+      cMapUrl: '/reader/pdfjs/cmaps/',
+      cMapPacked: true,
+      standardFontDataUrl: '/reader/pdfjs/standard_fonts/',
+      wasmUrl: '/reader/pdfjs/wasm/',
+    })
+  })
+
   it('keeps the cover alone and creates conventional two-page spreads', () => {
     expect(getPDFViewPages(1, 8, 'spread')).toEqual([1])
     expect(getPDFViewPages(2, 8, 'spread')).toEqual([2, 3])

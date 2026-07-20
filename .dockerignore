@@ -10,6 +10,7 @@ tmp
 cache
 node_modules
 **/node_modules
+**/.pnpm-store
 web/dist
 coverage
 server/peufmreader

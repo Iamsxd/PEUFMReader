@@ -24,6 +24,17 @@ export const DEFAULT_PDF_PREFERENCES: PDFReaderPreferences = {
   zoomPercent: 100,
 }
 
+export function getPDFJSAssetOptions(baseURL: string) {
+  const normalizedBase = baseURL.endsWith('/') ? baseURL : `${baseURL}/`
+  const pdfJSRoot = `${normalizedBase}pdfjs/`
+  return {
+    cMapUrl: `${pdfJSRoot}cmaps/`,
+    cMapPacked: true,
+    standardFontDataUrl: `${pdfJSRoot}standard_fonts/`,
+    wasmUrl: `${pdfJSRoot}wasm/`,
+  } as const
+}
+
 export function clampPDFPage(page: number, pageCount: number): number {
   if (pageCount < 1) return 1
   return Math.min(pageCount, Math.max(1, Math.round(Number.isFinite(page) ? page : 1)))
