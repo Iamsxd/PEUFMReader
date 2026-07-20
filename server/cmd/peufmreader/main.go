@@ -24,6 +24,7 @@ import (
 	"peufmreader/internal/importing"
 	"peufmreader/internal/jobs"
 	"peufmreader/internal/library"
+	"peufmreader/internal/mobiconvert"
 	"peufmreader/internal/pdfassets"
 	"peufmreader/internal/store"
 )
@@ -64,7 +65,12 @@ func main() {
 		logger.Error("library setup failed", "error", err)
 		os.Exit(1)
 	}
-	importService := importing.New(dataStore, libraryManager)
+	kindleConverter, err := mobiconvert.New(cfg.CacheRoot, cfg.MOBIConverterBinary, cfg.MOBIConversionTimeout)
+	if err != nil {
+		logger.Error("MOBI/AZW3 converter setup failed", "error", err)
+		os.Exit(1)
+	}
+	importService := importing.New(dataStore, libraryManager, kindleConverter)
 	importManager, err := importinbox.NewManager(cfg.ImportRoot)
 	if err != nil {
 		logger.Error("import inbox setup failed", "error", err)
@@ -110,7 +116,7 @@ func main() {
 		}
 	}
 	bibliographyService := bibliography.NewService(bibliographyProviders...)
-	api := httpapi.New(dataStore, libraryManager, importService, calibreScanner, bibliographyService, advisor, cfg.WebRoot, cfg.CookieSecure, cfg.SessionTTL, cfg.MaxUploadBytes, cfg.TrustedProxyCIDR, logger)
+	api := httpapi.New(dataStore, libraryManager, kindleConverter, importService, calibreScanner, bibliographyService, advisor, cfg.WebRoot, cfg.CookieSecure, cfg.SessionTTL, cfg.MaxUploadBytes, cfg.TrustedProxyCIDR, logger)
 	server := &http.Server{
 		Addr:              cfg.Address,
 		Handler:           api.Handler(),

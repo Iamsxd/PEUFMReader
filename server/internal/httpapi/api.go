@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +29,7 @@ import (
 	"peufmreader/internal/classification"
 	"peufmreader/internal/importing"
 	"peufmreader/internal/library"
+	"peufmreader/internal/mobiconvert"
 	"peufmreader/internal/store"
 )
 
@@ -38,6 +40,7 @@ var categorySlugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 type API struct {
 	store          *store.Store
 	library        *library.Manager
+	converter      *mobiconvert.Converter
 	webRoot        string
 	cookieSecure   bool
 	sessionTTL     time.Duration
@@ -56,7 +59,7 @@ type contextKey string
 
 const sessionContextKey contextKey = "session"
 
-func New(store *store.Store, libraryManager *library.Manager, importer *importing.Service, calibreScanner *calibre.Scanner, bibliographyService *bibliography.Service, advisor *classification.Advisor, webRoot string, cookieSecure bool, sessionTTL time.Duration, maxUploadBytes int64, trustedProxyCIDR string, logger *slog.Logger) *API {
+func New(store *store.Store, libraryManager *library.Manager, converter *mobiconvert.Converter, importer *importing.Service, calibreScanner *calibre.Scanner, bibliographyService *bibliography.Service, advisor *classification.Advisor, webRoot string, cookieSecure bool, sessionTTL time.Duration, maxUploadBytes int64, trustedProxyCIDR string, logger *slog.Logger) *API {
 	var trustedProxy *net.IPNet
 	if strings.TrimSpace(trustedProxyCIDR) != "" {
 		_, trustedProxy, _ = net.ParseCIDR(trustedProxyCIDR)
@@ -64,6 +67,7 @@ func New(store *store.Store, libraryManager *library.Manager, importer *importin
 	api := &API{
 		store:          store,
 		library:        libraryManager,
+		converter:      converter,
 		webRoot:        webRoot,
 		cookieSecure:   cookieSecure,
 		sessionTTL:     sessionTTL,
@@ -571,8 +575,8 @@ func parseCatalogQuery(r *http.Request) (store.CatalogQuery, error) {
 		}
 		query.PageSize = pageSize
 	}
-	if query.Format != "" && query.Format != "pdf" && query.Format != "epub" {
-		return store.CatalogQuery{}, fmt.Errorf("format must be pdf or epub")
+	if query.Format != "" && query.Format != "pdf" && query.Format != "epub" && query.Format != "mobi" && query.Format != "azw3" {
+		return store.CatalogQuery{}, fmt.Errorf("format must be pdf, epub, mobi, or azw3")
 	}
 	validStatuses := map[string]bool{"": true, "unread": true, "reading": true, "paused": true, "finished": true, "abandoned": true}
 	if !validStatuses[query.Status] {
@@ -608,11 +612,13 @@ func (a *API) uploadBookFile(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, library.ErrUnsupportedFormat):
-			writeError(w, http.StatusUnsupportedMediaType, "unsupported_format", "only valid PDF and EPUB files are supported")
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_format", "only valid PDF, EPUB, MOBI, and AZW3 files are supported")
 		case errors.Is(err, library.ErrUploadTooLarge):
 			writeError(w, http.StatusRequestEntityTooLarge, "upload_too_large", "file exceeds the configured upload limit")
 		case errors.Is(err, importing.ErrMetadataExtraction):
 			writeError(w, http.StatusUnprocessableEntity, "metadata_extraction_failed", "ebook metadata could not be extracted")
+		case errors.Is(err, importing.ErrReadableConversion):
+			writeError(w, http.StatusUnprocessableEntity, "kindle_conversion_failed", "MOBI/AZW3 could not be converted for reading; the file may be DRM-protected or damaged")
 		default:
 			a.internalError(w, err)
 		}
@@ -654,6 +660,28 @@ func (a *API) bookContent(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, err)
 		return
 	}
+	servedFilename := book.OriginalFilename
+	servedMIMEType := book.MIMEType
+	if mobiconvert.IsKindleFormat(book.Format) {
+		if a.converter == nil {
+			writeError(w, http.StatusServiceUnavailable, "kindle_converter_unavailable", "MOBI/AZW3 reader conversion is not configured")
+			return
+		}
+		converted, conversionErr := a.converter.EnsureEPUB(r.Context(), absolutePath, book.Format, hex.EncodeToString(book.SHA256))
+		if conversionErr != nil {
+			status := http.StatusUnprocessableEntity
+			code := "kindle_conversion_failed"
+			if errors.Is(conversionErr, mobiconvert.ErrConversionUnavailable) {
+				status = http.StatusServiceUnavailable
+				code = "kindle_converter_unavailable"
+			}
+			writeError(w, status, code, "MOBI/AZW3 reading copy could not be prepared; the file may be DRM-protected or damaged")
+			return
+		}
+		absolutePath = converted.Path
+		servedFilename = strings.TrimSuffix(book.OriginalFilename, filepath.Ext(book.OriginalFilename)) + ".epub"
+		servedMIMEType = "application/epub+zip"
+	}
 	file, err := os.Open(absolutePath)
 	if errors.Is(err, os.ErrNotExist) {
 		writeError(w, http.StatusGone, "managed_file_missing", "managed file is missing")
@@ -669,10 +697,10 @@ func (a *API) bookContent(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, err)
 		return
 	}
-	w.Header().Set("Content-Type", book.MIMEType)
-	w.Header().Set("Content-Disposition", "inline; filename*=UTF-8''"+url.PathEscape(book.OriginalFilename))
+	w.Header().Set("Content-Type", servedMIMEType)
+	w.Header().Set("Content-Disposition", "inline; filename*=UTF-8''"+url.PathEscape(servedFilename))
 	w.Header().Set("Cache-Control", "private, no-store")
-	http.ServeContent(w, r, book.OriginalFilename, info.ModTime(), file)
+	http.ServeContent(w, r, servedFilename, info.ModTime(), file)
 }
 
 func (a *API) bookCover(w http.ResponseWriter, r *http.Request) {

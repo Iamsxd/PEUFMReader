@@ -86,7 +86,7 @@ func (m *Manager) Ingest(originalFilename string, src io.Reader) (StoredFile, er
 		return StoredFile{}, fmt.Errorf("close staging file: %w", err)
 	}
 
-	format, mimeType, err := detectFormat(tempPath)
+	format, mimeType, err := detectFormat(tempPath, originalFilename)
 	if err != nil {
 		return StoredFile{}, err
 	}
@@ -319,7 +319,7 @@ func SecureResolve(root, relativePath string) (string, error) {
 	return joinedAbs, nil
 }
 
-func detectFormat(path string) (string, string, error) {
+func detectFormat(path, originalFilename string) (string, string, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return "", "", fmt.Errorf("open staged file: %w", err)
@@ -337,6 +337,14 @@ func detectFormat(path string) (string, string, error) {
 	}
 	if http.DetectContentType(header) == "application/zip" && isEPUB(path) {
 		return "epub", "application/epub+zip", nil
+	}
+	if len(header) >= 68 && bytes.Equal(header[60:68], []byte("BOOKMOBI")) {
+		switch strings.ToLower(filepath.Ext(originalFilename)) {
+		case ".mobi":
+			return "mobi", "application/x-mobipocket-ebook", nil
+		case ".azw3":
+			return "azw3", "application/vnd.amazon.ebook", nil
+		}
 	}
 	return "", "", ErrUnsupportedFormat
 }

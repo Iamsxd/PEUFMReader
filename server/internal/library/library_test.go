@@ -3,6 +3,7 @@ package library
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,6 +77,43 @@ func TestIngestEPUB(t *testing.T) {
 	}
 	if _, err := os.Stat(stored.AbsolutePath); err != nil {
 		t.Fatalf("managed EPUB missing: %v", err)
+	}
+}
+
+func TestIngestKindleFormats(t *testing.T) {
+	manager, err := NewManager(filepath.Join(t.TempDir(), "library"), filepath.Join(t.TempDir(), "staging"), filepath.Join(t.TempDir(), "cache"), 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := make([]byte, 96)
+	copy(content[60:68], []byte("BOOKMOBI"))
+	for _, test := range []struct {
+		name     string
+		format   string
+		mimeType string
+	}{
+		{name: "Example.mobi", format: "mobi", mimeType: "application/x-mobipocket-ebook"},
+		{name: "Example.azw3", format: "azw3", mimeType: "application/vnd.amazon.ebook"},
+	} {
+		stored, err := manager.Ingest(test.name, bytes.NewReader(content))
+		if err != nil {
+			t.Fatalf("ingest %s: %v", test.name, err)
+		}
+		if stored.Format != test.format || stored.MIMEType != test.mimeType {
+			t.Fatalf("unexpected result for %s: %+v", test.name, stored)
+		}
+	}
+}
+
+func TestIngestRejectsKindleMagicWithoutKindleExtension(t *testing.T) {
+	manager, err := NewManager(filepath.Join(t.TempDir(), "library"), filepath.Join(t.TempDir(), "staging"), filepath.Join(t.TempDir(), "cache"), 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := make([]byte, 96)
+	copy(content[60:68], []byte("BOOKMOBI"))
+	if _, err := manager.Ingest("disguised.bin", bytes.NewReader(content)); !errors.Is(err, ErrUnsupportedFormat) {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

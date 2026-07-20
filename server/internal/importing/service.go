@@ -10,15 +10,20 @@ import (
 	"peufmreader/internal/classification"
 	"peufmreader/internal/library"
 	"peufmreader/internal/metadata"
+	"peufmreader/internal/mobiconvert"
 	"peufmreader/internal/pdfassets"
 	"peufmreader/internal/store"
 )
 
-var ErrMetadataExtraction = errors.New("ebook metadata extraction failed")
+var (
+	ErrMetadataExtraction = errors.New("ebook metadata extraction failed")
+	ErrReadableConversion = errors.New("ebook could not be converted for browser reading")
+)
 
 type Service struct {
-	store   *store.Store
-	library *library.Manager
+	store     *store.Store
+	library   *library.Manager
+	converter *mobiconvert.Converter
 }
 
 type Result struct {
@@ -27,8 +32,8 @@ type Result struct {
 	ImportJobID int64
 }
 
-func New(store *store.Store, libraryManager *library.Manager) *Service {
-	return &Service{store: store, library: libraryManager}
+func New(store *store.Store, libraryManager *library.Manager, converter *mobiconvert.Converter) *Service {
+	return &Service{store: store, library: libraryManager, converter: converter}
 }
 
 func (s *Service) Import(
@@ -43,19 +48,39 @@ func (s *Service) Import(
 	if err != nil {
 		return Result{}, err
 	}
-	fail := func(failure error) (Result, error) {
+	failJob := func(failure error) (Result, error) {
 		_ = s.store.FailImportJob(ctx, job.ID, failure)
 		return Result{}, failure
 	}
 
 	stored, err := s.library.Ingest(originalFilename, reader)
 	if err != nil {
-		return fail(err)
+		return failJob(err)
 	}
-	extracted, err := metadata.Extract(stored.AbsolutePath, stored.Format, stored.OriginalFilename)
-	if err != nil {
+	converted := mobiconvert.Result{}
+	failImport := func(failure error) (Result, error) {
+		if s.converter != nil {
+			s.converter.RemoveIfCreated(converted)
+		}
 		s.library.RemoveIfCreated(stored)
-		return fail(fmt.Errorf("%w: %v", ErrMetadataExtraction, err))
+		return failJob(failure)
+	}
+	metadataPath := stored.AbsolutePath
+	metadataFormat := stored.Format
+	if mobiconvert.IsKindleFormat(stored.Format) {
+		if s.converter == nil {
+			return failImport(fmt.Errorf("%w: converter is not configured", ErrReadableConversion))
+		}
+		converted, err = s.converter.EnsureEPUB(ctx, stored.AbsolutePath, stored.Format, stored.SHA256Hex)
+		if err != nil {
+			return failImport(fmt.Errorf("%w: %v", ErrReadableConversion, err))
+		}
+		metadataPath = converted.Path
+		metadataFormat = "epub"
+	}
+	extracted, err := metadata.Extract(metadataPath, metadataFormat, stored.OriginalFilename)
+	if err != nil {
+		return failImport(fmt.Errorf("%w: %v", ErrMetadataExtraction, err))
 	}
 	if override != nil {
 		extracted = mergeMetadata(extracted, *override)
@@ -79,8 +104,10 @@ func (s *Service) Import(
 		job.ID,
 	)
 	if err != nil {
+		return failImport(err)
+	}
+	if duplicate && stored.Created && book.StoragePath != stored.RelativePath {
 		s.library.RemoveIfCreated(stored)
-		return fail(err)
 	}
 	if book.Format == "pdf" && (!duplicate || book.PageCount == nil) {
 		if _, _, enqueueErr := pdfassets.Enqueue(ctx, s.store, &userID, book.ID); enqueueErr != nil {

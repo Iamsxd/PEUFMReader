@@ -41,6 +41,8 @@ type Config struct {
 	PDFOCRLanguages       string
 	PDFOCRMaxPages        int
 	PDFOCRDPI             int
+	MOBIConverterBinary   string
+	MOBIConversionTimeout time.Duration
 }
 
 func Load() (Config, error) {
@@ -74,6 +76,8 @@ func Load() (Config, error) {
 		PDFOCRLanguages:       strings.TrimSpace(envOr("PDF_OCR_LANGUAGES", "chi_sim+eng")),
 		PDFOCRMaxPages:        500,
 		PDFOCRDPI:             180,
+		MOBIConverterBinary:   strings.TrimSpace(envOr("MOBI_CONVERTER_BIN", "mobitool")),
+		MOBIConversionTimeout: 2 * time.Minute,
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -185,6 +189,15 @@ func Load() (Config, error) {
 		if err != nil || cfg.PDFOCRDPI < 100 || cfg.PDFOCRDPI > 400 {
 			return Config{}, fmt.Errorf("PDF_OCR_DPI must be between 100 and 400")
 		}
+	}
+	if raw := os.Getenv("MOBI_CONVERSION_TIMEOUT"); raw != "" {
+		cfg.MOBIConversionTimeout, err = time.ParseDuration(raw)
+		if err != nil || cfg.MOBIConversionTimeout < time.Second || cfg.MOBIConversionTimeout > 30*time.Minute {
+			return Config{}, fmt.Errorf("MOBI_CONVERSION_TIMEOUT must be between 1s and 30m")
+		}
+	}
+	if cfg.MOBIConverterBinary == "" {
+		return Config{}, fmt.Errorf("MOBI_CONVERTER_BIN is required")
 	}
 
 	return cfg, nil

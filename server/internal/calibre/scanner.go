@@ -43,6 +43,8 @@ type Preview struct {
 	Total      int      `json:"total"`
 	PDFCount   int      `json:"pdfCount"`
 	EPUBCount  int      `json:"epubCount"`
+	MOBICount  int      `json:"mobiCount"`
+	AZW3Count  int      `json:"azw3Count"`
 	Errors     []string `json:"errors"`
 }
 
@@ -101,6 +103,10 @@ func (s *Scanner) Preview(limit int) (Preview, error) {
 				preview.PDFCount++
 			} else if record.OriginalFormat == "epub" {
 				preview.EPUBCount++
+			} else if record.OriginalFormat == "mobi" {
+				preview.MOBICount++
+			} else if record.OriginalFormat == "azw3" {
+				preview.AZW3Count++
 			}
 			if len(preview.Books) < limit {
 				preview.Books = append(preview.Books, record)
@@ -121,8 +127,8 @@ func (s *Scanner) Load(sourcePath string) (Record, string, error) {
 		return Record{}, "", err
 	}
 	extension := strings.ToLower(filepath.Ext(absoluteSource))
-	if extension != ".pdf" && extension != ".epub" {
-		return Record{}, "", errors.New("Calibre source is not a supported PDF or EPUB")
+	if !supportedExtension(extension) {
+		return Record{}, "", errors.New("Calibre source is not a supported PDF, EPUB, MOBI, or AZW3")
 	}
 	opfPath := filepath.Join(filepath.Dir(absoluteSource), "metadata.opf")
 	records, err := s.recordsFromOPF(opfPath)
@@ -182,7 +188,7 @@ func (s *Scanner) recordsFromOPF(opfPath string) ([]Record, error) {
 			continue
 		}
 		extension := strings.ToLower(filepath.Ext(entry.Name()))
-		if extension != ".pdf" && extension != ".epub" {
+		if !supportedExtension(extension) {
 			continue
 		}
 		absoluteSource := filepath.Join(directory, entry.Name())
@@ -199,6 +205,15 @@ func (s *Scanner) recordsFromOPF(opfPath string) ([]Record, error) {
 		records = append(records, record)
 	}
 	return records, nil
+}
+
+func supportedExtension(extension string) bool {
+	switch strings.ToLower(strings.TrimSpace(extension)) {
+	case ".pdf", ".epub", ".mobi", ".azw3":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Scanner) Metadata(record Record) (metadata.Result, error) {

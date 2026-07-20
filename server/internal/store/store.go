@@ -216,7 +216,7 @@ func (s *Store) DeleteSession(ctx context.Context, rawToken string) error {
 func (s *Store) RegisterBook(ctx context.Context, stored library.StoredFile) (BookFile, bool, error) {
 	var existing BookFile
 	err := s.pool.QueryRow(ctx, `
-		SELECT bf.id,bf.edition_id,w.title,bf.original_filename,bf.storage_path,bf.format,bf.mime_type,bf.size_bytes,bf.created_at
+		SELECT bf.id,bf.edition_id,w.title,bf.original_filename,bf.storage_path,bf.sha256,bf.format,bf.mime_type,bf.size_bytes,bf.created_at
 		FROM book_files bf JOIN editions e ON e.id=bf.edition_id JOIN works w ON w.id=e.work_id
 		WHERE bf.sha256=$1`, stored.SHA256,
 	).Scan(&existing.ID, &existing.EditionID, &existing.Title, &existing.OriginalFilename, &existing.StoragePath, &existing.Format, &existing.MIMEType, &existing.SizeBytes, &existing.CreatedAt)
@@ -251,7 +251,7 @@ func (s *Store) RegisterBook(ctx context.Context, stored library.StoredFile) (Bo
 		VALUES ($1,$2,$3,$4,$5,$6,$7)
 		RETURNING id,edition_id,$8,original_filename,storage_path,format,mime_type,size_bytes,created_at`,
 		editionID, stored.OriginalFilename, stored.RelativePath, stored.SHA256, stored.Format, stored.MIMEType, stored.SizeBytes, title,
-	).Scan(&book.ID, &book.EditionID, &book.Title, &book.OriginalFilename, &book.StoragePath, &book.Format, &book.MIMEType, &book.SizeBytes, &book.CreatedAt)
+	).Scan(&book.ID, &book.EditionID, &book.Title, &book.OriginalFilename, &book.StoragePath, &book.SHA256, &book.Format, &book.MIMEType, &book.SizeBytes, &book.CreatedAt)
 	if err != nil {
 		return BookFile{}, false, fmt.Errorf("create book file: %w", err)
 	}
@@ -292,10 +292,10 @@ func (s *Store) ListBookFiles(ctx context.Context) ([]BookFile, error) {
 func (s *Store) GetBookFile(ctx context.Context, id int64) (BookFile, bool, error) {
 	var book BookFile
 	err := s.pool.QueryRow(ctx, `
-		SELECT bf.id,bf.edition_id,w.title,bf.original_filename,bf.storage_path,bf.format,bf.mime_type,bf.size_bytes,bf.created_at
+		SELECT bf.id,bf.edition_id,w.title,bf.original_filename,bf.storage_path,bf.sha256,bf.format,bf.mime_type,bf.size_bytes,bf.created_at
 		FROM book_files bf JOIN editions e ON e.id=bf.edition_id JOIN works w ON w.id=e.work_id
 		WHERE bf.id=$1`, id,
-	).Scan(&book.ID, &book.EditionID, &book.Title, &book.OriginalFilename, &book.StoragePath, &book.Format, &book.MIMEType, &book.SizeBytes, &book.CreatedAt)
+	).Scan(&book.ID, &book.EditionID, &book.Title, &book.OriginalFilename, &book.StoragePath, &book.SHA256, &book.Format, &book.MIMEType, &book.SizeBytes, &book.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return BookFile{}, false, nil
 	}

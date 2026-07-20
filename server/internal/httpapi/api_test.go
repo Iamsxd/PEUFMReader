@@ -118,11 +118,21 @@ func TestParseCatalogQueryDefaultsToRelevance(t *testing.T) {
 	}
 }
 
+func TestParseCatalogQueryAcceptsKindleFormats(t *testing.T) {
+	for _, format := range []string{"mobi", "azw3"} {
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/book-files?format="+format, nil)
+		query, err := parseCatalogQuery(request)
+		if err != nil || query.Format != format {
+			t.Fatalf("format %s rejected: query=%#v err=%v", format, query, err)
+		}
+	}
+}
+
 func TestParseCatalogQueryRejectsInvalidPaginationAndFilters(t *testing.T) {
 	for _, target := range []string{
 		"/api/v1/book-files?page=0",
 		"/api/v1/book-files?pageSize=101",
-		"/api/v1/book-files?format=mobi",
+		"/api/v1/book-files?format=docx",
 		"/api/v1/book-files?status=unknown",
 		"/api/v1/book-files?sort=random",
 	} {

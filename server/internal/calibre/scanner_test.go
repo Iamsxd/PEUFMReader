@@ -23,6 +23,13 @@ func TestPreviewAndLoadCalibreLibrary(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bookDir, "Three Body.pdf"), []byte("%PDF-1.7\n"), 0o640); err != nil {
 		t.Fatal(err)
 	}
+	for _, name := range []string{"Three Body.mobi", "Three Body.azw3"} {
+		content := make([]byte, 96)
+		copy(content[60:68], []byte("BOOKMOBI"))
+		if err := os.WriteFile(filepath.Join(bookDir, name), content, 0o640); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := os.WriteFile(filepath.Join(bookDir, "cover.jpg"), []byte{0xff, 0xd8, 0xff, 0xd9}, 0o640); err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +39,7 @@ func TestPreviewAndLoadCalibreLibrary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preview.Total != 1 || preview.PDFCount != 1 || len(preview.Books) != 1 {
+	if preview.Total != 3 || preview.PDFCount != 1 || preview.MOBICount != 1 || preview.AZW3Count != 1 || len(preview.Books) != 3 {
 		t.Fatalf("unexpected preview: %+v", preview)
 	}
 	record, absolute, err := scanner.Load(preview.Books[0].SourcePath)
