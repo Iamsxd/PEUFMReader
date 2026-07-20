@@ -1,6 +1,6 @@
 import { type ChangeEvent, type DragEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
 import { APIError, api } from '../api'
-import type { AuditEvent, BackgroundJob, CalibrePreview, Category, ImportJob, ReviewItem, StorageAuditReport } from '../types'
+import type { AuditEvent, BackgroundJob, BibliographySource, BibliographySourceInput, CalibrePreview, Category, ImportJob, ReviewItem, StorageAuditReport } from '../types'
 import { formatBytes, formatRelativeTime } from '../utils'
 import { ReviewQueue } from './ReviewQueue'
 import { UserManagement } from './UserManagement'
@@ -30,6 +30,7 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
   const [storageReport, setStorageReport] = useState<StorageAuditReport | null>(null)
   const [calibrePreview, setCalibrePreview] = useState<CalibrePreview | null>(null)
+  const [bibliographySources, setBibliographySources] = useState<BibliographySource[]>([])
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -41,8 +42,8 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
 
   async function refreshAdmin() {
     try {
-      const [categoryItems, managedCategories, queueItems, jobs, asyncJobs, audits] = await Promise.all([
-        api.listCategories(), api.listAdminCategories(), api.listReviewQueue(), api.listImportJobs(), api.listBackgroundJobs(), api.listAuditEvents(),
+      const [categoryItems, managedCategories, queueItems, jobs, asyncJobs, audits, sources] = await Promise.all([
+        api.listCategories(), api.listAdminCategories(), api.listReviewQueue(), api.listImportJobs(), api.listBackgroundJobs(), api.listAuditEvents(), api.listBibliographySources(),
       ])
       setCategories(categoryItems)
       setAdminCategories(managedCategories)
@@ -50,6 +51,7 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
       setImportJobs(jobs)
       setBackgroundJobs(asyncJobs)
       setAuditEvents(audits)
+      setBibliographySources(sources)
     } catch (reason) {
       setError(reason instanceof APIError ? reason.message : '无法加载管理后台。')
     }
@@ -254,6 +256,13 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
         }}
       />
 
+      <BibliographySourceManager
+        sources={bibliographySources}
+        onError={setError}
+        onNotice={setNotice}
+        onChanged={async () => setBibliographySources(await api.listBibliographySources())}
+      />
+
       <ReviewQueue categories={categories} items={visibleReviewItems} onChanged={reviewChanged} />
 
       <section className="integration-panel">
@@ -349,7 +358,7 @@ function jobStateLabel(state: BackgroundJob['state']): string {
 }
 
 function jobKindLabel(kind: string): string {
-  return { 'calibre-import': 'Calibre 迁移', 'inbox-import': '收件箱导入', 'pdf-assets': 'PDF 封面 / OCR' }[kind] ?? kind
+  return { 'calibre-import': 'Calibre 迁移', 'inbox-import': '收件箱导入', 'pdf-assets': 'PDF 封面 / OCR', 'bibliography-enrichment': '外部书目自动查询' }[kind] ?? kind
 }
 
 function jobSourceLabel(job: BackgroundJob): string {
@@ -384,8 +393,135 @@ function auditActionLabel(action: string): string {
     'POST /api/v1/calibre/import': '启动 Calibre 迁移',
     'POST /api/v1/admin/categories': '创建题材分类',
     'PATCH /api/v1/admin/categories/{id}': '修改题材分类',
+    'PATCH /api/v1/admin/bibliography-sources/{id}': '修改外部书目源',
+    'POST /api/v1/admin/bibliography-sources/{id}/test': '测试外部书目源',
   }
   return labels[action] ?? action
+}
+
+function BibliographySourceManager({ sources, onChanged, onError, onNotice }: {
+  sources: BibliographySource[]
+  onChanged: () => Promise<void>
+  onError: (message: string) => void
+  onNotice: (message: string) => void
+}) {
+  return (
+    <section className="integration-panel bibliography-source-panel">
+      <div className="section-title">
+        <div>
+          <p className="eyebrow">外部书目信息源</p>
+          <h2>元数据查询与导入建议</h2>
+          <p className="muted">自动查询只添加待确认建议，不会覆盖现有书名、作者或分类。优先级数字越小越靠前。</p>
+        </div>
+      </div>
+      <div className="bibliography-source-list">
+        {sources.map((source) => (
+          <BibliographySourceCard key={source.id} source={source} onChanged={onChanged} onError={onError} onNotice={onNotice} />
+        ))}
+        {sources.length === 0 && <p className="job-empty">没有可配置的书目信息源。</p>}
+      </div>
+      <p className="bibliography-privacy-note">启用公网服务时，书名、作者、ISBN 和语言可能发送给第三方；豆瓣地址可填写 NAS 局域网中的 douban-api-rs 服务。</p>
+    </section>
+  )
+}
+
+function BibliographySourceCard({ source, onChanged, onError, onNotice }: {
+  source: BibliographySource
+  onChanged: () => Promise<void>
+  onError: (message: string) => void
+  onNotice: (message: string) => void
+}) {
+  const [input, setInput] = useState<BibliographySourceInput>(() => sourceInput(source))
+  const [busy, setBusy] = useState<'save' | 'test' | ''>('')
+
+  useEffect(() => setInput(sourceInput(source)), [source])
+
+  function change<K extends keyof BibliographySourceInput>(key: K, value: BibliographySourceInput[K]) {
+    setInput((current) => ({ ...current, [key]: value }))
+  }
+
+  async function save(testAfterSave = false) {
+    setBusy(testAfterSave ? 'test' : 'save')
+    onError('')
+    onNotice('')
+    try {
+      await api.updateBibliographySource(source.id, { ...input, baseUrl: input.baseUrl.trim() })
+      if (testAfterSave) {
+        const response = await api.testBibliographySource(source.id)
+        if (response.result.success) {
+          onNotice(`${bibliographySourceLabel(source.provider)}连接成功，响应 ${response.result.latencyMs} ms。`)
+        } else {
+          onError(`${bibliographySourceLabel(source.provider)}连接失败：${response.result.error || '未知错误'}`)
+        }
+      } else {
+        onNotice(`${bibliographySourceLabel(source.provider)}设置已保存。`)
+      }
+      await onChanged()
+    } catch (reason) {
+      onError(reason instanceof APIError ? reason.message : testAfterSave ? '连接测试失败。' : '书目信息源保存失败。')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const status = source.lastCheckedAt
+    ? source.lastError ? 'failed' : 'healthy'
+    : 'untested'
+
+  return (
+    <article className={`bibliography-source-card ${source.enabled ? 'enabled' : 'disabled'}`}>
+      <div className="bibliography-source-heading">
+        <div>
+          <span className={`source-status ${status}`}>{status === 'healthy' ? '连接正常' : status === 'failed' ? '最近失败' : '尚未测试'}</span>
+          <h3>{bibliographySourceLabel(source.provider)}</h3>
+          <p>{bibliographySourceDescription(source.provider)}</p>
+        </div>
+        <label className="source-toggle"><input type="checkbox" checked={input.enabled} onChange={(event) => change('enabled', event.target.checked)} /><span>启用查询</span></label>
+      </div>
+      <div className="bibliography-source-form">
+        <label className="source-url-field"><span>服务地址</span><input type="url" value={input.baseUrl} onChange={(event) => change('baseUrl', event.target.value)} placeholder={source.provider === 'douban' ? 'http://192.168.3.118:5890' : 'https://…'} maxLength={2048} required={input.enabled} /></label>
+        <label><span>优先级</span><input type="number" min={1} max={1000} value={input.priority} onChange={(event) => change('priority', Number(event.target.value))} /></label>
+        <label><span>超时（秒）</span><input type="number" min={1} max={60} value={input.timeoutMs / 1000} onChange={(event) => change('timeoutMs', Math.round(Number(event.target.value) * 1000))} /></label>
+        <label><span>最大候选数</span><input type="number" min={1} max={20} value={input.maxResults} onChange={(event) => change('maxResults', Number(event.target.value))} /></label>
+      </div>
+      <div className="bibliography-source-footer">
+        <label className="auto-source-toggle"><input type="checkbox" checked={input.autoSearch} onChange={(event) => change('autoSearch', event.target.checked)} /><span>导入后自动查询建议</span></label>
+        <div className="source-actions">
+          <button className="secondary" type="button" disabled={Boolean(busy)} onClick={() => void save(true)}>{busy === 'test' ? '测试中…' : '保存并测试'}</button>
+          <button className="primary" type="button" disabled={Boolean(busy)} onClick={() => void save(false)}>{busy === 'save' ? '保存中…' : '保存设置'}</button>
+        </div>
+      </div>
+      <dl className="bibliography-source-health">
+        <div><dt>最近成功</dt><dd>{source.lastSuccessAt ? formatRelativeTime(source.lastSuccessAt) : '暂无'}</dd></div>
+        <div><dt>最近检查</dt><dd>{source.lastCheckedAt ? formatRelativeTime(source.lastCheckedAt) : '暂无'}</dd></div>
+        <div><dt>响应耗时</dt><dd>{source.lastLatencyMs === undefined ? '暂无' : `${source.lastLatencyMs} ms`}</dd></div>
+      </dl>
+      {source.lastError && <p className="source-last-error" title={source.lastError}>最近错误：{source.lastError}</p>}
+    </article>
+  )
+}
+
+function sourceInput(source: BibliographySource): BibliographySourceInput {
+  return {
+    enabled: source.enabled,
+    baseUrl: source.baseUrl,
+    priority: source.priority,
+    timeoutMs: source.timeoutMs,
+    maxResults: source.maxResults,
+    autoSearch: source.autoSearch,
+  }
+}
+
+function bibliographySourceLabel(provider: string): string {
+  return { douban: '豆瓣书目（douban-api-rs）', openlibrary: 'Open Library', 'google-books': 'Google Books' }[provider] ?? provider
+}
+
+function bibliographySourceDescription(provider: string): string {
+  return {
+    douban: '中文书籍、作者、出版社、标签和封面信息',
+    openlibrary: '开放书目数据，适合 ISBN 与外文书籍补全',
+    'google-books': 'Google Books 书目与封面，需要在环境变量配置 API Key',
+  }[provider] ?? '外部书目信息服务'
 }
 
 function CategoryManager({ categories, onChanged, onError }: { categories: Category[]; onChanged: () => Promise<void>; onError: (message: string) => void }) {

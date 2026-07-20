@@ -251,6 +251,33 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .category-identity small { color: #758078; font-size: .68rem; }
 .category-management-row input, .category-management-row select { min-width: 0; padding: 8px 9px; font-size: .76rem; }
 .category-management-row button { padding: 8px 10px; font-size: .73rem; }
+.bibliography-source-panel { margin-top: 24px; background: linear-gradient(145deg, #edf2e9, #f5f2e8); }
+.bibliography-source-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-top: 20px; }
+.bibliography-source-card { min-width: 0; padding: 18px; border: 1px solid #d1d9cf; border-radius: 15px; background: #fbfaf5; box-shadow: 0 9px 25px #3c503d0a; }
+.bibliography-source-card.enabled { border-color: #aac3ad; box-shadow: inset 0 3px #3c7650, 0 9px 25px #3c503d0a; }
+.bibliography-source-card.disabled { background: #f0f0eb; }
+.bibliography-source-heading { min-height: 105px; display: flex; align-items: start; justify-content: space-between; gap: 14px; }
+.bibliography-source-heading > div { min-width: 0; }
+.bibliography-source-heading h3 { margin: 8px 0 5px; font-family: Georgia, serif; font-size: 1.15rem; }
+.bibliography-source-heading p { margin-bottom: 0; color: #6e786f; font-size: .73rem; line-height: 1.5; }
+.source-status { display: inline-flex; padding: 4px 8px; border-radius: 999px; background: #e3e5e0; color: #667168; font-size: .64rem; font-weight: 800; }
+.source-status.healthy { background: #dcebdd; color: #24563a; }
+.source-status.failed { background: #f0ded9; color: #8a332d; }
+.source-toggle, .auto-source-toggle { width: auto; display: flex; grid-template-columns: none; align-items: center; gap: 7px; color: #42594a; font-size: .72rem; white-space: nowrap; }
+.source-toggle input, .auto-source-toggle input { width: 16px; height: 16px; margin: 0; accent-color: #2c6842; }
+.bibliography-source-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 15px; }
+.bibliography-source-form label { min-width: 0; gap: 5px; color: #68756c; font-size: .67rem; }
+.bibliography-source-form input { min-width: 0; padding: 9px 10px; font-size: .76rem; }
+.bibliography-source-form .source-url-field { grid-column: 1 / -1; }
+.bibliography-source-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px solid #dde1da; }
+.source-actions { display: flex; gap: 7px; }
+.source-actions button { padding: 8px 10px; font-size: .7rem; }
+.bibliography-source-health { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 14px 0 0; }
+.bibliography-source-health > div { min-width: 0; padding: 9px; border-radius: 9px; background: #edf1eb; }
+.bibliography-source-health dt { color: #79837b; font-size: .62rem; }
+.bibliography-source-health dd { margin: 4px 0 0; overflow: hidden; color: #334c3b; font-size: .7rem; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.source-last-error { margin: 10px 0 0; overflow: hidden; padding: 9px 10px; border-radius: 9px; background: #f3e3df; color: #80352e; font-size: .68rem; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.bibliography-privacy-note { margin: 16px 0 0; color: #69756d; font-size: .7rem; line-height: 1.55; }
 .danger-text { color: #9a332d; }
 .danger-button { border: 1px solid #dfb8b2; border-radius: 10px; padding: 10px 14px; background: #f7e2df; color: #8a2d27; font-weight: 750; }
 .danger-button:hover:not(:disabled) { background: #f1d2ce; }
@@ -507,6 +534,11 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .category-create-form { grid-template-columns: 1fr; }
   .category-management-row { grid-template-columns: 1fr 1fr; }
   .category-identity { grid-column: 1 / -1; }
+  .bibliography-source-list { grid-template-columns: 1fr; }
+  .bibliography-source-heading, .bibliography-source-footer { align-items: stretch; flex-direction: column; }
+  .bibliography-source-form { grid-template-columns: 1fr 1fr; }
+  .bibliography-source-form .source-url-field { grid-column: 1 / -1; }
+  .source-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .user-management-panel { padding: 17px; }
   .user-summary-grid { grid-template-columns: 1fr 1fr; }
   .user-create-form, .user-profile-form, .user-password-form { grid-template-columns: 1fr; }

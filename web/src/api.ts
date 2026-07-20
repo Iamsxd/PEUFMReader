@@ -1,4 +1,4 @@
-import type { AuditEvent, BackgroundJob, BibliographySearchResult, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ManagedUser, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
+import type { AuditEvent, BackgroundJob, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ManagedUser, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
 
 interface ErrorBody {
   error?: { code?: string; message?: string }
@@ -158,6 +158,23 @@ class APIClient {
 
   searchBibliography(editionID: number): Promise<BibliographySearchResult> {
     return this.request(`/api/v1/editions/${editionID}/bibliography-search`, { method: 'POST' })
+  }
+
+  async listBibliographySources(): Promise<BibliographySource[]> {
+    const result = await this.request<{ items: BibliographySource[] }>('/api/v1/admin/bibliography-sources')
+    return result.items
+  }
+
+  updateBibliographySource(sourceID: number, input: BibliographySourceInput): Promise<BibliographySource> {
+    return this.request(`/api/v1/admin/bibliography-sources/${sourceID}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  testBibliographySource(sourceID: number): Promise<BibliographyProbeResponse> {
+    return this.request(`/api/v1/admin/bibliography-sources/${sourceID}/test`, { method: 'POST' })
   }
 
   async listImportJobs(): Promise<ImportJob[]> {

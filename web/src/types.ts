@@ -337,6 +337,42 @@ export interface BibliographySearchResult {
   reviewItem: ReviewItem
 }
 
+export interface BibliographySource {
+  id: number
+  provider: 'douban' | 'openlibrary' | 'google-books' | string
+  enabled: boolean
+  baseUrl: string
+  priority: number
+  timeoutMs: number
+  maxResults: number
+  autoSearch: boolean
+  lastCheckedAt?: string
+  lastSuccessAt?: string
+  lastLatencyMs?: number
+  lastError?: string
+  updatedAt: string
+}
+
+export interface BibliographySourceInput {
+  enabled: boolean
+  baseUrl: string
+  priority: number
+  timeoutMs: number
+  maxResults: number
+  autoSearch: boolean
+}
+
+export interface BibliographyProbeResult {
+  success: boolean
+  latencyMs: number
+  error?: string
+}
+
+export interface BibliographyProbeResponse {
+  result: BibliographyProbeResult
+  source: BibliographySource
+}
+
 export interface ReadingState {
   bookFileId: number
   position: Record<string, unknown>
