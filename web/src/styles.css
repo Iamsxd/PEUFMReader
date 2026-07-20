@@ -177,6 +177,8 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .card-badges { display: flex; flex-wrap: wrap; gap: 6px; }
 .format-badge { display: inline-flex; padding: 4px 7px; border-radius: 6px; background: #d6e5d9; color: #275239; font-size: .68rem; font-weight: 850; letter-spacing: .09em; }
 .format-badge.pdf { background: #eedbd7; color: #803a31; }
+.format-badge.mobi { background: #efe4c9; color: #6e5018; }
+.format-badge.azw3 { background: #ddddef; color: #454579; }
 .format-badge.ocr { background: #eadcf0; color: #673574; }
 .format-badge.text { background: #dce8ef; color: #31596e; }
 .review-badge { padding: 4px 7px; border-radius: 6px; background: #f5dfaf; color: #775219; font-size: .68rem; font-weight: 800; }

@@ -137,7 +137,7 @@ function catalogQueryFromParams(params: URLSearchParams): CatalogQuery {
   return {
     q: params.get('q') ?? '',
     category: params.get('category') ?? '',
-    format: format === 'pdf' || format === 'epub' ? format : '',
+    format: format === 'pdf' || format === 'epub' || format === 'mobi' || format === 'azw3' ? format : '',
     status: status === 'unread' || status === 'reading' || status === 'paused' || status === 'finished' || status === 'abandoned' ? status : '',
     sort: sort === 'relevance' || sort === 'title' || sort === 'newest' || sort === 'hot' ? sort : undefined,
     page: positiveInteger(params.get('page')),

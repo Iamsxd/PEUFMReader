@@ -4,9 +4,9 @@
 
 - Docker Compose + PostgreSQL 部署。
 - admin/reader 本地账号、Argon2id 密码、HttpOnly 会话和 CSRF 防护。
-- EPUB/PDF 托管上传、SHA-256 去重和格式签名校验。
+- PDF/EPUB/MOBI/AZW3 托管上传、SHA-256 去重和格式签名校验。
 - 鉴权 HTTP Range 文件流，不向浏览器暴露 NAS 路径。
-- 浏览器 EPUB/PDF 阅读，以及按用户隔离的进度和有效阅读时长。
+- 浏览器 PDF/EPUB 阅读，以及 MOBI/AZW3 无 DRM 文件的 EPUB 阅读副本；支持按用户隔离的进度和有效阅读时长。
 - EPUB OPF 与 PDF Info 元数据提取、EPUB 封面缓存、作者/年份/题材分组和搜索。
 - 19 个固定题材分类、双语确定性规则、证据/置信度、管理员待整理与可撤销决策。
 - 可选 Ollama 或 OpenAI-compatible AI 分类建议；AI 不能自动覆盖人工选择。
@@ -58,7 +58,9 @@ CALIBRE_LIBRARY_PATH=/mnt/user/ebooks/Calibre Library
 
 PostgreSQL 数据应位于 Unraid 本机持久卷，不要把数据库目录放到另一台机器的 SMB/CIFS 共享。书库文件保存在 `${PEUFM_DATA_ROOT}/library`，可再生封面保存在 `${PEUFM_DATA_ROOT}/cache`。
 
-`CALIBRE_LIBRARY_PATH` 会以只读方式挂载到容器的 `/import/calibre`。管理员先点击“扫描 Calibre”查看预检结果，再点击“迁移全部”；每个 PDF/EPUB 都是独立可恢复任务，迁移只复制文件，不改写 Calibre 目录。
+`CALIBRE_LIBRARY_PATH` 会以只读方式挂载到容器的 `/import/calibre`。管理员先点击“扫描 Calibre”查看预检结果，再点击“迁移全部”；每个 PDF/EPUB/MOBI/AZW3 都是独立可恢复任务，迁移只复制文件，不改写 Calibre 目录。
+
+MOBI/AZW3 原文件会保留在托管书库中，服务使用 `mobitool` 在 `${PEUFM_DATA_ROOT}/cache/conversions` 生成可删除、可重建的 EPUB 阅读副本，并复用 EPUB 阅读器的分页、连续滚动、字体、主题、目录、搜索和进度功能。受 DRM 保护或损坏的文件无法转换时，导入会返回明确错误；本项目不提供 DRM 移除能力。
 
 也可以把文件复制到 `${PEUFM_IMPORT_ROOT}/inbox`。文件大小和修改时间在 `IMPORT_STABLE_AGE` 内保持不变后，服务会自动创建可恢复导入任务；成功的源文件归档到 `processed/年-月`，连续三次失败的文件隔离到 `failed/任务标识`，并写入同名 `.error.txt`。修改后重新放入 `inbox` 会产生新的任务。
 

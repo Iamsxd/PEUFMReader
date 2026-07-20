@@ -1,4 +1,5 @@
 export type Role = 'admin' | 'reader'
+export type BookFormat = 'pdf' | 'epub' | 'mobi' | 'azw3'
 
 export interface User {
   id: number
@@ -61,7 +62,7 @@ export interface BookFile {
   textExtractionMethod?: 'embedded' | 'ocr'
   pageCount?: number
   originalFilename: string
-  format: 'pdf' | 'epub'
+  format: BookFormat
   mimeType: string
   sizeBytes: number
   createdAt: string
@@ -70,7 +71,7 @@ export interface BookFile {
 export interface CatalogQuery {
   q?: string
   category?: string
-  format?: '' | 'pdf' | 'epub'
+  format?: '' | BookFormat
   status?: '' | 'unread' | 'reading' | 'paused' | 'finished' | 'abandoned'
   sort?: 'relevance' | 'title' | 'newest' | 'hot'
   page?: number
@@ -293,7 +294,7 @@ export interface CalibreRecord {
   publisher?: string
   description?: string
   subjects: string[]
-  format: 'pdf' | 'epub'
+  format: BookFormat
 }
 
 export interface CalibrePreview {
@@ -303,6 +304,8 @@ export interface CalibrePreview {
   total: number
   pdfCount: number
   epubCount: number
+  mobiCount: number
+  azw3Count: number
   errors: string[]
 }
 

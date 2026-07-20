@@ -72,7 +72,7 @@ export function CatalogPage({ initialQuery = {}, isAdmin, onOpenBook, onViewBook
   return (
     <div className="catalog-page">
       <section className="page-heading">
-        <div><p className="eyebrow">共享书库</p><h1>全部书籍</h1><p className="muted">搜索、筛选并排序 NAS 中的 EPUB 与 PDF。</p></div>
+        <div><p className="eyebrow">共享书库</p><h1>全部书籍</h1><p className="muted">搜索、筛选并排序 NAS 中的 PDF、EPUB 与 Kindle 电子书。</p></div>
         <strong>{result.total} 本</strong>
       </section>
 
@@ -86,7 +86,7 @@ export function CatalogPage({ initialQuery = {}, isAdmin, onOpenBook, onViewBook
           {categories.map((item) => <option key={item.id} value={item.slug}>{item.name}</option>)}
         </select>
         <select value={format} onChange={(event) => resetPageAnd(() => setFormat(event.target.value as CatalogQuery['format']))} aria-label="按格式筛选">
-          <option value="">全部格式</option><option value="pdf">PDF</option><option value="epub">EPUB</option>
+          <option value="">全部格式</option><option value="pdf">PDF</option><option value="epub">EPUB</option><option value="mobi">MOBI</option><option value="azw3">AZW3</option>
         </select>
         <select value={status} onChange={(event) => resetPageAnd(() => setStatus(event.target.value as CatalogQuery['status']))} aria-label="按阅读状态筛选">
           <option value="">全部状态</option><option value="unread">未读</option><option value="reading">正在阅读</option><option value="paused">已暂停</option><option value="finished">已读完</option><option value="abandoned">已放弃</option>

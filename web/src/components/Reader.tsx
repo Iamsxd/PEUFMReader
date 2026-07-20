@@ -18,7 +18,8 @@ export function Reader({ book, onClose }: Props) {
   const [readerChromeVisible, setReaderChromeVisible] = useState(true)
   const readerChromeTimerRef = useRef<number | null>(null)
   const stateRef = useRef<ReadingState | null>(null)
-  const isImmersiveReader = book.format === 'pdf' || book.format === 'epub'
+  const isKindleBook = book.format === 'mobi' || book.format === 'azw3'
+  const isImmersiveReader = book.format === 'pdf' || book.format === 'epub' || isKindleBook
   useReadingSession(book.id)
   stateRef.current = state
 
@@ -135,7 +136,7 @@ export function Reader({ book, onClose }: Props) {
               onStatusChange={changeStatus}
             />
           )}
-          {state && book.format === 'epub' && (
+          {state && (book.format === 'epub' || isKindleBook) && (
             <EPUBReader
               book={book}
               initialState={state}

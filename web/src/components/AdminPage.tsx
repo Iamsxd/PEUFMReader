@@ -90,10 +90,10 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
 
   async function uploadFiles(files: File[]) {
     if (uploading || files.length === 0) return
-    const accepted = files.filter((file) => /\.(pdf|epub)$/i.test(file.name))
+    const accepted = files.filter((file) => /\.(pdf|epub|mobi|azw3)$/i.test(file.name))
     const rejected = files.length - accepted.length
     if (accepted.length === 0) {
-      setError('请选择 PDF 或 EPUB 文件。')
+      setError('请选择 PDF、EPUB、MOBI 或 AZW3 文件。')
       return
     }
     const batch = accepted.map((file, index): UploadItem => ({
@@ -121,7 +121,9 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
             changeUpload(item.id, {
               progress,
               state: progress >= 100 ? 'processing' : 'uploading',
-              message: progress >= 100 ? '正在提取元数据并分类' : `正在上传 ${progress}%`,
+              message: progress >= 100
+                ? /\.(mobi|azw3)$/i.test(item.file.name) ? '正在生成 EPUB 阅读副本并提取元数据' : '正在提取元数据并分类'
+                : `正在上传 ${progress}%`,
             })
           })
           if (result.duplicate) {
@@ -139,7 +141,7 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
     }
     await Promise.all(Array.from({ length: Math.min(2, batch.length) }, () => worker()))
     setUploading(false)
-    setNotice(`批量导入完成：新增 ${completed} 本，重复 ${duplicated} 本，失败 ${failed} 本${rejected ? `，忽略 ${rejected} 个非 PDF/EPUB 文件` : ''}。`)
+    setNotice(`批量导入完成：新增 ${completed} 本，重复 ${duplicated} 本，失败 ${failed} 本${rejected ? `，忽略 ${rejected} 个非 PDF/EPUB/MOBI/AZW3 文件` : ''}。`)
     await refreshAdmin()
   }
 
@@ -213,8 +215,8 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
       <section className="page-heading admin-heading">
         <div><p className="eyebrow">系统管理</p><h1>管理后台</h1><p className="muted">导入书籍、确认分类、管理用户和检查后台任务。</p></div>
         <label className={`upload-button ${uploading ? 'disabled' : ''}`}>
-          {uploading ? '正在批量导入…' : '选择 EPUB / PDF'}
-          <input type="file" multiple accept=".epub,.pdf,application/epub+zip,application/pdf" onChange={selectFiles} disabled={uploading} />
+          {uploading ? '正在批量导入…' : '选择电子书'}
+          <input type="file" multiple accept=".epub,.pdf,.mobi,.azw3,application/epub+zip,application/pdf,application/x-mobipocket-ebook,application/vnd.amazon.ebook" onChange={selectFiles} disabled={uploading} />
         </label>
       </section>
 
@@ -228,7 +230,7 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
         onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingFiles(false) }}
         onDrop={dropFiles}
       >
-        <div><p className="eyebrow">批量导入</p><h2>{uploading ? '正在处理导入队列' : '拖放 PDF / EPUB 到这里'}</h2><p className="muted">每次最多 2 本并行处理；文件会复制到应用书库，原上传文件不受影响。</p></div>
+        <div><p className="eyebrow">批量导入</p><h2>{uploading ? '正在处理导入队列' : '拖放 PDF / EPUB / MOBI / AZW3 到这里'}</h2><p className="muted">每次最多 2 本并行处理；原文件会复制到应用书库，MOBI/AZW3 会额外生成可再生的 EPUB 阅读缓存。</p></div>
         {uploads.length > 0 && (
           <div className="upload-queue" aria-live="polite">
             {uploads.map((item) => (
@@ -264,7 +266,7 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
         </div>
         {calibrePreview && (
           <div className="calibre-preview">
-            <p><strong>{calibrePreview.total}</strong> 个文件 · PDF {calibrePreview.pdfCount} · EPUB {calibrePreview.epubCount} · 来源挂载 <code>{calibrePreview.rootLabel}</code></p>
+            <p><strong>{calibrePreview.total}</strong> 个文件 · PDF {calibrePreview.pdfCount} · EPUB {calibrePreview.epubCount} · MOBI {calibrePreview.mobiCount} · AZW3 {calibrePreview.azw3Count} · 来源挂载 <code>{calibrePreview.rootLabel}</code></p>
             {calibrePreview.total === 0 && <p className="muted">没有找到含 metadata.opf 的 Calibre 书目，请检查 CALIBRE_LIBRARY_PATH 挂载。</p>}
             {calibrePreview.books.slice(0, 6).map((book) => (
               <div className="calibre-row" key={book.sourcePath}>
