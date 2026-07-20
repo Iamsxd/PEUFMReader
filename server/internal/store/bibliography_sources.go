@@ -139,3 +139,25 @@ func (s *Store) UpdateBibliographySource(ctx context.Context, id int64, input Bi
 	}
 	return item, true, nil
 }
+
+func (s *Store) RecordBibliographySourceCheck(ctx context.Context, id int64, success bool, latency time.Duration, errorMessage string) error {
+	latencyMS := max(int64(0), latency.Milliseconds())
+	if len(errorMessage) > 2000 {
+		errorMessage = errorMessage[:2000]
+	}
+	command, err := s.pool.Exec(ctx, `
+		UPDATE bibliography_sources SET
+			last_checked_at=NOW(),
+			last_success_at=CASE WHEN $2 THEN NOW() ELSE last_success_at END,
+			last_latency_ms=$3,
+			last_error=CASE WHEN $2 THEN '' ELSE $4 END,
+			updated_at=NOW()
+		WHERE id=$1`, id, success, latencyMS, errorMessage)
+	if err != nil {
+		return fmt.Errorf("record bibliography source check: %w", err)
+	}
+	if command.RowsAffected() == 0 {
+		return errors.New("bibliography source not found")
+	}
+	return nil
+}

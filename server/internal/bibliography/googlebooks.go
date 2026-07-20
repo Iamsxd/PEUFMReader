@@ -14,13 +14,18 @@ type GoogleBooks struct {
 	baseURL string
 	apiKey  string
 	client  *http.Client
+	limit   int
 }
 
 func NewGoogleBooks(baseURL, apiKey string, timeout time.Duration) *GoogleBooks {
+	return newGoogleBooks(baseURL, apiKey, timeout, 5)
+}
+
+func newGoogleBooks(baseURL, apiKey string, timeout time.Duration, limit int) *GoogleBooks {
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = "https://www.googleapis.com/books/v1"
 	}
-	return &GoogleBooks{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, client: &http.Client{Timeout: timeout}}
+	return &GoogleBooks{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, client: &http.Client{Timeout: timeout}, limit: limit}
 }
 
 func (p *GoogleBooks) Name() string { return "Google Books" }
@@ -39,7 +44,7 @@ func (p *GoogleBooks) Search(ctx context.Context, query Query) ([]Match, error) 
 	}
 	parameters := endpoint.Query()
 	parameters.Set("q", search)
-	parameters.Set("maxResults", "5")
+	parameters.Set("maxResults", fmt.Sprintf("%d", p.limit))
 	parameters.Set("printType", "books")
 	if p.apiKey != "" {
 		parameters.Set("key", p.apiKey)

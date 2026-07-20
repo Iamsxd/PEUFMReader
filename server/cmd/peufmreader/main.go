@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"peufmreader/internal/bibliography"
+	"peufmreader/internal/bibliographyjobs"
 	"peufmreader/internal/calibre"
 	"peufmreader/internal/classification"
 	"peufmreader/internal/config"
@@ -73,6 +74,26 @@ func main() {
 		logger.Error("bibliography source setup failed", "error", err)
 		os.Exit(1)
 	}
+	bibliographyService := bibliography.NewDynamicService(
+		func(ctx context.Context, automaticOnly bool) ([]bibliography.SourceConfig, error) {
+			sources, loadErr := dataStore.ListEnabledBibliographySources(ctx, automaticOnly)
+			if loadErr != nil {
+				return nil, loadErr
+			}
+			configs := make([]bibliography.SourceConfig, 0, len(sources))
+			for _, source := range sources {
+				configs = append(configs, bibliography.SourceConfig{
+					ID: source.ID, Provider: source.Provider, BaseURL: source.BaseURL, Priority: source.Priority,
+					Timeout: time.Duration(source.TimeoutMS) * time.Millisecond, MaxResults: source.MaxResults,
+				})
+			}
+			return configs, nil
+		},
+		func(ctx context.Context, sourceID int64, success bool, latency time.Duration, errorMessage string) error {
+			return dataStore.RecordBibliographySourceCheck(ctx, sourceID, success, latency, errorMessage)
+		},
+		cfg.GoogleBooksAPIKey,
+	)
 	libraryManager, err := library.NewManager(cfg.LibraryRoot, cfg.StagingRoot, cfg.CacheRoot, cfg.MaxUploadBytes)
 	if err != nil {
 		logger.Error("library setup failed", "error", err)
@@ -84,6 +105,9 @@ func main() {
 		os.Exit(1)
 	}
 	importService := importing.New(dataStore, libraryManager, kindleConverter)
+	importService.SetPostImportHook(func(ctx context.Context, userID int64, book store.BookFile) error {
+		return bibliographyjobs.EnqueueIfConfigured(ctx, dataStore, userID, book)
+	})
 	importManager, err := importinbox.NewManager(cfg.ImportRoot)
 	if err != nil {
 		logger.Error("import inbox setup failed", "error", err)
@@ -106,9 +130,10 @@ func main() {
 	}
 	workerID := fmt.Sprintf("%s-%d", hostname(), os.Getpid())
 	worker := jobs.New(dataStore, map[string]jobs.Handler{
-		calibre.ImportJobKind: calibre.ImportHandler(calibreScanner, importService),
-		importinbox.JobKind:   importinbox.Handler(importManager, importService),
-		pdfassets.JobKind:     pdfassets.Handler(dataStore, libraryManager, pdfProcessor),
+		calibre.ImportJobKind:    calibre.ImportHandler(calibreScanner, importService),
+		importinbox.JobKind:      importinbox.Handler(importManager, importService),
+		pdfassets.JobKind:        pdfassets.Handler(dataStore, libraryManager, pdfProcessor),
+		bibliographyjobs.JobKind: bibliographyjobs.Handler(dataStore, bibliographyService),
 	}, logger, workerID)
 	workerDone := make(chan struct{})
 	go func() {
@@ -119,16 +144,6 @@ func main() {
 	go inboxWatcher.Run(ctx)
 
 	advisor := classification.NewAdvisor(cfg.AIProvider, cfg.AIBaseURL, cfg.AIModel, cfg.AIAPIKey, cfg.AITimeout)
-	bibliographyProviders := make([]bibliography.Provider, 0, 2)
-	for _, provider := range strings.Split(cfg.BibliographyProviders, ",") {
-		switch strings.TrimSpace(provider) {
-		case "openlibrary":
-			bibliographyProviders = append(bibliographyProviders, bibliography.NewOpenLibrary(cfg.OpenLibraryBaseURL, cfg.BibliographyTimeout))
-		case "google-books":
-			bibliographyProviders = append(bibliographyProviders, bibliography.NewGoogleBooks(cfg.GoogleBooksBaseURL, cfg.GoogleBooksAPIKey, cfg.BibliographyTimeout))
-		}
-	}
-	bibliographyService := bibliography.NewService(bibliographyProviders...)
 	api := httpapi.New(dataStore, libraryManager, kindleConverter, importService, calibreScanner, bibliographyService, advisor, cfg.WebRoot, cfg.CookieSecure, cfg.SessionTTL, cfg.MaxUploadBytes, cfg.TrustedProxyCIDR, logger)
 	server := &http.Server{
 		Addr:              cfg.Address,

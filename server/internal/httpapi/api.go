@@ -123,6 +123,7 @@ func (a *API) routes() {
 	a.mux.Handle("PATCH /api/v1/admin/categories/{id}", a.requireAuth(http.HandlerFunc(a.updateCategory), "admin", true))
 	a.mux.Handle("GET /api/v1/admin/bibliography-sources", a.requireAuth(http.HandlerFunc(a.listBibliographySources), "admin", false))
 	a.mux.Handle("PATCH /api/v1/admin/bibliography-sources/{id}", a.requireAuth(http.HandlerFunc(a.updateBibliographySource), "admin", true))
+	a.mux.Handle("POST /api/v1/admin/bibliography-sources/{id}/test", a.requireAuth(http.HandlerFunc(a.testBibliographySource), "admin", true))
 	a.mux.Handle("GET /api/v1/review-queue", a.requireAuth(http.HandlerFunc(a.listReviewQueue), "admin", false))
 	a.mux.Handle("GET /api/v1/editions/{id}/review", a.requireAuth(http.HandlerFunc(a.getEditionReview), "admin", false))
 	a.mux.Handle("PUT /api/v1/editions/{id}/review", a.requireAuth(http.HandlerFunc(a.reviewEdition), "admin", true))
@@ -917,6 +918,40 @@ func validateBibliographySourceUpdate(input store.BibliographySourceUpdate) erro
 	return nil
 }
 
+func (a *API) testBibliographySource(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	source, found, err := a.store.GetBibliographySource(r.Context(), id)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "bibliography_source_not_found", "bibliography source not found")
+		return
+	}
+	if strings.TrimSpace(source.BaseURL) == "" {
+		writeError(w, http.StatusBadRequest, "bibliography_source_not_configured", "save a service URL before testing")
+		return
+	}
+	result := a.bibliography.TestSource(r.Context(), bibliographySourceConfig(source))
+	updated, _, loadErr := a.store.GetBibliographySource(r.Context(), id)
+	if loadErr != nil {
+		a.internalError(w, loadErr)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"result": result, "source": updated})
+}
+
+func bibliographySourceConfig(source store.BibliographySource) bibliography.SourceConfig {
+	return bibliography.SourceConfig{
+		ID: source.ID, Provider: source.Provider, BaseURL: source.BaseURL, Priority: source.Priority,
+		Timeout: time.Duration(source.TimeoutMS) * time.Millisecond, MaxResults: source.MaxResults,
+	}
+}
+
 func (a *API) listReviewQueue(w http.ResponseWriter, r *http.Request) {
 	items, err := a.store.ListReviewQueue(r.Context())
 	if err != nil {
@@ -1054,6 +1089,10 @@ func (a *API) searchBibliography(w http.ResponseWriter, r *http.Request) {
 	result, err := a.bibliography.Search(r.Context(), bibliography.Query{
 		Title: book.Title, Authors: book.Authors, ISBN: book.ISBN, Language: book.Language,
 	})
+	if errors.Is(err, bibliography.ErrNoProviders) {
+		writeError(w, http.StatusConflict, "bibliography_not_configured", "no external bibliography source is enabled")
+		return
+	}
 	if err != nil {
 		a.logger.Warn("bibliography search failed", "edition_id", editionID, "error", err)
 		writeError(w, http.StatusBadGateway, "bibliography_search_failed", err.Error())

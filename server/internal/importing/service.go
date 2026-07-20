@@ -21,9 +21,10 @@ var (
 )
 
 type Service struct {
-	store     *store.Store
-	library   *library.Manager
-	converter *mobiconvert.Converter
+	store      *store.Store
+	library    *library.Manager
+	converter  *mobiconvert.Converter
+	postImport func(context.Context, int64, store.BookFile) error
 }
 
 type Result struct {
@@ -34,6 +35,10 @@ type Result struct {
 
 func New(store *store.Store, libraryManager *library.Manager, converter *mobiconvert.Converter) *Service {
 	return &Service{store: store, library: libraryManager, converter: converter}
+}
+
+func (s *Service) SetPostImportHook(hook func(context.Context, int64, store.BookFile) error) {
+	s.postImport = hook
 }
 
 func (s *Service) Import(
@@ -112,6 +117,11 @@ func (s *Service) Import(
 	if book.Format == "pdf" && (!duplicate || book.PageCount == nil) {
 		if _, _, enqueueErr := pdfassets.Enqueue(ctx, s.store, &userID, book.ID); enqueueErr != nil {
 			_ = s.store.AppendImportJobWarning(ctx, job.ID, "PDF 封面/OCR 后台任务排队失败："+enqueueErr.Error())
+		}
+	}
+	if !duplicate && s.postImport != nil {
+		if hookErr := s.postImport(ctx, userID, book); hookErr != nil {
+			_ = s.store.AppendImportJobWarning(ctx, job.ID, "外部书目自动查询任务排队失败："+hookErr.Error())
 		}
 	}
 	return Result{Book: book, Duplicate: duplicate, ImportJobID: job.ID}, nil

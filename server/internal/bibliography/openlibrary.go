@@ -14,13 +14,18 @@ import (
 type OpenLibrary struct {
 	baseURL string
 	client  *http.Client
+	limit   int
 }
 
 func NewOpenLibrary(baseURL string, timeout time.Duration) *OpenLibrary {
+	return newOpenLibrary(baseURL, timeout, 5)
+}
+
+func newOpenLibrary(baseURL string, timeout time.Duration, limit int) *OpenLibrary {
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = "https://openlibrary.org"
 	}
-	return &OpenLibrary{baseURL: strings.TrimRight(baseURL, "/"), client: &http.Client{Timeout: timeout}}
+	return &OpenLibrary{baseURL: strings.TrimRight(baseURL, "/"), client: &http.Client{Timeout: timeout}, limit: limit}
 }
 
 func (p *OpenLibrary) Name() string { return "Open Library" }
@@ -40,7 +45,7 @@ func (p *OpenLibrary) Search(ctx context.Context, query Query) ([]Match, error) 
 		}
 	}
 	parameters.Set("fields", "key,title,author_name,first_publish_year,language,isbn,publisher,subject,cover_i")
-	parameters.Set("limit", "5")
+	parameters.Set("limit", strconv.Itoa(p.limit))
 	if len(query.Language) >= 2 {
 		parameters.Set("lang", query.Language[:2])
 	}

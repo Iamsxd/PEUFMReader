@@ -176,8 +176,8 @@ func Load() (Config, error) {
 	}
 	if raw := os.Getenv("BIBLIOGRAPHY_TIMEOUT"); raw != "" {
 		cfg.BibliographyTimeout, err = time.ParseDuration(raw)
-		if err != nil || cfg.BibliographyTimeout <= 0 || cfg.BibliographyTimeout > time.Minute {
-			return Config{}, fmt.Errorf("BIBLIOGRAPHY_TIMEOUT must be between 1ns and 1m")
+		if err != nil || cfg.BibliographyTimeout < time.Second || cfg.BibliographyTimeout > time.Minute {
+			return Config{}, fmt.Errorf("BIBLIOGRAPHY_TIMEOUT must be between 1s and 1m")
 		}
 	}
 	if cfg.PDFOCRMode != "auto" && cfg.PDFOCRMode != "always" && cfg.PDFOCRMode != "disabled" {
