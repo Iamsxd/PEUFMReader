@@ -451,7 +451,8 @@ const reviewItemSelect = `
 			WHERE ec.edition_id=e.id AND ec.role='author'),'[]'::jsonb),
 		COALESCE((SELECT jsonb_agg(jsonb_build_object(
 			'id',mc.id,'fieldName',mc.field_name,'value',mc.value,'source',mc.source,'confidence',mc.confidence,'reason',mc.reason,'status',mc.status)
-			ORDER BY mc.id) FROM metadata_candidates mc WHERE mc.edition_id=e.id),'[]'::jsonb),
+			ORDER BY mc.id) FROM metadata_candidates mc
+			WHERE mc.edition_id=e.id AND mc.status IN ('accepted','suggested')),'[]'::jsonb),
 		COALESCE((SELECT jsonb_agg(jsonb_build_object(
 			'id',cd.id,'categoryId',cat.id,'categorySlug',cat.slug,'categoryName',cat.name,'source',cd.source,
 			'confidence',cd.confidence,'reason',cd.reason,'status',cd.status) ORDER BY cd.confidence DESC,cd.id)
@@ -495,9 +496,24 @@ func (s *Store) ReviewEdition(ctx context.Context, editionID, userID int64, inpu
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var workID int64
-	if err := tx.QueryRow(ctx, "SELECT work_id FROM editions WHERE id=$1 FOR UPDATE", editionID).Scan(&workID); err != nil {
+	var current ReviewInput
+	var currentAuthorsJSON []byte
+	if err := tx.QueryRow(ctx, `
+		SELECT e.work_id,w.title,COALESCE(w.description,''),e.published_year,COALESCE(e.language,''),COALESCE(e.isbn,''),COALESCE(e.publisher,''),
+			COALESCE((SELECT jsonb_agg(c.name ORDER BY ec.position,c.id)
+				FROM edition_creators ec JOIN creators c ON c.id=ec.creator_id
+				WHERE ec.edition_id=e.id AND ec.role='author'),'[]'::jsonb)
+		FROM editions e JOIN works w ON w.id=e.work_id
+		WHERE e.id=$1
+		FOR UPDATE OF e,w`, editionID).Scan(
+		&workID, &current.Title, &current.Description, &current.PublishedYear, &current.Language, &current.ISBN, &current.Publisher, &currentAuthorsJSON,
+	); err != nil {
 		return ReviewItem{}, err
 	}
+	if err := json.Unmarshal(currentAuthorsJSON, &current.Authors); err != nil {
+		return ReviewItem{}, fmt.Errorf("decode current authors: %w", err)
+	}
+	metadataChanged := !reviewMetadataEqual(current, input)
 	status := "reviewed"
 	if len(input.CategorySlugs) == 0 {
 		status = "pending"
@@ -517,12 +533,14 @@ func (s *Store) ReviewEdition(ctx context.Context, editionID, userID int64, inpu
 	if err := replaceAuthors(ctx, tx, editionID, input.Authors); err != nil {
 		return ReviewItem{}, err
 	}
-	if _, err := tx.Exec(ctx, "UPDATE metadata_candidates SET status='superseded',updated_at=now() WHERE edition_id=$1 AND status='accepted'", editionID); err != nil {
-		return ReviewItem{}, err
-	}
-	manual := metadata.Result{Title: input.Title, Authors: input.Authors, PublishedYear: input.PublishedYear, Language: input.Language, ISBN: input.ISBN, Publisher: input.Publisher, Description: input.Description, Source: "manual", Confidence: 1}
-	if err := insertExtractedCandidates(ctx, tx, editionID, manual); err != nil {
-		return ReviewItem{}, err
+	if metadataChanged {
+		if _, err := tx.Exec(ctx, "UPDATE metadata_candidates SET status='superseded',updated_at=now() WHERE edition_id=$1 AND status='accepted'", editionID); err != nil {
+			return ReviewItem{}, err
+		}
+		manual := metadata.Result{Title: input.Title, Authors: input.Authors, PublishedYear: input.PublishedYear, Language: input.Language, ISBN: input.ISBN, Publisher: input.Publisher, Description: input.Description, Source: "manual", Confidence: 1}
+		if err := insertExtractedCandidates(ctx, tx, editionID, manual); err != nil {
+			return ReviewItem{}, err
+		}
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE classification_decisions SET status='rejected',decided_by=$1,updated_at=now()
@@ -703,6 +721,32 @@ func isEmptyCandidate(value any) bool {
 	default:
 		return value == nil
 	}
+}
+
+func reviewMetadataEqual(current, next ReviewInput) bool {
+	if strings.TrimSpace(current.Title) != strings.TrimSpace(next.Title) ||
+		strings.TrimSpace(current.Language) != strings.TrimSpace(next.Language) ||
+		strings.TrimSpace(current.ISBN) != strings.TrimSpace(next.ISBN) ||
+		strings.TrimSpace(current.Publisher) != strings.TrimSpace(next.Publisher) ||
+		strings.TrimSpace(current.Description) != strings.TrimSpace(next.Description) ||
+		!equalOptionalInt(current.PublishedYear, next.PublishedYear) {
+		return false
+	}
+	currentAuthors := uniqueStrings(current.Authors)
+	nextAuthors := uniqueStrings(next.Authors)
+	if len(currentAuthors) != len(nextAuthors) {
+		return false
+	}
+	for index := range currentAuthors {
+		if currentAuthors[index] != nextAuthors[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalOptionalInt(left, right *int) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
 }
 
 func nullIfEmpty(value string) any {

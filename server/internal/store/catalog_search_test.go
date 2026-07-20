@@ -38,3 +38,29 @@ func TestCatalogOrderByOnlyUsesKnownValues(t *testing.T) {
 		t.Fatalf("relevance sort did not reuse search parameter: %q", got)
 	}
 }
+
+func TestReviewItemSelectHidesSupersededMetadataEvidence(t *testing.T) {
+	if !strings.Contains(reviewItemSelect, "mc.status IN ('accepted','suggested')") {
+		t.Fatal("review query does not limit metadata evidence to current candidates")
+	}
+}
+
+func TestReviewMetadataEqualIgnoresCategoriesAndAuthorWhitespace(t *testing.T) {
+	year := 2018
+	current := ReviewInput{
+		Title: "一个人的村庄", Authors: []string{"刘亮程"}, PublishedYear: &year,
+		Language: "zh-cn", ISBN: "3953805105", Publisher: "江西人民出版社",
+	}
+	next := current
+	next.Authors = []string{" 刘亮程 ", "刘亮程"}
+	next.CategorySlugs = []string{"literature"}
+	if !reviewMetadataEqual(current, next) {
+		t.Fatal("equivalent review metadata was treated as changed")
+	}
+
+	changed := next
+	changed.Publisher = "新的出版社"
+	if reviewMetadataEqual(current, changed) {
+		t.Fatal("changed review metadata was treated as equivalent")
+	}
+}

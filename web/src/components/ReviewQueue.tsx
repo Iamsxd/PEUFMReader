@@ -191,7 +191,7 @@ function ReviewCard({ item, categories, onChanged }: { item: ReviewItem; categor
       </fieldset>
 
       <details className="evidence">
-        <summary>查看 {item.candidates.length} 条元数据证据</summary>
+        <summary>查看 {item.candidates.length} 条当前元数据证据</summary>
         <ul>
           {item.candidates.map((candidate) => (
             <li key={candidate.id}><strong>{candidate.fieldName}</strong> · {formatCandidateValue(candidate.value)} · {candidate.source} · {Math.round(candidate.confidence * 100)}% · {candidate.status}</li>
