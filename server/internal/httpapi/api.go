@@ -121,6 +121,8 @@ func (a *API) routes() {
 	a.mux.Handle("GET /api/v1/admin/categories", a.requireAuth(http.HandlerFunc(a.listAdminCategories), "admin", false))
 	a.mux.Handle("POST /api/v1/admin/categories", a.requireAuth(http.HandlerFunc(a.createCategory), "admin", true))
 	a.mux.Handle("PATCH /api/v1/admin/categories/{id}", a.requireAuth(http.HandlerFunc(a.updateCategory), "admin", true))
+	a.mux.Handle("GET /api/v1/admin/bibliography-sources", a.requireAuth(http.HandlerFunc(a.listBibliographySources), "admin", false))
+	a.mux.Handle("PATCH /api/v1/admin/bibliography-sources/{id}", a.requireAuth(http.HandlerFunc(a.updateBibliographySource), "admin", true))
 	a.mux.Handle("GET /api/v1/review-queue", a.requireAuth(http.HandlerFunc(a.listReviewQueue), "admin", false))
 	a.mux.Handle("GET /api/v1/editions/{id}/review", a.requireAuth(http.HandlerFunc(a.getEditionReview), "admin", false))
 	a.mux.Handle("PUT /api/v1/editions/{id}/review", a.requireAuth(http.HandlerFunc(a.reviewEdition), "admin", true))
@@ -848,6 +850,71 @@ func (a *API) updateCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, item)
+}
+
+func (a *API) listBibliographySources(w http.ResponseWriter, r *http.Request) {
+	items, err := a.store.ListBibliographySources(r.Context())
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (a *API) updateBibliographySource(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	var input store.BibliographySourceUpdate
+	if err := readJSON(w, r, &input, 32<<10); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	input.BaseURL = strings.TrimRight(strings.TrimSpace(input.BaseURL), "/")
+	if err := validateBibliographySourceUpdate(input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_bibliography_source", err.Error())
+		return
+	}
+	item, found, err := a.store.UpdateBibliographySource(r.Context(), id, input)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "bibliography_source_not_found", "bibliography source not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+func validateBibliographySourceUpdate(input store.BibliographySourceUpdate) error {
+	if input.Priority < 1 || input.Priority > 1000 {
+		return errors.New("priority must be between 1 and 1000")
+	}
+	if input.TimeoutMS < 1000 || input.TimeoutMS > 60000 {
+		return errors.New("timeoutMs must be between 1000 and 60000")
+	}
+	if input.MaxResults < 1 || input.MaxResults > 20 {
+		return errors.New("maxResults must be between 1 and 20")
+	}
+	if input.Enabled && input.BaseURL == "" {
+		return errors.New("baseUrl is required when the source is enabled")
+	}
+	if input.BaseURL == "" {
+		return nil
+	}
+	if len(input.BaseURL) > 2048 {
+		return errors.New("baseUrl is too long")
+	}
+	parsed, err := url.Parse(input.BaseURL)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return errors.New("baseUrl must be an absolute HTTP(S) URL")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("baseUrl cannot contain credentials, a query, or a fragment")
+	}
+	return nil
 }
 
 func (a *API) listReviewQueue(w http.ResponseWriter, r *http.Request) {

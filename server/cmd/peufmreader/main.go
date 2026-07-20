@@ -60,6 +60,19 @@ func main() {
 		logger.Error("initial admin setup failed", "error", err)
 		os.Exit(1)
 	}
+	enabledBibliographySources := make(map[string]bool)
+	for _, provider := range strings.Split(cfg.BibliographyProviders, ",") {
+		enabledBibliographySources[strings.TrimSpace(provider)] = true
+	}
+	defaultBibliographyTimeoutMS := int(cfg.BibliographyTimeout.Milliseconds())
+	if err := dataStore.EnsureBibliographySources(ctx, []store.BibliographySourceDefault{
+		{Provider: "douban", Enabled: enabledBibliographySources["douban"], BaseURL: cfg.DoubanBaseURL, Priority: 10, TimeoutMS: defaultBibliographyTimeoutMS, MaxResults: 5},
+		{Provider: "openlibrary", Enabled: enabledBibliographySources["openlibrary"], BaseURL: cfg.OpenLibraryBaseURL, Priority: 20, TimeoutMS: defaultBibliographyTimeoutMS, MaxResults: 5},
+		{Provider: "google-books", Enabled: enabledBibliographySources["google-books"], BaseURL: cfg.GoogleBooksBaseURL, Priority: 30, TimeoutMS: defaultBibliographyTimeoutMS, MaxResults: 5},
+	}); err != nil {
+		logger.Error("bibliography source setup failed", "error", err)
+		os.Exit(1)
+	}
 	libraryManager, err := library.NewManager(cfg.LibraryRoot, cfg.StagingRoot, cfg.CacheRoot, cfg.MaxUploadBytes)
 	if err != nil {
 		logger.Error("library setup failed", "error", err)

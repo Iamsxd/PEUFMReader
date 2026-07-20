@@ -36,6 +36,7 @@ type Config struct {
 	OpenLibraryBaseURL    string
 	GoogleBooksBaseURL    string
 	GoogleBooksAPIKey     string
+	DoubanBaseURL         string
 	BibliographyTimeout   time.Duration
 	PDFOCRMode            string
 	PDFOCRLanguages       string
@@ -71,6 +72,7 @@ func Load() (Config, error) {
 		OpenLibraryBaseURL:    strings.TrimRight(envOr("OPEN_LIBRARY_BASE_URL", "https://openlibrary.org"), "/"),
 		GoogleBooksBaseURL:    strings.TrimRight(envOr("GOOGLE_BOOKS_BASE_URL", "https://www.googleapis.com/books/v1"), "/"),
 		GoogleBooksAPIKey:     os.Getenv("GOOGLE_BOOKS_API_KEY"),
+		DoubanBaseURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("DOUBAN_API_BASE_URL")), "/"),
 		BibliographyTimeout:   12 * time.Second,
 		PDFOCRMode:            strings.ToLower(strings.TrimSpace(envOr("PDF_OCR_MODE", "auto"))),
 		PDFOCRLanguages:       strings.TrimSpace(envOr("PDF_OCR_LANGUAGES", "chi_sim+eng")),
@@ -162,11 +164,14 @@ func Load() (Config, error) {
 	}
 	for _, provider := range strings.Split(cfg.BibliographyProviders, ",") {
 		provider = strings.TrimSpace(provider)
-		if provider != "" && provider != "openlibrary" && provider != "google-books" {
-			return Config{}, fmt.Errorf("BIBLIOGRAPHY_PROVIDERS supports openlibrary and google-books")
+		if provider != "" && provider != "openlibrary" && provider != "google-books" && provider != "douban" {
+			return Config{}, fmt.Errorf("BIBLIOGRAPHY_PROVIDERS supports openlibrary, google-books, and douban")
 		}
 		if provider == "google-books" && cfg.GoogleBooksAPIKey == "" {
 			return Config{}, fmt.Errorf("GOOGLE_BOOKS_API_KEY is required when google-books is enabled")
+		}
+		if provider == "douban" && cfg.DoubanBaseURL == "" {
+			return Config{}, fmt.Errorf("DOUBAN_API_BASE_URL is required when douban is enabled")
 		}
 	}
 	if raw := os.Getenv("BIBLIOGRAPHY_TIMEOUT"); raw != "" {

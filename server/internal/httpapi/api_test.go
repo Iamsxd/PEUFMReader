@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"peufmreader/internal/store"
 )
 
 func TestClientIPOnlyTrustsForwardingHeaderFromConfiguredProxy(t *testing.T) {
@@ -165,5 +167,24 @@ func TestParsePaginationRejectsInvalidValues(t *testing.T) {
 		if _, _, err := parsePagination(request, 24, 100); err == nil {
 			t.Fatalf("parsePagination accepted %s", target)
 		}
+	}
+}
+
+func TestValidateBibliographySourceUpdate(t *testing.T) {
+	valid := store.BibliographySourceUpdate{Enabled: true, BaseURL: "http://192.168.3.118:5890", Priority: 10, TimeoutMS: 8000, MaxResults: 5, AutoSearch: true}
+	if err := validateBibliographySourceUpdate(valid); err != nil {
+		t.Fatalf("valid LAN source rejected: %v", err)
+	}
+	for name, input := range map[string]store.BibliographySourceUpdate{
+		"missing enabled URL": {Enabled: true, Priority: 10, TimeoutMS: 8000, MaxResults: 5},
+		"file scheme":         {BaseURL: "file:///tmp/books", Priority: 10, TimeoutMS: 8000, MaxResults: 5},
+		"credentials":         {BaseURL: "http://user:pass@example.test", Priority: 10, TimeoutMS: 8000, MaxResults: 5},
+		"query":               {BaseURL: "http://example.test?token=secret", Priority: 10, TimeoutMS: 8000, MaxResults: 5},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateBibliographySourceUpdate(input); err == nil {
+				t.Fatal("invalid source accepted")
+			}
+		})
 	}
 }
