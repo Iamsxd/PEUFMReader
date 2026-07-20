@@ -136,6 +136,29 @@ func TestStoreCover(t *testing.T) {
 	}
 }
 
+func TestReplaceCoverOverwritesCachedContent(t *testing.T) {
+	manager, err := NewManager(filepath.Join(t.TempDir(), "library"), filepath.Join(t.TempDir(), "staging"), filepath.Join(t.TempDir(), "cache"), 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := strings.Repeat("b", 64)
+	relativePath, err := manager.StoreCover(hash, "jpg", []byte("old-cover"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ReplaceCover(hash, "jpg", []byte("new-cover")); err != nil {
+		t.Fatal(err)
+	}
+	absolutePath, err := manager.ResolveCover(relativePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(absolutePath)
+	if err != nil || string(content) != "new-cover" {
+		t.Fatalf("cover was not replaced: content=%q err=%v", content, err)
+	}
+}
+
 func TestStoreExtractedText(t *testing.T) {
 	root := t.TempDir()
 	manager, err := NewManager(filepath.Join(root, "library"), filepath.Join(root, "staging"), filepath.Join(root, "cache"), 1<<20)

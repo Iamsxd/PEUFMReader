@@ -205,6 +205,14 @@ class APIClient {
     return this.request(`/api/v1/background-jobs/${jobID}/retry`, { method: 'POST' })
   }
 
+  regeneratePDFCover(bookFileID: number, pageNumber: number): Promise<{ job: BackgroundJob; created: boolean }> {
+    return this.request(`/api/v1/book-files/${bookFileID}/cover/regenerate`, {
+      method: 'POST',
+      body: JSON.stringify({ pageNumber }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   previewCalibre(): Promise<CalibrePreview> {
     return this.request('/api/v1/calibre/preview')
   }

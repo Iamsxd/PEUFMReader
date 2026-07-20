@@ -30,6 +30,7 @@ import (
 	"peufmreader/internal/importing"
 	"peufmreader/internal/library"
 	"peufmreader/internal/mobiconvert"
+	"peufmreader/internal/pdfassets"
 	"peufmreader/internal/store"
 )
 
@@ -125,6 +126,7 @@ func (a *API) routes() {
 	a.mux.Handle("DELETE /api/v1/book-files/{id}/favorite", a.requireAuth(http.HandlerFunc(a.unfavoriteBook), "", true))
 	a.mux.Handle("GET /api/v1/book-files/{id}/content", a.requireAuth(http.HandlerFunc(a.bookContent), "", false))
 	a.mux.Handle("GET /api/v1/book-files/{id}/cover", a.requireAuth(http.HandlerFunc(a.bookCover), "", false))
+	a.mux.Handle("POST /api/v1/book-files/{id}/cover/regenerate", a.requireAuth(http.HandlerFunc(a.regeneratePDFCover), "admin", true))
 	a.mux.Handle("GET /api/v1/book-files/{id}/text", a.requireAuth(http.HandlerFunc(a.bookExtractedText), "", false))
 	a.mux.Handle("GET /api/v1/book-files/{id}/progress", a.requireAuth(http.HandlerFunc(a.getProgress), "", false))
 	a.mux.Handle("PUT /api/v1/book-files/{id}/progress", a.requireAuth(http.HandlerFunc(a.saveProgress), "", true))
@@ -754,8 +756,46 @@ func (a *API) bookCover(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, err)
 		return
 	}
-	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.Header().Set("Cache-Control", "private, no-cache")
 	http.ServeContent(w, r, filepath.Base(absolutePath), info.ModTime(), file)
+}
+
+func (a *API) regeneratePDFCover(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	var input struct {
+		PageNumber int `json:"pageNumber"`
+	}
+	if err := readJSON(w, r, &input, 8<<10); err != nil || input.PageNumber < 1 || input.PageNumber > 100000 {
+		writeError(w, http.StatusBadRequest, "invalid_cover_page", "pageNumber must be between 1 and 100000")
+		return
+	}
+	book, found, err := a.store.GetCatalogBook(r.Context(), id)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "book_not_found", "book file not found")
+		return
+	}
+	if book.Format != "pdf" {
+		writeError(w, http.StatusConflict, "cover_regeneration_unsupported", "only PDF covers can be regenerated from a selected page")
+		return
+	}
+	if book.PageCount != nil && input.PageNumber > *book.PageCount {
+		writeError(w, http.StatusBadRequest, "invalid_cover_page", fmt.Sprintf("pageNumber exceeds the PDF page count (%d)", *book.PageCount))
+		return
+	}
+	userSession := sessionFromContext(r.Context())
+	job, created, err := pdfassets.EnqueueCoverRegeneration(r.Context(), a.store, userSession.User.ID, book.ID, input.PageNumber)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"job": job, "created": created})
 }
 
 func (a *API) bookExtractedText(w http.ResponseWriter, r *http.Request) {

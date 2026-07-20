@@ -6,6 +6,7 @@ interface Props {
   pageNumber: number
   scale: number
   lazy: boolean
+  observerRoot: Element | null
   fallbackSize: { width: number; height: number }
   onVisibilityChange: (pageNumber: number, ratio: number) => void
   onRenderError: (message: string) => void
@@ -16,6 +17,7 @@ export function PDFPageCanvas({
   pageNumber,
   scale,
   lazy,
+  observerRoot,
   fallbackSize,
   onVisibilityChange,
   onRenderError,
@@ -36,23 +38,23 @@ export function PDFPageCanvas({
     if (!shell) return
     const observer = new IntersectionObserver(([entry]) => {
       setIsNearViewport(entry.isIntersecting)
-    }, { rootMargin: '1000px 0px' })
+    }, { root: observerRoot, rootMargin: '1500px 0px' })
     observer.observe(shell)
     return () => observer.disconnect()
-  }, [lazy])
+  }, [lazy, observerRoot])
 
   useEffect(() => {
     const shell = shellRef.current
     if (!shell) return
     const observer = new IntersectionObserver(([entry]) => {
       onVisibilityChange(pageNumber, entry.isIntersecting ? entry.intersectionRatio : 0)
-    }, { threshold: [0, 0.1, 0.25, 0.5, 0.75] })
+    }, { root: observerRoot, threshold: [0, 0.1, 0.25, 0.5, 0.75] })
     observer.observe(shell)
     return () => {
       onVisibilityChange(pageNumber, 0)
       observer.disconnect()
     }
-  }, [onVisibilityChange, pageNumber])
+  }, [observerRoot, onVisibilityChange, pageNumber])
 
   useEffect(() => {
     const canvas = canvasRef.current

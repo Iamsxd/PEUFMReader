@@ -81,7 +81,7 @@ func (p *Processor) Process(ctx context.Context, inputPath string) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
-	cover, err := p.renderCover(ctx, inputPath, tempDir)
+	cover, err := p.renderCover(ctx, inputPath, tempDir, 1)
 	if err != nil {
 		return Result{}, err
 	}
@@ -121,6 +121,18 @@ func (p *Processor) Process(ctx context.Context, inputPath string) (Result, erro
 	return result, nil
 }
 
+func (p *Processor) RenderCover(ctx context.Context, inputPath string, pageNumber int) ([]byte, error) {
+	if pageNumber < 1 {
+		return nil, errors.New("PDF cover page must be positive")
+	}
+	tempDir, err := os.MkdirTemp("", "peufm-pdf-cover-*")
+	if err != nil {
+		return nil, fmt.Errorf("create PDF cover directory: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+	return p.renderCover(ctx, inputPath, tempDir, pageNumber)
+}
+
 func (p *Processor) pageCount(ctx context.Context, inputPath string) (int, error) {
 	output, err := runCommand(ctx, p.config.PDFInfoPath, inputPath)
 	if err != nil {
@@ -137,10 +149,11 @@ func (p *Processor) pageCount(ctx context.Context, inputPath string) (int, error
 	return pageCount, nil
 }
 
-func (p *Processor) renderCover(ctx context.Context, inputPath, tempDir string) ([]byte, error) {
+func (p *Processor) renderCover(ctx context.Context, inputPath, tempDir string, pageNumber int) ([]byte, error) {
 	prefix := filepath.Join(tempDir, "cover")
+	page := strconv.Itoa(pageNumber)
 	_, err := runCommand(ctx, p.config.PDFToPPMPath,
-		"-f", "1", "-l", "1", "-singlefile", "-jpeg", "-jpegopt", "quality=85", "-scale-to", "1200", inputPath, prefix)
+		"-f", page, "-l", page, "-singlefile", "-jpeg", "-jpegopt", "quality=85", "-scale-to", "1200", inputPath, prefix)
 	if err != nil {
 		return nil, fmt.Errorf("render PDF cover: %w", err)
 	}

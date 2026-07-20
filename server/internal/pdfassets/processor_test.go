@@ -9,6 +9,13 @@ func TestNewProcessorLimitsDefaultOCRToFrontMatter(t *testing.T) {
 	}
 }
 
+func TestRenderCoverRejectsInvalidPage(t *testing.T) {
+	processor := NewProcessor(Config{})
+	if _, err := processor.RenderCover(t.Context(), "unused.pdf", 0); err == nil {
+		t.Fatal("invalid cover page was accepted")
+	}
+}
+
 func TestHasMeaningfulTextUsesPageAwareThreshold(t *testing.T) {
 	if !hasMeaningfulText([]byte("这是包含足够字符的文本页面，用于确认 PDF 原生文本不需要 OCR。1234567890"), 1) {
 		t.Fatal("expected native text to be meaningful")

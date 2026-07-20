@@ -427,6 +427,7 @@ function auditActionLabel(action: string): string {
     'DELETE /api/v1/users/{id}/sessions': '下线用户全部设备',
     'DELETE /api/v1/users/{id}/sessions/{sessionId}': '下线用户设备',
     'POST /api/v1/book-files': '上传书籍',
+    'POST /api/v1/book-files/{id}/cover/regenerate': '重新生成 PDF 封面',
     'PUT /api/v1/editions/{id}/review': '确认书目分类',
     'POST /api/v1/editions/{id}/ai-classify': '请求 AI 分类',
     'POST /api/v1/editions/{id}/bibliography-search': '查询外部书目',

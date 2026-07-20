@@ -181,6 +181,14 @@ func (m *Manager) Resolve(relativePath string) (string, error) {
 }
 
 func (m *Manager) StoreCover(sha256Hex, extension string, content []byte) (string, error) {
+	return m.storeCover(sha256Hex, extension, content, false)
+}
+
+func (m *Manager) ReplaceCover(sha256Hex, extension string, content []byte) (string, error) {
+	return m.storeCover(sha256Hex, extension, content, true)
+}
+
+func (m *Manager) storeCover(sha256Hex, extension string, content []byte, replace bool) (string, error) {
 	if len(content) == 0 || len(content) > 12<<20 {
 		return "", fmt.Errorf("cover content size is invalid")
 	}
@@ -199,9 +207,9 @@ func (m *Manager) StoreCover(sha256Hex, extension string, content []byte) (strin
 	if err := os.MkdirAll(filepath.Dir(absolutePath), 0o750); err != nil {
 		return "", fmt.Errorf("create cover cache directory: %w", err)
 	}
-	if _, err := os.Stat(absolutePath); err == nil {
+	if _, err := os.Stat(absolutePath); err == nil && !replace {
 		return filepath.ToSlash(relativePath), nil
-	} else if !errors.Is(err, os.ErrNotExist) {
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("inspect cached cover: %w", err)
 	}
 	temp, err := os.CreateTemp(filepath.Dir(absolutePath), ".cover-*.part")

@@ -27,10 +27,18 @@ export function BookDetailPage({ bookID, isAdmin, onBack, onOpenBook, onViewBook
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
   const [error, setError] = useState('')
   const [favoriteBusy, setFavoriteBusy] = useState(false)
+  const [coverPage, setCoverPage] = useState(1)
+  const [coverJobID, setCoverJobID] = useState<number | null>(null)
+  const [coverNotice, setCoverNotice] = useState('')
+  const [coverRevision, setCoverRevision] = useState(0)
 
   useEffect(() => {
     setDetail(null)
     setError('')
+    setCoverPage(1)
+    setCoverJobID(null)
+    setCoverNotice('')
+    setCoverRevision(0)
     void Promise.all([api.getBookDetail(bookID), api.getRecommendations(8)]).then(([nextDetail, result]) => {
       setDetail(nextDetail)
       setRecommendations(result.items.filter((item) => item.book.id !== bookID).slice(0, 6))
@@ -38,6 +46,41 @@ export function BookDetailPage({ bookID, isAdmin, onBack, onOpenBook, onViewBook
       setError(reason instanceof APIError && reason.status === 404 ? '这本书不存在或已被移除。' : '无法加载书籍详情。')
     })
   }, [bookID])
+
+  useEffect(() => {
+    if (!coverJobID) return
+    let cancelled = false
+    let timer = 0
+    const poll = async () => {
+      try {
+        const jobs = await api.listBackgroundJobs()
+        const job = jobs.find((item) => item.id === coverJobID)
+        if (!job) throw new Error('封面任务不在最近任务列表中。')
+        if (job.state === 'completed') {
+          const nextDetail = await api.getBookDetail(bookID)
+          if (cancelled) return
+          setDetail(nextDetail)
+          setCoverRevision(Date.now())
+          setCoverNotice(`已使用 PDF 第 ${coverPage} 页重新生成封面。`)
+          setCoverJobID(null)
+          return
+        }
+        if (job.state === 'failed') {
+          throw new Error(job.lastError || '封面生成失败。')
+        }
+        timer = window.setTimeout(() => void poll(), 1500)
+      } catch (reason) {
+        if (cancelled) return
+        setCoverJobID(null)
+        setError(reason instanceof Error ? reason.message : '无法确认封面生成结果。')
+      }
+    }
+    timer = window.setTimeout(() => void poll(), 800)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [bookID, coverJobID, coverPage])
 
   async function toggleFavorite() {
     if (!detail || favoriteBusy) return
@@ -59,6 +102,20 @@ export function BookDetailPage({ bookID, isAdmin, onBack, onOpenBook, onViewBook
     }
   }
 
+  async function regenerateCover() {
+    if (!detail || detail.book.format !== 'pdf' || coverJobID) return
+    setError('')
+    setCoverNotice('正在排队生成封面…')
+    try {
+      const result = await api.regeneratePDFCover(detail.book.id, coverPage)
+      setCoverJobID(result.job.id)
+      setCoverNotice(result.created ? `正在从 PDF 第 ${coverPage} 页生成封面…` : '已有封面生成任务正在处理…')
+    } catch (reason) {
+      setCoverNotice('')
+      setError(reason instanceof APIError ? reason.message : '无法启动封面生成任务。')
+    }
+  }
+
   if (error && !detail) {
     return <section className="empty-state detail-error"><h2>{error}</h2><button className="secondary" onClick={onBack}>返回书库</button></section>
   }
@@ -67,13 +124,23 @@ export function BookDetailPage({ bookID, isAdmin, onBack, onOpenBook, onViewBook
   const { book, readingState } = detail
   const progress = Math.round(readingState.overallProgress * 100)
   const readingActionLabel = readingState.status === 'finished' ? '重新阅读' : progress > 0 ? `继续阅读 · ${progress}%` : '开始阅读'
+  const coverURL = book.coverUrl ? `${book.coverUrl}?v=${coverRevision || book.id}` : ''
   return (
     <div className="book-detail-page">
       <button className="detail-back quiet" onClick={onBack}>← 返回书库</button>
       {error && <div className="notice error" role="alert">{error}</div>}
       <section className="book-detail-hero">
-        <div className="detail-cover-wrap">
-          {book.coverUrl ? <img src={book.coverUrl} alt={`${book.title}封面`} /> : <span>{book.title.slice(0, 1)}</span>}
+        <div className="detail-cover-column">
+          <div className="detail-cover-wrap">
+            {coverURL ? <img src={coverURL} alt={`${book.title}封面`} /> : <span>{book.title.slice(0, 1)}</span>}
+          </div>
+          {isAdmin && book.format === 'pdf' && (
+            <div className="detail-cover-tools">
+              <label>封面页<input type="number" min={1} max={book.pageCount ?? undefined} value={coverPage} disabled={Boolean(coverJobID)} onChange={(event) => setCoverPage(Math.max(1, Number(event.target.value) || 1))} /></label>
+              <button className="secondary" type="button" disabled={Boolean(coverJobID)} onClick={() => void regenerateCover()}>{coverJobID ? '生成中…' : '重新生成封面'}</button>
+            </div>
+          )}
+          {coverNotice && <small className="detail-cover-notice" role="status">{coverNotice}</small>}
         </div>
         <div className="detail-main">
           <div className="card-badges">

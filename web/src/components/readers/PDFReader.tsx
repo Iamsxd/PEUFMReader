@@ -409,6 +409,7 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
                 pageNumber={number}
                 scale={scale}
                 lazy={preferences.flow === 'continuous'}
+                observerRoot={viewportRef.current}
                 fallbackSize={basePageSize}
                 onVisibilityChange={handleVisibilityChange}
                 onRenderError={handleRenderError}

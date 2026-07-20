@@ -15,11 +15,20 @@ import (
 
 type Payload struct {
 	BookFileID int64 `json:"bookFileId"`
+	CoverOnly  bool  `json:"coverOnly,omitempty"`
+	CoverPage  int   `json:"coverPage,omitempty"`
 }
 
 func Enqueue(ctx context.Context, dataStore *store.Store, createdBy *int64, bookFileID int64) (store.BackgroundJob, bool, error) {
 	return dataStore.EnqueueBackgroundJob(
 		ctx, JobKind, strconv.FormatInt(bookFileID, 10), Payload{BookFileID: bookFileID}, createdBy, &bookFileID, 3,
+	)
+}
+
+func EnqueueCoverRegeneration(ctx context.Context, dataStore *store.Store, createdBy int64, bookFileID int64, pageNumber int) (store.BackgroundJob, bool, error) {
+	return dataStore.EnqueueBackgroundJob(
+		ctx, JobKind, fmt.Sprintf("%d:cover", bookFileID),
+		Payload{BookFileID: bookFileID, CoverOnly: true, CoverPage: pageNumber}, &createdBy, &bookFileID, 3,
 	)
 }
 
@@ -58,6 +67,25 @@ func Handler(dataStore *store.Store, libraryManager *library.Manager, processor 
 		absolutePath, err := libraryManager.Resolve(book.StoragePath)
 		if err != nil {
 			return nil, err
+		}
+		if payload.CoverOnly {
+			pageNumber := max(payload.CoverPage, 1)
+			_ = jobs.ReportProgress(ctx, 35, fmt.Sprintf("渲染 PDF 第 %d 页", pageNumber))
+			cover, renderErr := processor.RenderCover(ctx, absolutePath, pageNumber)
+			if renderErr != nil {
+				return nil, renderErr
+			}
+			_ = jobs.ReportProgress(ctx, 80, "替换 PDF 封面缓存")
+			coverPath, replaceErr := libraryManager.ReplaceCover(hex.EncodeToString(book.SHA256), "jpg", cover)
+			if replaceErr != nil {
+				return nil, replaceErr
+			}
+			if updateErr := dataStore.UpdatePDFCover(ctx, book.ID, coverPath); updateErr != nil {
+				return nil, updateErr
+			}
+			return map[string]any{
+				"bookFileId": book.ID, "coverPath": coverPath, "coverPage": pageNumber, "coverRegenerated": true,
+			}, nil
 		}
 		processed, err := processor.Process(ctx, absolutePath)
 		if err != nil {
