@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import { APIError, api } from '../api'
 import type { BibliographyMatch, Category, ReviewInput, ReviewItem } from '../types'
 
@@ -47,12 +47,6 @@ function ReviewCard({ item, categories, onChanged }: { item: ReviewItem; categor
   const [bibliographyMatches, setBibliographyMatches] = useState<BibliographyMatch[]>([])
   const [bibliographyWarnings, setBibliographyWarnings] = useState<string[]>([])
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    setForm(toForm(item))
-    setBibliographyMatches([])
-    setBibliographyWarnings([])
-  }, [item])
 
   function update<K extends keyof ReviewInput>(key: K, value: ReviewInput[K]) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -126,7 +120,7 @@ function ReviewCard({ item, categories, onChanged }: { item: ReviewItem; categor
       <div className="review-card-heading">
         <div>
           <span className="format-badge">Edition {item.editionId}</span>
-          <h3>{item.title}</h3>
+          <h3>{form.title}</h3>
         </div>
         <div className="review-provider-actions">
           <button className="quiet external-metadata-button" type="button" onClick={() => void searchBibliography()} disabled={searchingBibliography}>

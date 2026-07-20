@@ -54,7 +54,7 @@ func TestExtractEPUBMetadataAndCover(t *testing.T) {
 
 func TestExtractPDFInfo(t *testing.T) {
 	filePath := filepath.Join(t.TempDir(), "book.pdf")
-	content := []byte("%PDF-1.7\n1 0 obj << /Title (Clean\\040Code) /Author (Robert C. Martin) /Subject (technology; programming) /CreationDate (D:20080801) >> endobj")
+	content := []byte("%PDF-1.7\n1 0 obj << /Title (Clean\\040Code) /Author (Robert C. Martin) /Subject (technology; programming) /CreationDate (D:20080801) >> endobj\ntrailer << /Info 1 0 R >>")
 	if err := os.WriteFile(filePath, content, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -67,6 +67,39 @@ func TestExtractPDFInfo(t *testing.T) {
 	}
 	if result.PublishedYear == nil || *result.PublishedYear != 2008 || len(result.Subjects) != 2 {
 		t.Fatalf("unexpected PDF year/subjects: %+v", result)
+	}
+}
+
+func TestExtractPDFUsesDocumentInfoInsteadOfBookmarkTitle(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "book.pdf")
+	content := []byte("%PDF-1.7\n1 0 obj << /Title (封面) >> endobj\n7 0 obj << /Title (真正书名) /Author (作者) >> endobj\ntrailer << /Info 7 0 R >>")
+	if err := os.WriteFile(filePath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Extract(filePath, "pdf", "文件名.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Title != "真正书名" || len(result.Authors) != 1 || result.Authors[0] != "作者" {
+		t.Fatalf("unexpected PDF Info selection: %+v", result)
+	}
+}
+
+func TestExtractPDFFallsBackWhenInfoTitleIsPlaceholder(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "book.pdf")
+	content := []byte("%PDF-1.7\n2 0 obj << /Title (封面) /CreationDate (D:20220101) >> endobj\ntrailer << /Info 2 0 R >>")
+	if err := os.WriteFile(filePath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Extract(filePath, "pdf", "一个人的村庄.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Title != "一个人的村庄" || result.Source != "filename" || result.Confidence != 0.35 {
+		t.Fatalf("placeholder title did not fall back to filename: %+v", result)
+	}
+	if result.PublishedYear == nil || *result.PublishedYear != 2022 || len(result.Warnings) == 0 {
+		t.Fatalf("useful PDF Info fields or warning were lost: %+v", result)
 	}
 }
 

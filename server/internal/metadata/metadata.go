@@ -29,6 +29,7 @@ var (
 	isbnPattern     = regexp.MustCompile(`(?i)(?:ISBN(?:-1[03])?[:\s]*)?([0-9X][0-9X\-\s]{8,20}[0-9X])`)
 	htmlTagPattern  = regexp.MustCompile(`<[^>]+>`)
 	pdfInfoPattern  = regexp.MustCompile(`(?s)/(Title|Author|Subject|Keywords|CreationDate)\s*(\((?:\\.|[^\\)])*\)|<[0-9A-Fa-f\s]+>)`)
+	pdfInfoRef      = regexp.MustCompile(`/Info\s+([0-9]{1,10})\s+([0-9]{1,10})\s+R\b`)
 	whitespace      = regexp.MustCompile(`\s+`)
 	subjectSplitter = regexp.MustCompile(`[,;；，|/]+`)
 )
@@ -75,8 +76,16 @@ func Extract(filePath, format, originalFilename string) (Result, error) {
 	result.ISBN = normalizeISBN(result.ISBN)
 	result.Publisher = cleanText(result.Publisher)
 	result.Description = cleanDescription(result.Description)
+	filenameTitle := cleanText(strings.TrimSuffix(filepath.Base(originalFilename), filepath.Ext(originalFilename)))
+	if format == "pdf" && filenameTitle != "" && !strings.EqualFold(result.Title, filenameTitle) && placeholderTitle(result.Title) {
+		placeholder := result.Title
+		result.Title = filenameTitle
+		result.Confidence = 0.35
+		result.Source = "filename"
+		result.Warnings = append(result.Warnings, fmt.Sprintf("PDF 内嵌书名“%s”疑似占位内容，已使用文件名", placeholder))
+	}
 	if result.Title == "" {
-		result.Title = strings.TrimSpace(strings.TrimSuffix(filepath.Base(originalFilename), filepath.Ext(originalFilename)))
+		result.Title = filenameTitle
 		if result.Title == "" {
 			result.Title = "Untitled"
 		}
@@ -239,7 +248,7 @@ func extractPDF(filePath string) (Result, error) {
 		return Result{}, err
 	}
 	values := make(map[string]string)
-	for _, match := range pdfInfoPattern.FindAllSubmatch(content, -1) {
+	for _, match := range pdfInfoPattern.FindAllSubmatch(pdfInfoObject(content), -1) {
 		key := string(match[1])
 		if _, exists := values[key]; !exists {
 			values[key] = decodePDFValue(match[2])
@@ -268,6 +277,20 @@ func extractPDF(filePath string) (Result, error) {
 	}
 	result.Warnings = append(result.Warnings, "PDF 封面与文本将在后台生成")
 	return result, nil
+}
+
+func pdfInfoObject(content []byte) []byte {
+	references := pdfInfoRef.FindAllSubmatch(content, -1)
+	for index := len(references) - 1; index >= 0; index-- {
+		objectNumber := regexp.QuoteMeta(string(references[index][1]))
+		generation := regexp.QuoteMeta(string(references[index][2]))
+		objectPattern := regexp.MustCompile(`(?s)(?:^|\s)` + objectNumber + `\s+` + generation + `\s+obj\b(.*?)\bendobj\b`)
+		objects := objectPattern.FindAllSubmatch(content, -1)
+		if len(objects) > 0 {
+			return objects[len(objects)-1][1]
+		}
+	}
+	return nil
 }
 
 func readPDFWindows(filePath string) ([]byte, error) {
@@ -441,6 +464,15 @@ func cleanDescription(value string) string {
 
 func cleanText(value string) string {
 	return strings.TrimSpace(whitespace.ReplaceAllString(value, " "))
+}
+
+func placeholderTitle(value string) bool {
+	switch strings.ToLower(cleanText(value)) {
+	case "封面", "书籍封面", "扫描", "扫描件", "cover", "front cover", "document", "untitled", "untitled document":
+		return true
+	default:
+		return false
+	}
 }
 
 func extensionForMIME(value string) string {
