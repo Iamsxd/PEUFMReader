@@ -18,8 +18,14 @@ type Config struct {
 	CacheRoot             string
 	CalibreRoot           string
 	ImportRoot            string
+	ImportRootLabel       string
 	ImportScanInterval    time.Duration
 	ImportStableAge       time.Duration
+	WatchLibraryEnabled   bool
+	WatchLibraryRoot      string
+	WatchLibraryLabel     string
+	WatchLibraryScanEvery time.Duration
+	WatchLibraryStableAge time.Duration
 	WebRoot               string
 	AdminUsername         string
 	AdminPassword         string
@@ -55,8 +61,13 @@ func Load() (Config, error) {
 		CacheRoot:             envOr("CACHE_ROOT", "/data/cache"),
 		CalibreRoot:           envOr("CALIBRE_LIBRARY_ROOT", "/import/calibre"),
 		ImportRoot:            envOr("IMPORT_ROOT", "/data/import"),
+		ImportRootLabel:       strings.TrimSpace(envOr("IMPORT_ROOT_LABEL", envOr("IMPORT_ROOT", "/data/import"))),
 		ImportScanInterval:    10 * time.Second,
 		ImportStableAge:       10 * time.Second,
+		WatchLibraryRoot:      envOr("WATCH_LIBRARY_ROOT", "/watch/library"),
+		WatchLibraryLabel:     strings.TrimSpace(envOr("WATCH_LIBRARY_LABEL", envOr("WATCH_LIBRARY_ROOT", "/watch/library"))),
+		WatchLibraryScanEvery: time.Minute,
+		WatchLibraryStableAge: 30 * time.Second,
 		WebRoot:               envOr("WEB_ROOT", "/app/web"),
 		AdminUsername:         strings.ToLower(strings.TrimSpace(envOr("ADMIN_USERNAME", "admin"))),
 		AdminPassword:         os.Getenv("ADMIN_PASSWORD"),
@@ -139,6 +150,24 @@ func Load() (Config, error) {
 		cfg.ImportStableAge, err = time.ParseDuration(raw)
 		if err != nil || cfg.ImportStableAge < time.Second || cfg.ImportStableAge > time.Hour {
 			return Config{}, fmt.Errorf("IMPORT_STABLE_AGE must be between 1s and 1h")
+		}
+	}
+	if raw := os.Getenv("WATCH_LIBRARY_ENABLED"); raw != "" {
+		cfg.WatchLibraryEnabled, err = strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("parse WATCH_LIBRARY_ENABLED: %w", err)
+		}
+	}
+	if raw := os.Getenv("WATCH_LIBRARY_SCAN_INTERVAL"); raw != "" {
+		cfg.WatchLibraryScanEvery, err = time.ParseDuration(raw)
+		if err != nil || cfg.WatchLibraryScanEvery < 5*time.Second || cfg.WatchLibraryScanEvery > 24*time.Hour {
+			return Config{}, fmt.Errorf("WATCH_LIBRARY_SCAN_INTERVAL must be between 5s and 24h")
+		}
+	}
+	if raw := os.Getenv("WATCH_LIBRARY_STABLE_AGE"); raw != "" {
+		cfg.WatchLibraryStableAge, err = time.ParseDuration(raw)
+		if err != nil || cfg.WatchLibraryStableAge < time.Second || cfg.WatchLibraryStableAge > time.Hour {
+			return Config{}, fmt.Errorf("WATCH_LIBRARY_STABLE_AGE must be between 1s and 1h")
 		}
 	}
 	if cfg.AIProvider != "" {

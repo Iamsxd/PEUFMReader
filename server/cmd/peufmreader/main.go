@@ -28,6 +28,7 @@ import (
 	"peufmreader/internal/mobiconvert"
 	"peufmreader/internal/pdfassets"
 	"peufmreader/internal/store"
+	"peufmreader/internal/watchlibrary"
 )
 
 func main() {
@@ -118,6 +119,14 @@ func main() {
 		logger.Error("import inbox actor setup failed", "found", found, "error", err)
 		os.Exit(1)
 	}
+	var watchedLibraryManager *watchlibrary.Manager
+	if cfg.WatchLibraryEnabled {
+		watchedLibraryManager, err = watchlibrary.NewManager(cfg.WatchLibraryRoot)
+		if err != nil {
+			logger.Error("read-only watched library setup failed", "error", err)
+			os.Exit(1)
+		}
+	}
 	calibreScanner := calibre.NewScanner(cfg.CalibreRoot)
 	pdfProcessor := pdfassets.NewProcessor(pdfassets.Config{
 		OCRMode: cfg.PDFOCRMode, OCRLanguages: cfg.PDFOCRLanguages,
@@ -129,12 +138,16 @@ func main() {
 		logger.Info("PDF asset jobs queued", "count", queued)
 	}
 	workerID := fmt.Sprintf("%s-%d", hostname(), os.Getpid())
-	worker := jobs.New(dataStore, map[string]jobs.Handler{
+	handlers := map[string]jobs.Handler{
 		calibre.ImportJobKind:    calibre.ImportHandler(calibreScanner, importService),
 		importinbox.JobKind:      importinbox.Handler(importManager, importService),
 		pdfassets.JobKind:        pdfassets.Handler(dataStore, libraryManager, pdfProcessor),
 		bibliographyjobs.JobKind: bibliographyjobs.Handler(dataStore, bibliographyService),
-	}, logger, workerID)
+	}
+	if watchedLibraryManager != nil {
+		handlers[watchlibrary.JobKind] = watchlibrary.Handler(watchedLibraryManager, importService)
+	}
+	worker := jobs.New(dataStore, handlers, logger, workerID)
 	workerDone := make(chan struct{})
 	go func() {
 		defer close(workerDone)
@@ -142,6 +155,14 @@ func main() {
 	}()
 	inboxWatcher := importinbox.NewWatcher(importManager, dataStore, adminUser.ID, cfg.ImportScanInterval, cfg.ImportStableAge, logger)
 	go inboxWatcher.Run(ctx)
+	if watchedLibraryManager != nil {
+		watchedLibraryWatcher := watchlibrary.NewWatcher(
+			watchedLibraryManager, dataStore, adminUser.ID,
+			cfg.WatchLibraryScanEvery, cfg.WatchLibraryStableAge, logger,
+		)
+		go watchedLibraryWatcher.Run(ctx)
+		logger.Info("read-only watched library enabled", "path", cfg.WatchLibraryLabel)
+	}
 
 	advisor := classification.NewAdvisor(cfg.AIProvider, cfg.AIBaseURL, cfg.AIModel, cfg.AIAPIKey, cfg.AITimeout)
 	api := httpapi.New(dataStore, libraryManager, kindleConverter, importService, calibreScanner, bibliographyService, advisor, cfg.WebRoot, cfg.CookieSecure, cfg.SessionTTL, cfg.MaxUploadBytes, cfg.TrustedProxyCIDR, logger)

@@ -44,8 +44,14 @@ services:
       AI_TIMEOUT: ${AI_TIMEOUT:-45s}
       CALIBRE_LIBRARY_ROOT: /import/calibre
       IMPORT_ROOT: /data/import
+      IMPORT_ROOT_LABEL: ${PEUFM_IMPORT_ROOT:-./data/import}
       IMPORT_SCAN_INTERVAL: ${IMPORT_SCAN_INTERVAL:-10s}
       IMPORT_STABLE_AGE: ${IMPORT_STABLE_AGE:-10s}
+      WATCH_LIBRARY_ENABLED: ${WATCH_LIBRARY_ENABLED:-false}
+      WATCH_LIBRARY_ROOT: /watch/library
+      WATCH_LIBRARY_LABEL: ${WATCH_LIBRARY_PATH:-./data/watch-library}
+      WATCH_LIBRARY_SCAN_INTERVAL: ${WATCH_LIBRARY_SCAN_INTERVAL:-1m}
+      WATCH_LIBRARY_STABLE_AGE: ${WATCH_LIBRARY_STABLE_AGE:-30s}
       BIBLIOGRAPHY_PROVIDERS: ${BIBLIOGRAPHY_PROVIDERS-openlibrary}
       OPEN_LIBRARY_BASE_URL: ${OPEN_LIBRARY_BASE_URL:-https://openlibrary.org}
       GOOGLE_BOOKS_BASE_URL: ${GOOGLE_BOOKS_BASE_URL:-https://www.googleapis.com/books/v1}
@@ -66,6 +72,7 @@ services:
       - ${PEUFM_DATA_ROOT:-./data}/staging:/data/staging
       - ${PEUFM_DATA_ROOT:-./data}/cache:/data/cache
       - ${PEUFM_IMPORT_ROOT:-./data/import}:/data/import
+      - ${WATCH_LIBRARY_PATH:-./data/watch-library}:/watch/library:ro
       - ${CALIBRE_LIBRARY_PATH:-./data/calibre}:/import/calibre:ro
     user: "${PUID:-99}:${PGID:-100}"
     read_only: true
