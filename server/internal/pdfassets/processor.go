@@ -50,7 +50,7 @@ func NewProcessor(config Config) *Processor {
 		config.OCRLanguages = "chi_sim+eng"
 	}
 	if config.OCRMaxPages <= 0 {
-		config.OCRMaxPages = 500
+		config.OCRMaxPages = 8
 	}
 	if config.OCRDPI <= 0 {
 		config.OCRDPI = 180

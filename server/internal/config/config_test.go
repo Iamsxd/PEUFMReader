@@ -23,6 +23,7 @@ func TestLoadWatchLibrarySettings(t *testing.T) {
 	t.Setenv("WATCH_LIBRARY_LABEL", "/mnt/user/ebooks")
 	t.Setenv("WATCH_LIBRARY_SCAN_INTERVAL", "2m")
 	t.Setenv("WATCH_LIBRARY_STABLE_AGE", "45s")
+	t.Setenv("PDF_OCR_MAX_PAGES", "")
 
 	cfg, err := Load()
 	if err != nil {
@@ -33,6 +34,9 @@ func TestLoadWatchLibrarySettings(t *testing.T) {
 	}
 	if cfg.WatchLibraryScanEvery != 2*time.Minute || cfg.WatchLibraryStableAge != 45*time.Second {
 		t.Fatalf("unexpected watch timing: scan=%v stable=%v", cfg.WatchLibraryScanEvery, cfg.WatchLibraryStableAge)
+	}
+	if cfg.PDFOCRMaxPages != 8 {
+		t.Fatalf("PDFOCRMaxPages=%d, want front-matter default 8", cfg.PDFOCRMaxPages)
 	}
 }
 

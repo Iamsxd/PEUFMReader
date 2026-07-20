@@ -87,7 +87,7 @@ func Load() (Config, error) {
 		BibliographyTimeout:   12 * time.Second,
 		PDFOCRMode:            strings.ToLower(strings.TrimSpace(envOr("PDF_OCR_MODE", "auto"))),
 		PDFOCRLanguages:       strings.TrimSpace(envOr("PDF_OCR_LANGUAGES", "chi_sim+eng")),
-		PDFOCRMaxPages:        500,
+		PDFOCRMaxPages:        8,
 		PDFOCRDPI:             180,
 		MOBIConverterBinary:   strings.TrimSpace(envOr("MOBI_CONVERTER_BIN", "mobitool")),
 		MOBIConversionTimeout: 2 * time.Minute,

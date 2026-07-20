@@ -216,6 +216,7 @@ docker compose up -d --build
 | `SESSION_TTL` | `720h` | 登录会话有效期 |
 | `COOKIE_SECURE` | `false` | 仅通过 HTTPS 访问时设置为 `true` |
 | `PDF_OCR_MODE` | `auto` | `auto`、`always` 或 `disabled` |
+| `PDF_OCR_MAX_PAGES` | `8` | 扫描版 PDF 最多 OCR 前几页，避免长书占用后台任务 |
 | `BIBLIOGRAPHY_PROVIDERS` | `openlibrary` | 首次启动时初始化启用的外部来源 |
 
 完整配置及 AI、OCR、Google Books、豆瓣服务示例见 [.env.example](.env.example)。
