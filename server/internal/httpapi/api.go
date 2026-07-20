@@ -49,17 +49,29 @@ type API struct {
 	importer       *importing.Service
 	calibre        *calibre.Scanner
 	bibliography   *bibliography.Service
+	importSources  []ImportSource
 	logger         *slog.Logger
 	loginLimiter   *loginLimiter
 	trustedProxy   *net.IPNet
 	mux            *http.ServeMux
 }
 
+type ImportSource struct {
+	ID                  string `json:"id"`
+	Name                string `json:"name"`
+	Mode                string `json:"mode"`
+	Enabled             bool   `json:"enabled"`
+	Path                string `json:"path,omitempty"`
+	ScanIntervalSeconds int64  `json:"scanIntervalSeconds,omitempty"`
+	StableAgeSeconds    int64  `json:"stableAgeSeconds,omitempty"`
+	MaxFileBytes        int64  `json:"maxFileBytes,omitempty"`
+}
+
 type contextKey string
 
 const sessionContextKey contextKey = "session"
 
-func New(store *store.Store, libraryManager *library.Manager, converter *mobiconvert.Converter, importer *importing.Service, calibreScanner *calibre.Scanner, bibliographyService *bibliography.Service, advisor *classification.Advisor, webRoot string, cookieSecure bool, sessionTTL time.Duration, maxUploadBytes int64, trustedProxyCIDR string, logger *slog.Logger) *API {
+func New(store *store.Store, libraryManager *library.Manager, converter *mobiconvert.Converter, importer *importing.Service, calibreScanner *calibre.Scanner, bibliographyService *bibliography.Service, importSources []ImportSource, advisor *classification.Advisor, webRoot string, cookieSecure bool, sessionTTL time.Duration, maxUploadBytes int64, trustedProxyCIDR string, logger *slog.Logger) *API {
 	var trustedProxy *net.IPNet
 	if strings.TrimSpace(trustedProxyCIDR) != "" {
 		_, trustedProxy, _ = net.ParseCIDR(trustedProxyCIDR)
@@ -76,6 +88,7 @@ func New(store *store.Store, libraryManager *library.Manager, converter *mobicon
 		importer:       importer,
 		calibre:        calibreScanner,
 		bibliography:   bibliographyService,
+		importSources:  append([]ImportSource(nil), importSources...),
 		logger:         logger,
 		loginLimiter:   newLoginLimiter(),
 		trustedProxy:   trustedProxy,
@@ -130,6 +143,7 @@ func (a *API) routes() {
 	a.mux.Handle("POST /api/v1/editions/{id}/ai-classify", a.requireAuth(http.HandlerFunc(a.aiClassifyEdition), "admin", true))
 	a.mux.Handle("POST /api/v1/editions/{id}/bibliography-search", a.requireAuth(http.HandlerFunc(a.searchBibliography), "admin", true))
 	a.mux.Handle("GET /api/v1/import-jobs", a.requireAuth(http.HandlerFunc(a.listImportJobs), "admin", false))
+	a.mux.Handle("GET /api/v1/admin/import-sources", a.requireAuth(http.HandlerFunc(a.listImportSources), "admin", false))
 	a.mux.Handle("GET /api/v1/background-jobs", a.requireAuth(http.HandlerFunc(a.listBackgroundJobs), "admin", false))
 	a.mux.Handle("GET /api/v1/audit-events", a.requireAuth(http.HandlerFunc(a.listAuditEvents), "admin", false))
 	a.mux.Handle("GET /api/v1/system/storage", a.requireAuth(http.HandlerFunc(a.storageAudit), "admin", false))
@@ -1117,6 +1131,10 @@ func (a *API) listImportJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": jobs})
+}
+
+func (a *API) listImportSources(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"items": a.importSources})
 }
 
 func (a *API) listBackgroundJobs(w http.ResponseWriter, r *http.Request) {

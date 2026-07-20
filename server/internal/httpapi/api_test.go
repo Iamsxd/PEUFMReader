@@ -30,6 +30,28 @@ func TestClientIPOnlyTrustsForwardingHeaderFromConfiguredProxy(t *testing.T) {
 	}
 }
 
+func TestListImportSources(t *testing.T) {
+	api := &API{importSources: []ImportSource{
+		{ID: "browser-upload", Name: "网页批量上传", Mode: "upload", Enabled: true, MaxFileBytes: 500 << 20},
+		{ID: "watched-library", Name: "只读监控目录", Mode: "copy", Enabled: false, Path: "/mnt/user/ebooks"},
+	}}
+	recorder := httptest.NewRecorder()
+	api.listImportSources(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/admin/import-sources", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var body struct {
+		Items []ImportSource `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Items) != 2 || body.Items[0].ID != "browser-upload" || body.Items[1].Enabled {
+		t.Fatalf("unexpected import sources: %#v", body.Items)
+	}
+}
+
 func TestCategorySlugPattern(t *testing.T) {
 	for _, valid := range []string{"literature", "science-fiction", "ai-data-2"} {
 		if !categorySlugPattern.MatchString(valid) {

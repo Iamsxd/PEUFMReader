@@ -1,6 +1,6 @@
 import { type ChangeEvent, type DragEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
 import { APIError, api } from '../api'
-import type { AuditEvent, BackgroundJob, BibliographySource, BibliographySourceInput, CalibrePreview, Category, ImportJob, ReviewItem, StorageAuditReport } from '../types'
+import type { AuditEvent, BackgroundJob, BibliographySource, BibliographySourceInput, CalibrePreview, Category, ImportJob, ImportSource, ReviewItem, StorageAuditReport } from '../types'
 import { formatBytes, formatRelativeTime } from '../utils'
 import { ReviewQueue } from './ReviewQueue'
 import { UserManagement } from './UserManagement'
@@ -26,6 +26,7 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
   const [manualReviewItem, setManualReviewItem] = useState<ReviewItem | null>(null)
   const [importJobs, setImportJobs] = useState<ImportJob[]>([])
+  const [importSources, setImportSources] = useState<ImportSource[]>([])
   const [backgroundJobs, setBackgroundJobs] = useState<BackgroundJob[]>([])
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
   const [storageReport, setStorageReport] = useState<StorageAuditReport | null>(null)
@@ -42,8 +43,8 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
 
   async function refreshAdmin() {
     try {
-      const [categoryItems, managedCategories, queueItems, jobs, asyncJobs, audits, sources] = await Promise.all([
-        api.listCategories(), api.listAdminCategories(), api.listReviewQueue(), api.listImportJobs(), api.listBackgroundJobs(), api.listAuditEvents(), api.listBibliographySources(),
+      const [categoryItems, managedCategories, queueItems, jobs, asyncJobs, audits, sources, configuredImportSources] = await Promise.all([
+        api.listCategories(), api.listAdminCategories(), api.listReviewQueue(), api.listImportJobs(), api.listBackgroundJobs(), api.listAuditEvents(), api.listBibliographySources(), api.listImportSources(),
       ])
       setCategories(categoryItems)
       setAdminCategories(managedCategories)
@@ -52,6 +53,7 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
       setBackgroundJobs(asyncJobs)
       setAuditEvents(audits)
       setBibliographySources(sources)
+      setImportSources(configuredImportSources)
     } catch (reason) {
       setError(reason instanceof APIError ? reason.message : '无法加载管理后台。')
     }
@@ -246,6 +248,27 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
         )}
       </section>
 
+      <section className="integration-panel import-sources-panel">
+        <div className="section-title">
+          <div><p className="eyebrow">导入入口</p><h2>上传、移动与只读监控</h2><p className="muted">三个入口共用内容校验、SHA-256 去重、元数据提取与可恢复后台任务。</p></div>
+        </div>
+        <div className="import-source-grid">
+          {importSources.map((source) => (
+            <article className={`import-source-card${source.enabled ? '' : ' disabled'}`} key={source.id}>
+              <div className="import-source-heading"><strong>{source.name}</strong><span className={source.enabled ? 'enabled' : ''}>{source.enabled ? '已启用' : '未启用'}</span></div>
+              <p>{importSourceDescription(source)}</p>
+              {source.path && <code title={source.path}>{source.path}</code>}
+              <dl>
+                <div><dt>处理方式</dt><dd>{importModeLabel(source.mode)}</dd></div>
+                {source.maxFileBytes ? <div><dt>单文件上限</dt><dd>{formatBytes(source.maxFileBytes)}</dd></div> : null}
+                {source.scanIntervalSeconds ? <div><dt>扫描 / 稳定</dt><dd>{formatCompactSeconds(source.scanIntervalSeconds)} / {formatCompactSeconds(source.stableAgeSeconds ?? 0)}</dd></div> : null}
+              </dl>
+            </article>
+          ))}
+        </div>
+        <p className="import-source-hint">目录模式由 <code>.env</code> 和 Compose 挂载控制；修改后运行 <code>docker compose up -d</code> 重建容器。</p>
+      </section>
+
       <CategoryManager
         categories={adminCategories}
         onError={setError}
@@ -358,7 +381,7 @@ function jobStateLabel(state: BackgroundJob['state']): string {
 }
 
 function jobKindLabel(kind: string): string {
-  return { 'calibre-import': 'Calibre 迁移', 'inbox-import': '收件箱导入', 'pdf-assets': 'PDF 封面 / OCR', 'bibliography-enrichment': '外部书目自动查询' }[kind] ?? kind
+  return { 'calibre-import': 'Calibre 迁移', 'inbox-import': '移动导入箱', 'watched-library-import': '只读目录增量导入', 'pdf-assets': 'PDF 封面 / OCR', 'bibliography-enrichment': '外部书目自动查询' }[kind] ?? kind
 }
 
 function jobSourceLabel(job: BackgroundJob): string {
@@ -368,6 +391,24 @@ function jobSourceLabel(job: BackgroundJob): string {
 
 function uploadStateLabel(state: UploadState): string {
   return { queued: '等待', uploading: '上传', processing: '处理', completed: '完成', duplicate: '重复', failed: '失败' }[state]
+}
+
+function importModeLabel(mode: string): string {
+  return { upload: '网页上传并复制', move: '导入后移动归档', copy: '复制入库，源文件保留' }[mode] ?? mode
+}
+
+function importSourceDescription(source: ImportSource): string {
+  return {
+    'browser-upload': '需要时在管理后台选择或拖放多个文件，作为手动备用入口。',
+    'moving-inbox': '递归扫描 inbox；成功后移到 processed，连续失败后移到 failed。',
+    'watched-library': '递归发现新增或变更书籍，只读复制进托管书库，源目录保持原样。',
+  }[source.id] ?? '电子书导入入口。'
+}
+
+function formatCompactSeconds(seconds: number): string {
+  if (seconds >= 3600 && seconds % 3600 === 0) return `${seconds / 3600} 小时`
+  if (seconds >= 60 && seconds % 60 === 0) return `${seconds / 60} 分钟`
+  return `${seconds} 秒`
 }
 
 function storageIssueLabel(issue: string): string {

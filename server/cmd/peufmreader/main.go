@@ -165,7 +165,20 @@ func main() {
 	}
 
 	advisor := classification.NewAdvisor(cfg.AIProvider, cfg.AIBaseURL, cfg.AIModel, cfg.AIAPIKey, cfg.AITimeout)
-	api := httpapi.New(dataStore, libraryManager, kindleConverter, importService, calibreScanner, bibliographyService, advisor, cfg.WebRoot, cfg.CookieSecure, cfg.SessionTTL, cfg.MaxUploadBytes, cfg.TrustedProxyCIDR, logger)
+	importSources := []httpapi.ImportSource{
+		{ID: "browser-upload", Name: "网页批量上传", Mode: "upload", Enabled: true, MaxFileBytes: cfg.MaxUploadBytes},
+		{
+			ID: "moving-inbox", Name: "移动导入箱", Mode: "move", Enabled: true,
+			Path:                strings.TrimRight(cfg.ImportRootLabel, "/\\") + "/inbox",
+			ScanIntervalSeconds: int64(cfg.ImportScanInterval.Seconds()), StableAgeSeconds: int64(cfg.ImportStableAge.Seconds()),
+		},
+		{
+			ID: "watched-library", Name: "只读监控目录", Mode: "copy", Enabled: cfg.WatchLibraryEnabled,
+			Path:                cfg.WatchLibraryLabel,
+			ScanIntervalSeconds: int64(cfg.WatchLibraryScanEvery.Seconds()), StableAgeSeconds: int64(cfg.WatchLibraryStableAge.Seconds()),
+		},
+	}
+	api := httpapi.New(dataStore, libraryManager, kindleConverter, importService, calibreScanner, bibliographyService, importSources, advisor, cfg.WebRoot, cfg.CookieSecure, cfg.SessionTTL, cfg.MaxUploadBytes, cfg.TrustedProxyCIDR, logger)
 	server := &http.Server{
 		Addr:              cfg.Address,
 		Handler:           api.Handler(),

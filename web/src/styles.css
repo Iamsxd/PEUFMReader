@@ -158,6 +158,21 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .upload-queue-item > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
 .upload-queue-item strong, .upload-queue-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upload-queue-item small { color: #718077; }
+.import-sources-panel { margin-top: 18px; }
+.import-source-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; margin-top: 18px; }
+.import-source-card { display: grid; align-content: start; gap: 12px; min-width: 0; padding: 17px; border: 1px solid #cad6c9; border-radius: 14px; background: #f9faf5; }
+.import-source-card.disabled { border-style: dashed; opacity: .72; }
+.import-source-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.import-source-heading span { padding: 4px 7px; border-radius: 999px; background: #e6e6e1; color: #70766f; font-size: .66rem; font-weight: 800; }
+.import-source-heading span.enabled { background: #dcebdd; color: #24563a; }
+.import-source-card p { min-height: 3.6em; margin: 0; color: #657269; font-size: .78rem; line-height: 1.55; }
+.import-source-card code { display: block; overflow: hidden; padding: 8px 9px; border-radius: 7px; background: #e4eae1; font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
+.import-source-card dl { display: grid; gap: 7px; margin: 0; }
+.import-source-card dl div { display: flex; justify-content: space-between; gap: 12px; font-size: .72rem; }
+.import-source-card dt { color: #778179; }
+.import-source-card dd { margin: 0; text-align: right; }
+.import-source-hint { margin: 14px 0 0; color: #657269; font-size: .76rem; }
+.import-source-hint code { padding: 2px 5px; border-radius: 5px; background: #e0e7dd; }
 .notice { margin: 18px 0; padding: 12px 14px; border-radius: 10px; background: #f4d9d5; }
 .notice.success { background: #dcebdd; color: #24563a; }
 .empty-state { padding: 90px 24px; border: 1px dashed #b8c0b9; border-radius: 20px; text-align: center; color: #657168; }
@@ -531,6 +546,8 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .catalog-pagination { gap: 9px; }
   .admin-heading .upload-button { align-self: flex-start; }
   .upload-drop-zone { grid-template-columns: 1fr; padding: 18px; }
+  .import-source-grid { grid-template-columns: 1fr; }
+  .import-source-card p { min-height: 0; }
   .category-create-form { grid-template-columns: 1fr; }
   .category-management-row { grid-template-columns: 1fr 1fr; }
   .category-identity { grid-column: 1 / -1; }

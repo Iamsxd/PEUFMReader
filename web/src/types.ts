@@ -232,6 +232,17 @@ export interface ImportJob {
   updatedAt: string
 }
 
+export interface ImportSource {
+  id: 'browser-upload' | 'moving-inbox' | 'watched-library' | string
+  name: string
+  mode: 'upload' | 'move' | 'copy' | string
+  enabled: boolean
+  path?: string
+  scanIntervalSeconds?: number
+  stableAgeSeconds?: number
+  maxFileBytes?: number
+}
+
 export interface BackgroundJob {
   id: number
   kind: string

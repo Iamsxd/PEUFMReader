@@ -1,4 +1,4 @@
-import type { AuditEvent, BackgroundJob, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ManagedUser, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
+import type { AuditEvent, BackgroundJob, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ImportSource, ManagedUser, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
 
 interface ErrorBody {
   error?: { code?: string; message?: string }
@@ -179,6 +179,11 @@ class APIClient {
 
   async listImportJobs(): Promise<ImportJob[]> {
     const result = await this.request<{ items: ImportJob[] }>('/api/v1/import-jobs')
+    return result.items
+  }
+
+  async listImportSources(): Promise<ImportSource[]> {
+    const result = await this.request<{ items: ImportSource[] }>('/api/v1/admin/import-sources')
     return result.items
   }
 
