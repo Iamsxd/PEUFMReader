@@ -62,10 +62,8 @@ func (s *Store) UpsertExternalUser(ctx context.Context, source, subject, usernam
 func (s *Store) CanAccessBook(ctx context.Context, userID, bookFileID int64) (bool, bool, error) {
 	var allowed bool
 	err := s.pool.QueryRow(ctx, `
-		SELECT u.role='admin' OR COALESCE(p.can_read,true)
-		FROM users u CROSS JOIN book_files bf
-		LEFT JOIN book_file_permissions p ON p.user_id=u.id AND p.book_file_id=bf.id
-		WHERE u.id=$1 AND bf.id=$2 AND u.disabled_at IS NULL`, userID, bookFileID,
+		SELECT COALESCE(can_user_read_book($1,$2),false)
+		FROM book_files WHERE id=$2`, userID, bookFileID,
 	).Scan(&allowed)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, false, nil
@@ -85,9 +83,7 @@ func (s *Store) FilterAccessibleBookIDs(ctx context.Context, userID int64, bookF
 		SELECT requested.book_file_id
 		FROM unnest($2::bigint[]) WITH ORDINALITY requested(book_file_id,position)
 		JOIN book_files bf ON bf.id=requested.book_file_id
-		JOIN users u ON u.id=$1 AND u.disabled_at IS NULL
-		LEFT JOIN book_file_permissions p ON p.user_id=u.id AND p.book_file_id=bf.id
-		WHERE u.role='admin' OR COALESCE(p.can_read,true)
+		WHERE can_user_read_book($1,bf.id)
 		ORDER BY requested.position`, userID, bookFileIDs)
 	if err != nil {
 		return nil, fmt.Errorf("filter accessible books: %w", err)

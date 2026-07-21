@@ -176,10 +176,8 @@ func (s *Store) listContinueMetrics(ctx context.Context, userID int64, limit int
 	rows, err := s.pool.Query(ctx, `
 		SELECT rs.book_file_id,rs.overall_progress,rs.status,rs.total_active_seconds,rs.updated_at
 		FROM reading_states rs
-		JOIN users u ON u.id=rs.user_id AND u.disabled_at IS NULL
-		LEFT JOIN book_file_permissions p ON p.user_id=u.id AND p.book_file_id=rs.book_file_id
 		WHERE rs.user_id=$1 AND rs.status IN ('reading','paused') AND rs.overall_progress < 0.999
-			AND (u.role='admin' OR COALESCE(p.can_read,true))
+			AND can_user_read_book($1,rs.book_file_id)
 		ORDER BY rs.updated_at DESC LIMIT $2`, userID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list continue reading: %w", err)
@@ -202,10 +200,8 @@ func (s *Store) listHotMetrics(ctx context.Context, userID int64, limit int) ([]
 			COALESCE(SUM(rs.active_seconds * CASE WHEN rs.started_at >= now()-INTERVAL '7 days' THEN 1.0 ELSE 0.45 END)
 				+ COUNT(*) * 30 + COUNT(DISTINCT rs.user_id) * 300,0)::double precision AS heat_score
 		FROM reading_sessions rs
-		JOIN users access_user ON access_user.id=$1 AND access_user.disabled_at IS NULL
-		LEFT JOIN book_file_permissions p ON p.user_id=access_user.id AND p.book_file_id=rs.book_file_id
 		WHERE rs.started_at >= now()-INTERVAL '30 days' AND rs.active_seconds > 0
-			AND (access_user.role='admin' OR COALESCE(p.can_read,true))
+			AND can_user_read_book($1,rs.book_file_id)
 		GROUP BY rs.book_file_id
 		ORDER BY heat_score DESC,MAX(rs.started_at) DESC
 		LIMIT $2`, userID, limit)
@@ -226,9 +222,7 @@ func (s *Store) listHotMetrics(ctx context.Context, userID int64, limit int) ([]
 
 func (s *Store) listRecentlyAddedIDs(ctx context.Context, userID int64, limit int) ([]int64, error) {
 	rows, err := s.pool.Query(ctx, `SELECT bf.id FROM book_files bf
-		JOIN users u ON u.id=$1 AND u.disabled_at IS NULL
-		LEFT JOIN book_file_permissions p ON p.user_id=u.id AND p.book_file_id=bf.id
-		WHERE u.role='admin' OR COALESCE(p.can_read,true)
+		WHERE can_user_read_book($1,bf.id)
 		ORDER BY bf.created_at DESC,bf.id DESC LIMIT $2`, userID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list recently added books: %w", err)
@@ -252,28 +246,24 @@ func (s *Store) listCategorySummaries(ctx context.Context, userID int64) ([]Cate
 			 FROM classification_decisions cd
 			 JOIN editions e ON e.id=cd.edition_id
 			 JOIN book_files bf ON bf.edition_id=e.id
-			 JOIN users access_user ON access_user.id=$1 AND access_user.disabled_at IS NULL
-			 LEFT JOIN book_file_permissions permission ON permission.user_id=access_user.id AND permission.book_file_id=bf.id
 			 WHERE cd.category_id IN (
 				WITH RECURSIVE category_tree AS (
 					SELECT id FROM categories WHERE id=cat.id
 					UNION ALL SELECT child.id FROM categories child JOIN category_tree tree ON child.parent_id=tree.id
 				) SELECT id FROM category_tree
-			 ) AND cd.status='accepted' AND (access_user.role='admin' OR COALESCE(permission.can_read,true)))::int,
+			 ) AND cd.status='accepted' AND can_user_read_book($1,bf.id))::int,
 			COALESCE((SELECT array_agg(recent.id) FROM (
 				SELECT DISTINCT bf.id,bf.created_at
 				FROM classification_decisions cd
 				JOIN editions e ON e.id=cd.edition_id
 				JOIN book_files bf ON bf.edition_id=e.id
-				JOIN users access_user ON access_user.id=$1 AND access_user.disabled_at IS NULL
-				LEFT JOIN book_file_permissions permission ON permission.user_id=access_user.id AND permission.book_file_id=bf.id
 				WHERE cd.category_id IN (
 					WITH RECURSIVE category_tree AS (
 						SELECT id FROM categories WHERE id=cat.id
 						UNION ALL SELECT child.id FROM categories child JOIN category_tree tree ON child.parent_id=tree.id
 					) SELECT id FROM category_tree
 				) AND cd.status='accepted' AND bf.cover_path IS NOT NULL
-					AND (access_user.role='admin' OR COALESCE(permission.can_read,true))
+					AND can_user_read_book($1,bf.id)
 				ORDER BY bf.created_at DESC LIMIT 4
 			) recent),'{}'::bigint[])
 		FROM categories cat LEFT JOIN categories parent ON parent.id=cat.parent_id
@@ -298,11 +288,8 @@ func (s *Store) listCategorySummaries(ctx context.Context, userID int64) ([]Cate
 func (s *Store) getPersonalStats(ctx context.Context, userID int64) (PersonalStats, error) {
 	var stats PersonalStats
 	err := s.pool.QueryRow(ctx, `
-		WITH access_user AS (SELECT id,role FROM users WHERE id=$1 AND disabled_at IS NULL),
-		accessible_books AS (
-			SELECT bf.id FROM book_files bf CROSS JOIN access_user u
-			LEFT JOIN book_file_permissions p ON p.user_id=u.id AND p.book_file_id=bf.id
-			WHERE u.role='admin' OR COALESCE(p.can_read,true)
+		WITH accessible_books AS (
+			SELECT bf.id FROM book_files bf WHERE can_user_read_book($1,bf.id)
 		)
 		SELECT
 			(SELECT COUNT(*) FROM accessible_books)::int,

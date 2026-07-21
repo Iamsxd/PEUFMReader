@@ -53,6 +53,34 @@ export interface BookPermission {
   updatedAt: string
 }
 
+export interface UserGroup {
+  id: number
+  name: string
+  description: string
+  memberIds: number[]
+  memberCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LibraryGroup {
+  id: number
+  name: string
+  description: string
+  defaultAccess: boolean
+  bookFileIds: number[]
+  bookCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface GroupLibraryPermission {
+  userGroupId: number
+  libraryGroupId: number
+  canRead: boolean
+  updatedAt: string
+}
+
 export interface Session {
   user: User
   csrfToken: string

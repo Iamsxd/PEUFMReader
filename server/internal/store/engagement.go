@@ -132,16 +132,12 @@ func (s *Store) ListFavoriteBooks(ctx context.Context, userID int64, page, pageS
 	}
 	var total int
 	if err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM user_favorites uf
-		JOIN users u ON u.id=uf.user_id AND u.disabled_at IS NULL
-		LEFT JOIN book_file_permissions p ON p.user_id=u.id AND p.book_file_id=uf.book_file_id
-		WHERE uf.user_id=$1 AND (u.role='admin' OR COALESCE(p.can_read,true))`, userID).Scan(&total); err != nil {
+		WHERE uf.user_id=$1 AND can_user_read_book($1,uf.book_file_id)`, userID).Scan(&total); err != nil {
 		return FavoritePage{}, fmt.Errorf("count favorites: %w", err)
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT uf.book_file_id,uf.created_at FROM user_favorites uf
-		JOIN users u ON u.id=uf.user_id AND u.disabled_at IS NULL
-		LEFT JOIN book_file_permissions p ON p.user_id=u.id AND p.book_file_id=uf.book_file_id
-		WHERE uf.user_id=$1 AND (u.role='admin' OR COALESCE(p.can_read,true))
+		WHERE uf.user_id=$1 AND can_user_read_book($1,uf.book_file_id)
 		ORDER BY uf.created_at DESC,uf.book_file_id DESC LIMIT $2 OFFSET $3`,
 		userID, pageSize, (page-1)*pageSize)
 	if err != nil {
@@ -329,8 +325,6 @@ func (s *Store) listRecommendationMetrics(ctx context.Context, userID int64, pro
 				 + CASE WHEN feedback.feedback='interested' THEN 25.0 ELSE 0 END)::double precision AS score
 		FROM book_files bf
 		JOIN editions e ON e.id=bf.edition_id
-		JOIN users access_user ON access_user.id=$1 AND access_user.disabled_at IS NULL
-		LEFT JOIN book_file_permissions permission ON permission.user_id=access_user.id AND permission.book_file_id=bf.id
 		LEFT JOIN recommendation_feedback feedback ON feedback.user_id=$1 AND feedback.book_file_id=bf.id
 		LEFT JOIN LATERAL (
 			SELECT pref.name,pref.score
@@ -350,7 +344,7 @@ func (s *Store) listRecommendationMetrics(ctx context.Context, userID int64, pro
 			SELECT (COALESCE(SUM(rs.active_seconds),0)+COUNT(*)*30+COUNT(DISTINCT rs.user_id)*300)::double precision AS score
 			FROM reading_sessions rs WHERE rs.book_file_id=bf.id AND rs.started_at >= now()-INTERVAL '30 days'
 		) hot ON true
-		WHERE (access_user.role='admin' OR COALESCE(permission.can_read,true))
+		WHERE can_user_read_book($1,bf.id)
 			AND COALESCE(feedback.feedback,'') <> 'not_interested'
 			AND NOT EXISTS (SELECT 1 FROM user_favorites uf WHERE uf.user_id=$1 AND uf.book_file_id=bf.id)
 			AND NOT EXISTS (SELECT 1 FROM reading_states state WHERE state.user_id=$1 AND state.book_file_id=bf.id

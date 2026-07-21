@@ -1,4 +1,4 @@
-import type { AuditEvent, AuthProviders, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, BookPermission, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, ClassificationRule, DeviceToken, DuplicateCatalogGroup, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ImportSource, ManagedUser, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState, RecommendationFeedback, RecommendationFeedbackValue, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
+import type { AuditEvent, AuthProviders, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, BookPermission, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, ClassificationRule, DeviceToken, DuplicateCatalogGroup, FavoritePage, FavoriteState, GroupLibraryPermission, HomeDashboard, ImportJob, ImportSource, LibraryGroup, ManagedUser, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState, RecommendationFeedback, RecommendationFeedbackValue, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo, UserGroup } from './types'
 
 interface ErrorBody {
   error?: { code?: string; message?: string }
@@ -328,6 +328,71 @@ class APIClient {
 
   deleteUserBookPermission(userID: number, bookFileID: number): Promise<void> {
     return this.request(`/api/v1/users/${userID}/book-permissions/${bookFileID}`, { method: 'DELETE' })
+  }
+
+  async listUserGroups(): Promise<UserGroup[]> {
+    const result = await this.request<{ items: UserGroup[] }>('/api/v1/admin/user-groups')
+    return result.items
+  }
+
+  createUserGroup(input: Pick<UserGroup, 'name' | 'description'>): Promise<UserGroup> {
+    return this.request('/api/v1/admin/user-groups', {
+      method: 'POST', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  updateUserGroup(groupID: number, input: Pick<UserGroup, 'name' | 'description'>): Promise<UserGroup> {
+    return this.request(`/api/v1/admin/user-groups/${groupID}`, {
+      method: 'PATCH', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  deleteUserGroup(groupID: number): Promise<void> {
+    return this.request(`/api/v1/admin/user-groups/${groupID}`, { method: 'DELETE' })
+  }
+
+  setUserGroupMember(groupID: number, userID: number, member: boolean): Promise<void> {
+    return this.request(`/api/v1/admin/user-groups/${groupID}/members/${userID}`, { method: member ? 'PUT' : 'DELETE' })
+  }
+
+  async listLibraryGroups(): Promise<LibraryGroup[]> {
+    const result = await this.request<{ items: LibraryGroup[] }>('/api/v1/admin/library-groups')
+    return result.items
+  }
+
+  createLibraryGroup(input: Pick<LibraryGroup, 'name' | 'description' | 'defaultAccess'>): Promise<LibraryGroup> {
+    return this.request('/api/v1/admin/library-groups', {
+      method: 'POST', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  updateLibraryGroup(groupID: number, input: Pick<LibraryGroup, 'name' | 'description' | 'defaultAccess'>): Promise<LibraryGroup> {
+    return this.request(`/api/v1/admin/library-groups/${groupID}`, {
+      method: 'PATCH', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  deleteLibraryGroup(groupID: number): Promise<void> {
+    return this.request(`/api/v1/admin/library-groups/${groupID}`, { method: 'DELETE' })
+  }
+
+  setLibraryGroupBook(groupID: number, bookFileID: number, member: boolean): Promise<void> {
+    return this.request(`/api/v1/admin/library-groups/${groupID}/books/${bookFileID}`, { method: member ? 'PUT' : 'DELETE' })
+  }
+
+  async listGroupLibraryPermissions(): Promise<GroupLibraryPermission[]> {
+    const result = await this.request<{ items: GroupLibraryPermission[] }>('/api/v1/admin/group-library-permissions')
+    return result.items
+  }
+
+  setGroupLibraryPermission(userGroupID: number, libraryGroupID: number, canRead: boolean): Promise<GroupLibraryPermission> {
+    return this.request(`/api/v1/admin/user-groups/${userGroupID}/library-permissions/${libraryGroupID}`, {
+      method: 'PUT', body: JSON.stringify({ canRead }), headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  deleteGroupLibraryPermission(userGroupID: number, libraryGroupID: number): Promise<void> {
+    return this.request(`/api/v1/admin/user-groups/${userGroupID}/library-permissions/${libraryGroupID}`, { method: 'DELETE' })
   }
 
   resetUserPassword(userID: number, password: string): Promise<void> {

@@ -92,14 +92,7 @@ func buildCatalogWhere(userID int64, query CatalogQuery) (string, []any, string)
 		return fmt.Sprintf("$%d", len(args))
 	}
 	accessUserPlaceholder := addArgument(userID)
-	conditions = append(conditions, `EXISTS (
-		SELECT 1 FROM users access_user
-		WHERE access_user.id=`+accessUserPlaceholder+` AND access_user.disabled_at IS NULL
-			AND (access_user.role='admin' OR COALESCE((
-				SELECT access_permission.can_read FROM book_file_permissions access_permission
-				WHERE access_permission.user_id=access_user.id AND access_permission.book_file_id=bf.id
-			),true))
-	)`)
+	conditions = append(conditions, `can_user_read_book(`+accessUserPlaceholder+`,bf.id)`)
 	searchPlaceholder := ""
 	if query.Query != "" {
 		searchPlaceholder = addArgument(escapeLikePattern(query.Query))

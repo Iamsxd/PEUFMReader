@@ -357,9 +357,7 @@ func (s *Store) AdvanceReadingSession(ctx context.Context, userID, sessionID, re
 	err = tx.QueryRow(ctx, `
 		SELECT rs.id,rs.book_file_id,rs.started_at,rs.last_heartbeat_at,rs.ended_at,rs.active_seconds
 		FROM reading_sessions rs
-		JOIN users u ON u.id=rs.user_id AND u.disabled_at IS NULL
-		LEFT JOIN book_file_permissions p ON p.user_id=u.id AND p.book_file_id=rs.book_file_id
-		WHERE rs.id=$1 AND rs.user_id=$2 AND (u.role='admin' OR COALESCE(p.can_read,true))
+		WHERE rs.id=$1 AND rs.user_id=$2 AND can_user_read_book($2,rs.book_file_id)
 		FOR UPDATE OF rs`, sessionID, userID,
 	).Scan(&session.ID, &session.BookFileID, &session.StartedAt, &session.LastHeartbeat, &session.EndedAt, &session.ActiveSeconds)
 	if err != nil {

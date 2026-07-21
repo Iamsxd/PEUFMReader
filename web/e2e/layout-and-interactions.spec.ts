@@ -69,6 +69,10 @@ test('admin workspaces do not collapse into one oversized page', async ({ page }
   for (const name of ['书籍导入', '书目与分类', '用户与权限', '任务与运维']) {
     await workspaces.getByRole('button', { name: new RegExp(name) }).click()
     await expect(page.getByRole('heading', { name, level: 2 })).toBeVisible()
+    if (name === '用户与权限') {
+      await expect(page.getByTestId('group-permission-manager')).toBeVisible()
+      await expect(page.getByRole('heading', { name: '书库组与用户组' })).toBeVisible()
+    }
   }
   await expectNoPageOverflow(page)
   await capture(page, testInfo, 'admin-workspaces')
@@ -87,4 +91,3 @@ test('book detail and reader controls remain reachable', async ({ page }, testIn
   await expect(readerToolbar.getByRole('button', { name: /书签\/高亮/ })).toBeVisible()
   await capture(page, testInfo, 'reader-controls')
 })
-

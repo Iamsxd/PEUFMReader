@@ -3,6 +3,7 @@ import { APIError, api } from '../api'
 import type { ManagedUser, Role, UserAccessInfo, UserSessionInfo } from '../types'
 import { formatDuration, formatRelativeTime } from '../utils'
 import { LibraryPermissionManager } from './LibraryPermissionManager'
+import { GroupPermissionManager } from './GroupPermissionManager'
 
 interface Props {
   currentUserID: number
@@ -90,6 +91,7 @@ export function UserManagement({ currentUserID, onError, onNotice }: Props) {
           />
         ))}
       </div>
+      <GroupPermissionManager users={users} onError={onError} onNotice={onNotice} />
       <LibraryPermissionManager users={users} onError={onError} onNotice={onNotice} />
     </section>
   )
