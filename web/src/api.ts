@@ -1,4 +1,4 @@
-import type { AuditEvent, BackgroundJob, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ImportSource, ManagedUser, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
+import type { AuditEvent, BackgroundJob, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ImportSource, ManagedUser, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
 
 interface ErrorBody {
   error?: { code?: string; message?: string }
@@ -284,6 +284,31 @@ class APIClient {
       body: JSON.stringify(state),
       headers: { 'Content-Type': 'application/json' },
     })
+  }
+
+  async listReadingMarks(bookFileID: number): Promise<ReadingMark[]> {
+    const result = await this.request<{ items: ReadingMark[] }>(`/api/v1/book-files/${bookFileID}/marks`)
+    return result.items
+  }
+
+  createReadingMark(bookFileID: number, input: ReadingMarkInput): Promise<ReadingMark> {
+    return this.request(`/api/v1/book-files/${bookFileID}/marks`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  updateReadingMark(markID: number, input: Pick<ReadingMark, 'label' | 'body'>): Promise<ReadingMark> {
+    return this.request(`/api/v1/reading-marks/${markID}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  deleteReadingMark(markID: number): Promise<void> {
+    return this.request(`/api/v1/reading-marks/${markID}`, { method: 'DELETE' })
   }
 
   startReadingSession(bookFileID: number): Promise<ReadingSession> {

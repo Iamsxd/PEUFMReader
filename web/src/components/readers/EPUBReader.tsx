@@ -13,6 +13,8 @@ import {
 import type { EPUBPageFlow, EPUBPageLayout, EPUBReaderPreferences, EPUBTheme, EPUBTOCEntry } from '../../epub'
 import type { BookFile, ReadingState } from '../../types'
 import { clampProgress } from '../../utils'
+import { createEPUBReadingMarkLocation, getReadingMarkNavigationTarget, type ReadingMarkLocation } from '../../readingMarks'
+import { ReadingMarksPanel } from './ReadingMarksPanel'
 
 interface Props {
   book: BookFile
@@ -37,7 +39,7 @@ interface EPUBSearchResult {
   sectionLabel: string
 }
 
-type EPUBSidePanel = 'toc' | 'search' | null
+type EPUBSidePanel = 'toc' | 'search' | 'marks' | null
 
 const EPUB_THEMES: Record<EPUBTheme, Record<string, Record<string, string>>> = {
   paper: {
@@ -79,6 +81,11 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
   const preferencesRef = useRef(preferences)
   const [isNarrow, setIsNarrow] = useState(window.innerWidth <= 780)
   const [progress, setProgress] = useState(clampProgress(initialState.overallProgress))
+  const [markLocation, setMarkLocation] = useState<ReadingMarkLocation>({
+    position: initialState.position,
+    overallProgress: clampProgress(initialState.overallProgress),
+    label: `阅读进度 ${Math.round(clampProgress(initialState.overallProgress) * 100)}%`,
+  })
   const [atStart, setAtStart] = useState(initialState.overallProgress <= 0)
   const [atEnd, setAtEnd] = useState(initialState.overallProgress >= 0.999)
   const [loading, setLoading] = useState(true)
@@ -162,6 +169,11 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
     setError('')
     setLoading(true)
     setProgress(clampProgress(initialState.overallProgress))
+    setMarkLocation({
+      position: initialState.position,
+      overallProgress: clampProgress(initialState.overallProgress),
+      label: `阅读进度 ${Math.round(clampProgress(initialState.overallProgress) * 100)}%`,
+    })
     lastProgressRef.current = clampProgress(initialState.overallProgress)
     locationsReadyRef.current = false
     searchRunRef.current += 1
@@ -266,6 +278,12 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
       const nextProgress = clampProgress(resolveEPUBProgress(generatedProgress, location.start.percentage, lastProgressRef.current))
       lastProgressRef.current = nextProgress
       setProgress(nextProgress)
+      setMarkLocation(createEPUBReadingMarkLocation({
+        cfi,
+        href: location.start.href,
+        chapterIndex: location.start.index,
+        progression: nextProgress,
+      }))
       setAtStart(Boolean(location.atStart) || nextProgress <= 0)
       setAtEnd(Boolean(location.atEnd) || nextProgress >= 0.999)
       if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
@@ -438,6 +456,7 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
         <div className="reader-tool-group" aria-label="书籍导航">
           <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={() => toggleSidePanel('toc')}>目录</button>
           <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={() => toggleSidePanel('search')}>书内搜索</button>
+          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} onClick={() => toggleSidePanel('marks')}>书签/笔记</button>
         </div>
         <span className="reader-toolbar-divider" />
         <div className="reader-tool-group" aria-label="阅读方式">
@@ -477,7 +496,18 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
         <span className="reader-shortcuts">{preferences.flow === 'paged' ? '滚轮 / ← → 翻页 · + − 字号' : '滚轮连续阅读 · + − 字号'}</span>
       </div>
 
-      {sidePanel && (
+      {sidePanel === 'marks' ? (
+        <ReadingMarksPanel
+          bookFileID={book.id}
+          current={markLocation}
+          onNavigate={(position) => {
+            const target = getReadingMarkNavigationTarget(book.format, position)
+            if (target !== null) displayLocation(target)
+          }}
+          onClose={() => setSidePanel(null)}
+          onChromeActivity={onChromeActivity}
+        />
+      ) : sidePanel && (
         <aside className="reader-side-panel" aria-label={sidePanel === 'toc' ? 'EPUB 目录' : 'EPUB 书内搜索'} onPointerDown={onChromeActivity}>
           <header>
             <strong>{sidePanel === 'toc' ? '目录' : '书内搜索'}</strong>

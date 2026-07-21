@@ -393,6 +393,28 @@ export interface ReadingState {
   updatedAt?: string
 }
 
+export type ReadingMarkKind = 'bookmark' | 'note'
+
+export interface ReadingMark {
+  id: number
+  bookFileId: number
+  kind: ReadingMarkKind
+  position: Record<string, unknown>
+  overallProgress: number
+  label: string
+  body: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ReadingMarkInput {
+  kind: ReadingMarkKind
+  position: Record<string, unknown>
+  overallProgress: number
+  label: string
+  body: string
+}
+
 export interface ReadingSession {
   id: number
   bookFileId: number

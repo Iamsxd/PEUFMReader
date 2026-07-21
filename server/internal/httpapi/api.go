@@ -130,6 +130,10 @@ func (a *API) routes() {
 	a.mux.Handle("GET /api/v1/book-files/{id}/text", a.requireAuth(http.HandlerFunc(a.bookExtractedText), "", false))
 	a.mux.Handle("GET /api/v1/book-files/{id}/progress", a.requireAuth(http.HandlerFunc(a.getProgress), "", false))
 	a.mux.Handle("PUT /api/v1/book-files/{id}/progress", a.requireAuth(http.HandlerFunc(a.saveProgress), "", true))
+	a.mux.Handle("GET /api/v1/book-files/{id}/marks", a.requireAuth(http.HandlerFunc(a.listReadingMarks), "", false))
+	a.mux.Handle("POST /api/v1/book-files/{id}/marks", a.requireAuth(http.HandlerFunc(a.createReadingMark), "", true))
+	a.mux.Handle("PATCH /api/v1/reading-marks/{id}", a.requireAuth(http.HandlerFunc(a.updateReadingMark), "", true))
+	a.mux.Handle("DELETE /api/v1/reading-marks/{id}", a.requireAuth(http.HandlerFunc(a.deleteReadingMark), "", true))
 	a.mux.Handle("POST /api/v1/book-files/{id}/reading-sessions", a.requireAuth(http.HandlerFunc(a.startReadingSession), "", true))
 	a.mux.Handle("PATCH /api/v1/reading-sessions/{id}", a.requireAuth(http.HandlerFunc(a.advanceReadingSession), "", true))
 	a.mux.Handle("GET /api/v1/categories", a.requireAuth(http.HandlerFunc(a.listCategories), "", false))
@@ -1329,6 +1333,139 @@ func (a *API) saveProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, state)
+}
+
+type readingMarkInput struct {
+	Kind            string          `json:"kind"`
+	Position        json.RawMessage `json:"position"`
+	OverallProgress float64         `json:"overallProgress"`
+	Label           string          `json:"label"`
+	Body            string          `json:"body"`
+}
+
+func normalizeReadingMarkText(kind, label, body string) (string, string, bool) {
+	label = strings.TrimSpace(label)
+	body = strings.TrimSpace(body)
+	if (kind != "bookmark" && kind != "note") || utf8.RuneCountInString(label) < 1 || utf8.RuneCountInString(label) > 200 || utf8.RuneCountInString(body) > 10000 {
+		return "", "", false
+	}
+	if kind == "note" && body == "" {
+		return "", "", false
+	}
+	if kind == "bookmark" {
+		body = ""
+	}
+	return label, body, true
+}
+
+func (a *API) listReadingMarks(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if _, found, err := a.store.GetBookFile(r.Context(), bookID); err != nil {
+		a.internalError(w, err)
+		return
+	} else if !found {
+		writeError(w, http.StatusNotFound, "book_not_found", "book file not found")
+		return
+	}
+	userID := sessionFromContext(r.Context()).User.ID
+	marks, err := a.store.ListReadingMarks(r.Context(), userID, bookID)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": marks})
+}
+
+func (a *API) createReadingMark(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	var input readingMarkInput
+	if err := readJSON(w, r, &input, 24<<10); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_reading_mark", err.Error())
+		return
+	}
+	label, body, validText := normalizeReadingMarkText(input.Kind, input.Label, input.Body)
+	if !validPosition(input.Position) || input.OverallProgress < 0 || input.OverallProgress > 1 || !validText {
+		writeError(w, http.StatusBadRequest, "invalid_reading_mark", "kind, position, progress, label or note body is invalid")
+		return
+	}
+	if _, found, err := a.store.GetBookFile(r.Context(), bookID); err != nil {
+		a.internalError(w, err)
+		return
+	} else if !found {
+		writeError(w, http.StatusNotFound, "book_not_found", "book file not found")
+		return
+	}
+	userID := sessionFromContext(r.Context()).User.ID
+	mark, err := a.store.SaveReadingMark(r.Context(), userID, bookID, input.Kind, input.Position, input.OverallProgress, label, body)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, mark)
+}
+
+func (a *API) updateReadingMark(w http.ResponseWriter, r *http.Request) {
+	markID, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	var input struct {
+		Label string `json:"label"`
+		Body  string `json:"body"`
+	}
+	if err := readJSON(w, r, &input, 16<<10); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_reading_mark", err.Error())
+		return
+	}
+	userID := sessionFromContext(r.Context()).User.ID
+	existing, found, err := a.store.GetReadingMark(r.Context(), userID, markID)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "reading_mark_not_found", "reading mark not found")
+		return
+	}
+	label, body, valid := normalizeReadingMarkText(existing.Kind, input.Label, input.Body)
+	if !valid {
+		writeError(w, http.StatusBadRequest, "invalid_reading_mark", "label or note body is invalid")
+		return
+	}
+	mark, found, err := a.store.UpdateReadingMark(r.Context(), userID, markID, label, body)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "reading_mark_not_found", "reading mark not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, mark)
+}
+
+func (a *API) deleteReadingMark(w http.ResponseWriter, r *http.Request) {
+	markID, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	userID := sessionFromContext(r.Context()).User.ID
+	deleted, err := a.store.DeleteReadingMark(r.Context(), userID, markID)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !deleted {
+		writeError(w, http.StatusNotFound, "reading_mark_not_found", "reading mark not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *API) startReadingSession(w http.ResponseWriter, r *http.Request) {

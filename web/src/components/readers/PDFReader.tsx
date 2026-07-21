@@ -19,7 +19,9 @@ import {
 import type { PDFPageFlow, PDFPageLayout, PDFReaderPreferences } from '../../pdf'
 import type { BookFile, ReadingState } from '../../types'
 import { clampProgress } from '../../utils'
+import { createPDFReadingMarkLocation, getReadingMarkNavigationTarget } from '../../readingMarks'
 import { PDFPageCanvas } from './PDFPageCanvas'
+import { ReadingMarksPanel } from './ReadingMarksPanel'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerURL
 
@@ -48,7 +50,7 @@ interface PDFSearchResult {
   excerpt: string
 }
 
-type PDFSidePanel = 'toc' | 'search' | null
+type PDFSidePanel = 'toc' | 'search' | 'marks' | null
 
 async function resolvePDFOutline(document: pdfjs.PDFDocumentProxy, nodes: PDFOutlineNode[], depth = 0): Promise<PDFOutlineEntry[]> {
   const entries: PDFOutlineEntry[] = []
@@ -371,6 +373,7 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
         <div className="reader-tool-group" aria-label="书籍导航">
           <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={() => toggleSidePanel('toc')}>目录</button>
           <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={() => toggleSidePanel('search')}>书内搜索</button>
+          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} onClick={() => toggleSidePanel('marks')}>书签/笔记</button>
         </div>
         <span className="reader-toolbar-divider" />
         <div className="reader-tool-group" aria-label="阅读方式">
@@ -400,7 +403,21 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
         <span className="reader-shortcuts">← → 翻页 · + − / Ctrl+滚轮缩放</span>
       </div>
 
-      {sidePanel && (
+      {sidePanel === 'marks' ? (
+        <ReadingMarksPanel
+          bookFileID={book.id}
+          current={createPDFReadingMarkLocation(pageNumber, pageCount)}
+          onNavigate={(position) => {
+            const target = getReadingMarkNavigationTarget(book.format, position)
+            if (typeof target === 'number') {
+              goToPage(target)
+              setSidePanel(null)
+            }
+          }}
+          onClose={() => setSidePanel(null)}
+          onChromeActivity={onChromeActivity}
+        />
+      ) : sidePanel && (
         <aside className="reader-side-panel" aria-label={sidePanel === 'toc' ? 'PDF 目录' : 'PDF 书内搜索'} onPointerDown={onChromeActivity}>
           <header>
             <strong>{sidePanel === 'toc' ? '目录' : '书内搜索'}</strong>
