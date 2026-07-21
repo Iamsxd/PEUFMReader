@@ -7,6 +7,7 @@ import {
   getPDFJSAssetOptions,
   getPDFViewPages,
   movePDFPage,
+  normalizePDFWheelDelta,
   parsePDFPreferences,
   PDFContentError,
 } from './pdf'
@@ -42,6 +43,13 @@ describe('PDF reading model', () => {
     expect(calculatePDFScale({ ...base, zoomMode: 'fit-page', zoomPercent: 100 })).toBe(1)
     expect(calculatePDFScale({ ...base, zoomMode: 'custom', zoomPercent: 150 })).toBe(1.5)
     expect(calculatePDFScale({ ...base, layout: 'spread', zoomMode: 'fit-width', zoomPercent: 100 })).toBeCloseTo(0.985)
+  })
+
+  it('normalizes Ctrl-wheel zoom deltas from pixels, lines and pages', () => {
+    expect(normalizePDFWheelDelta(-100, 0, 900)).toBe(-100)
+    expect(normalizePDFWheelDelta(3, 1, 900)).toBe(48)
+    expect(normalizePDFWheelDelta(-1, 2, 900)).toBe(-900)
+    expect(normalizePDFWheelDelta(Number.NaN, 0, 900)).toBe(0)
   })
 
   it('sanitizes persisted reader preferences', () => {

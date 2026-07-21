@@ -12,6 +12,7 @@ import {
   getPDFJSAssetOptions,
   getPDFViewPages,
   movePDFPage,
+  normalizePDFWheelDelta,
   parsePDFPreferences,
   PDF_PREFERENCES_KEY,
 } from '../../pdf'
@@ -81,6 +82,8 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
   const loadingTaskRef = useRef<pdfjs.PDFDocumentLoadingTask | null>(null)
   const visiblePagesRef = useRef(new Map<number, number>())
   const searchRunRef = useRef(0)
+  const wheelZoomAccumulatorRef = useRef(0)
+  const wheelZoomResetTimerRef = useRef<number | null>(null)
   const initialPage = typeof initialState.position.pageIndex === 'number' ? Number(initialState.position.pageIndex) + 1 : 1
   const [pdfDocument, setPDFDocument] = useState<pdfjs.PDFDocumentProxy | null>(null)
   const [pageNumber, setPageNumber] = useState(Math.max(1, initialPage))
@@ -235,6 +238,38 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
   }, [scale])
 
   useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    const handleWheelZoom = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return
+      event.preventDefault()
+      onChromeActivity()
+      wheelZoomAccumulatorRef.current += normalizePDFWheelDelta(
+        event.deltaY,
+        event.deltaMode,
+        viewport.clientHeight || window.innerHeight,
+      )
+      if (wheelZoomResetTimerRef.current !== null) window.clearTimeout(wheelZoomResetTimerRef.current)
+      wheelZoomResetTimerRef.current = window.setTimeout(() => {
+        wheelZoomAccumulatorRef.current = 0
+        wheelZoomResetTimerRef.current = null
+      }, 180)
+      if (Math.abs(wheelZoomAccumulatorRef.current) < 60) return
+
+      const zoomDelta = wheelZoomAccumulatorRef.current < 0 ? 10 : -10
+      wheelZoomAccumulatorRef.current = 0
+      updateZoom(zoomDelta)
+    }
+    viewport.addEventListener('wheel', handleWheelZoom, { passive: false })
+    return () => {
+      if (wheelZoomResetTimerRef.current !== null) window.clearTimeout(wheelZoomResetTimerRef.current)
+      wheelZoomAccumulatorRef.current = 0
+      wheelZoomResetTimerRef.current = null
+      viewport.removeEventListener('wheel', handleWheelZoom)
+    }
+  }, [onChromeActivity, updateZoom])
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (target?.matches('input, select, textarea, button')) return
@@ -362,7 +397,7 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
           <button className={preferences.zoomMode === 'fit-width' ? 'active' : ''} aria-pressed={preferences.zoomMode === 'fit-width'} onClick={() => setPreferences((current) => ({ ...current, zoomMode: 'fit-width' }))}>适宽</button>
           <button className={preferences.zoomMode === 'fit-page' ? 'active' : ''} aria-pressed={preferences.zoomMode === 'fit-page'} onClick={() => setPreferences((current) => ({ ...current, zoomMode: 'fit-page' }))}>适页</button>
         </div>
-        <span className="reader-shortcuts">← → 翻页 · + − 缩放</span>
+        <span className="reader-shortcuts">← → 翻页 · + − / Ctrl+滚轮缩放</span>
       </div>
 
       {sidePanel && (

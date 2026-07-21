@@ -68,6 +68,13 @@ export function clampPDFZoom(zoomPercent: number): number {
   return Math.min(300, Math.max(40, Math.round(Number.isFinite(zoomPercent) ? zoomPercent : 100)))
 }
 
+export function normalizePDFWheelDelta(deltaY: number, deltaMode: number, viewportHeight: number): number {
+  if (!Number.isFinite(deltaY)) return 0
+  if (deltaMode === 1) return deltaY * 16
+  if (deltaMode === 2) return deltaY * Math.max(1, viewportHeight)
+  return deltaY
+}
+
 interface PDFScaleOptions {
   zoomMode: PDFZoomMode
   zoomPercent: number
