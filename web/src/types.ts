@@ -459,3 +459,12 @@ export interface ReadingSession {
   endedAt?: string
   activeSeconds: number
 }
+
+export interface DeviceToken {
+  id: number
+  name: string
+  createdAt: string
+  lastUsedAt?: string
+  expiresAt?: string
+  token?: string
+}

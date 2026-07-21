@@ -308,6 +308,22 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .classification-rule-grid textarea { resize: vertical; font-size: .75rem; line-height: 1.45; }
 .classification-rule-grid footer input { width: 78px; padding: 6px; }
 .classification-rule-grid footer button { padding: 7px 9px; }
+.device-sync-page { display: grid; gap: 24px; }
+.device-token-reveal { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 16px; border: 1px solid #d3b96e; border-radius: 14px; background: #fff7d9; color: #59461f; }
+.device-token-reveal code { min-width: 0; overflow: hidden; padding: 9px; border-radius: 8px; background: #282d29; color: #e8f4e8; text-overflow: ellipsis; white-space: nowrap; }
+.device-endpoint-panel, .device-token-panel { margin-top: 0; }
+.device-endpoint-panel dl { display: grid; gap: 8px; margin: 16px 0; }
+.device-endpoint-panel dl > div { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px 12px; border-radius: 9px; background: #f9faf6; }
+.device-endpoint-panel dt { color: #65736a; font-size: .73rem; font-weight: 750; }
+.device-endpoint-panel dd { min-width: 0; margin: 0; overflow: auto; }
+.device-token-panel > form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, .5fr) auto; gap: 10px; align-items: end; margin-top: 15px; }
+.device-token-panel > form label { gap: 4px; color: #68756c; font-size: .68rem; }
+.device-token-panel > form label small { color: #849087; }
+.device-token-list { display: grid; margin-top: 16px; border: 1px solid #d4dbd2; border-radius: 12px; background: #fbfcf8; }
+.device-token-list > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; border-bottom: 1px solid #e1e5df; }
+.device-token-list > div:last-child { border-bottom: 0; }
+.device-token-list span { display: grid; gap: 3px; }
+.device-token-list small { color: #758078; font-size: .68rem; }
 .bibliography-source-panel { margin-top: 24px; background: linear-gradient(145deg, #edf2e9, #f5f2e8); }
 .bibliography-source-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-top: 20px; }
 .bibliography-source-card { min-width: 0; padding: 18px; border: 1px solid #d1d9cf; border-radius: 15px; background: #fbfaf5; box-shadow: 0 9px 25px #3c503d0a; }
@@ -619,6 +635,8 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .batch-metadata-form { grid-template-columns: 1fr; }
   .batch-metadata-form > strong, .batch-metadata-form > fieldset, .batch-metadata-form > button { grid-column: 1; }
   .duplicate-group > div { align-items: stretch; flex-direction: column; }
+  .device-token-reveal, .device-token-panel > form { grid-template-columns: 1fr; }
+  .device-endpoint-panel dl > div { grid-template-columns: 1fr; }
   .category-identity { grid-column: 1 / -1; }
   .bibliography-source-list { grid-template-columns: 1fr; }
   .bibliography-source-heading, .bibliography-source-footer { align-items: stretch; flex-direction: column; }

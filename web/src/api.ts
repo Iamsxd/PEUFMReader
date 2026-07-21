@@ -1,4 +1,4 @@
-import type { AuditEvent, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, ClassificationRule, DuplicateCatalogGroup, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ImportSource, ManagedUser, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
+import type { AuditEvent, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, ClassificationRule, DeviceToken, DuplicateCatalogGroup, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ImportSource, ManagedUser, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
 
 interface ErrorBody {
   error?: { code?: string; message?: string }
@@ -46,6 +46,21 @@ class APIClient {
   async logout(): Promise<void> {
     await this.request<void>('/api/v1/auth/logout', { method: 'POST' })
     this.setSession(null)
+  }
+
+  async listDeviceTokens(): Promise<DeviceToken[]> {
+    const result = await this.request<{ items: DeviceToken[] }>('/api/v1/device-tokens')
+    return result.items
+  }
+
+  createDeviceToken(name: string, expiresDays: number): Promise<DeviceToken> {
+    return this.request('/api/v1/device-tokens', {
+      method: 'POST', body: JSON.stringify({ name, expiresDays }), headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  revokeDeviceToken(tokenID: number): Promise<void> {
+    return this.request(`/api/v1/device-tokens/${tokenID}`, { method: 'DELETE' })
   }
 
   getHomeDashboard(): Promise<HomeDashboard> {

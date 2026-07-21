@@ -7,6 +7,7 @@ import { CategoriesPage } from './CategoriesPage'
 import { FavoritesPage } from './FavoritesPage'
 import { HomePage } from './HomePage'
 import { RecommendationsPage } from './RecommendationsPage'
+import { DeviceSyncPage } from './DeviceSyncPage'
 
 interface Props {
   session: Session
@@ -14,7 +15,7 @@ interface Props {
   onLogout: () => void
 }
 
-type LibraryView = 'home' | 'books' | 'categories' | 'favorites' | 'recommendations' | 'book' | 'admin'
+type LibraryView = 'home' | 'books' | 'categories' | 'favorites' | 'recommendations' | 'devices' | 'book' | 'admin'
 type NavigationView = Exclude<LibraryView, 'book'>
 
 interface LibraryRoute {
@@ -64,6 +65,7 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
           <button className={activeView === 'recommendations' ? 'active' : ''} onClick={() => navigate('recommendations')}>为你推荐</button>
           <button className={activeView === 'favorites' ? 'active' : ''} onClick={() => navigate('favorites')}>我的收藏</button>
           <button className={activeView === 'categories' ? 'active' : ''} onClick={() => navigate('categories')}>分类</button>
+          <button className={activeView === 'devices' ? 'active' : ''} onClick={() => navigate('devices')}>设备同步</button>
           {isAdmin && <button className={activeView === 'admin' ? 'active' : ''} onClick={() => navigate('admin')}>管理后台</button>}
         </nav>
         <div className="account-menu">
@@ -99,6 +101,7 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
         {activeView === 'categories' && <CategoriesPage onBrowse={(query) => navigate('books', query)} />}
         {activeView === 'favorites' && <FavoritesPage onOpenBook={onOpenBook} onViewBook={viewBook} onBrowse={() => navigate('books')} />}
         {activeView === 'recommendations' && <RecommendationsPage onOpenBook={onOpenBook} onViewBook={viewBook} onBrowse={() => navigate('books')} />}
+        {activeView === 'devices' && <DeviceSyncPage user={session.user} />}
         {activeView === 'book' && route.bookID && (
           <BookDetailPage
             key={route.bookID}
@@ -126,7 +129,7 @@ function readRoute(): LibraryRoute {
     if (bookID) return { view: 'book', bookID, params: new URLSearchParams(search), key: raw }
   }
   const candidate = parts[0]
-  const view: LibraryView = candidate === 'books' || candidate === 'categories' || candidate === 'favorites' || candidate === 'recommendations' || candidate === 'admin' ? candidate : 'home'
+  const view: LibraryView = candidate === 'books' || candidate === 'categories' || candidate === 'favorites' || candidate === 'recommendations' || candidate === 'devices' || candidate === 'admin' ? candidate : 'home'
   return { view, params: new URLSearchParams(search), key: raw }
 }
 
