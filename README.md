@@ -370,6 +370,8 @@ cd web
 pnpm install --frozen-lockfile
 pnpm test
 pnpm build
+# 需要先安装 Chromium，并提供 E2E 管理员账号
+pnpm test:e2e
 ```
 
 后端：

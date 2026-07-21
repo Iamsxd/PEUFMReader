@@ -19,6 +19,8 @@ node_modules/
 **/node_modules/
 **/.pnpm-store/
 web/dist/
+web/playwright-report/
+web/test-results/
 coverage/
 *.tsbuildinfo
 web/vite.config.js
