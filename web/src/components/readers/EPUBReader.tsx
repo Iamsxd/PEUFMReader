@@ -11,10 +11,11 @@ import {
   resolveEPUBProgress,
 } from '../../epub'
 import type { EPUBPageFlow, EPUBPageLayout, EPUBReaderPreferences, EPUBTheme, EPUBTOCEntry } from '../../epub'
-import type { BookFile, ReadingState } from '../../types'
+import type { BookFile, HighlightColor, ReadingMark, ReadingState } from '../../types'
 import { clampProgress } from '../../utils'
-import { createEPUBReadingMarkLocation, getReadingMarkNavigationTarget, type ReadingMarkLocation } from '../../readingMarks'
+import { createEPUBReadingMarkLocation, getReadingMarkNavigationTarget, upsertReadingMark, type ReadingMarkLocation } from '../../readingMarks'
 import { ReadingMarksPanel } from './ReadingMarksPanel'
+import { HighlightComposer, type PendingHighlight } from './HighlightComposer'
 
 interface Props {
   book: BookFile
@@ -58,6 +59,10 @@ const EPUB_THEMES: Record<EPUBTheme, Record<string, Record<string, string>>> = {
 
 const EPUB_DISPLAY_TIMEOUT_MS = 15_000
 
+const EPUB_HIGHLIGHT_COLORS: Record<HighlightColor, string> = {
+  yellow: '#f4d35e', green: '#76c893', blue: '#6ea8fe', pink: '#f49ac2', purple: '#b197fc',
+}
+
 function readPreferences(): EPUBReaderPreferences {
   try {
     return parseEPUBPreferences(window.localStorage.getItem(EPUB_PREFERENCES_KEY))
@@ -76,6 +81,8 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
   const wheelLockedUntilRef = useRef(0)
   const locationsReadyRef = useRef(false)
   const searchRunRef = useRef(0)
+  const renderedHighlightCFIsRef = useRef<string[]>([])
+  const highlightsRef = useRef<ReadingMark[]>([])
   const lastProgressRef = useRef(clampProgress(initialState.overallProgress))
   const [preferences, setPreferences] = useState(readPreferences)
   const preferencesRef = useRef(preferences)
@@ -97,7 +104,11 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
   const [searching, setSearching] = useState(false)
   const [searchProgress, setSearchProgress] = useState('')
   const [searchError, setSearchError] = useState('')
+  const [highlights, setHighlights] = useState<ReadingMark[]>([])
+  const [pendingHighlight, setPendingHighlight] = useState<PendingHighlight | null>(null)
+  const [savingHighlight, setSavingHighlight] = useState(false)
   preferencesRef.current = preferences
+  highlightsRef.current = highlights
 
   const effectiveLayout: EPUBPageLayout = preferences.flow === 'continuous' || isNarrow ? 'single' : preferences.layout
 
@@ -160,6 +171,41 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
     wheelLockedUntilRef.current = Date.now() + 420
     turnPage(direction)
   }, [turnPage])
+
+  const renderHighlights = useCallback((rendition: Rendition, marks: ReadingMark[]) => {
+    for (const cfi of renderedHighlightCFIsRef.current) rendition.annotations.remove(cfi, 'highlight')
+    const rendered: string[] = []
+    for (const mark of marks) {
+      const cfi = typeof mark.position.cfi === 'string' ? mark.position.cfi : ''
+      if (!cfi || !mark.color) continue
+      rendition.annotations.highlight(cfi, { id: mark.id }, () => setSidePanel('marks'), 'peufm-highlight', {
+        fill: EPUB_HIGHLIGHT_COLORS[mark.color],
+        'fill-opacity': '0.42',
+        'mix-blend-mode': 'multiply',
+      })
+      rendered.push(cfi)
+    }
+    renderedHighlightCFIsRef.current = rendered
+  }, [])
+
+  useEffect(() => {
+    let disposed = false
+    void api.listReadingMarks(book.id).then((marks) => {
+      if (!disposed) setHighlights(marks.filter((mark) => mark.kind === 'highlight'))
+    }).catch(() => {
+      if (!disposed) setError('文本高亮加载失败。')
+    })
+    return () => { disposed = true }
+  }, [book.id])
+
+  useEffect(() => {
+    const rendition = renditionRef.current
+    if (rendition) renderHighlights(rendition, highlights)
+  }, [highlights, renderHighlights])
+
+  const syncHighlights = useCallback((marks: ReadingMark[]) => {
+    setHighlights(marks.filter((mark) => mark.kind === 'highlight'))
+  }, [])
 
   useEffect(() => {
     const host = hostRef.current
@@ -248,6 +294,7 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
       window.clearTimeout(displayTimeout)
       setError('')
       setLoading(false)
+      renderHighlights(rendition, highlightsRef.current)
 
       if (!locationsReadyRef.current) {
         void epub.locations.generate(1600).then(() => {
@@ -299,7 +346,20 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
     const contentPointerMove = (event: MouseEvent) => {
       if (event.clientY <= 100) onChromeActivity()
     }
+    const selected = (cfiRange: string, contents: Contents) => {
+      const quote = contents.document.getSelection()?.toString().replace(/\s+/g, ' ').trim() ?? ''
+      if (!quote) return
+      const currentProgress = clampProgress(lastProgressRef.current)
+      setPendingHighlight({
+        position: { cfi: cfiRange, progression: currentProgress },
+        overallProgress: currentProgress,
+        label: `阅读进度 ${Math.round(currentProgress * 100)}%高亮`,
+        quote: quote.slice(0, 4000),
+      })
+      onChromeActivity()
+    }
     rendition.on('relocated', relocated)
+    rendition.on('selected', selected)
     rendition.on('keydown', handleKeyDown)
     rendition.on('mousemove', contentPointerMove)
     host.addEventListener('wheel', handleWheel, { passive: false })
@@ -319,12 +379,14 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
       host.removeEventListener('wheel', handleWheel)
       rendition.hooks.content.deregister(attachContentEvents)
       rendition.off('relocated', relocated)
+      rendition.off('selected', selected)
       rendition.off('keydown', handleKeyDown)
       rendition.off('mousemove', contentPointerMove)
       rendition.destroy()
       epub.destroy()
       renditionRef.current = null
       bookRef.current = null
+      renderedHighlightCFIsRef.current = []
       host.innerHTML = ''
     }
   }, [book.id])
@@ -399,6 +461,23 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
     void renditionRef.current?.display(target).then(() => setSidePanel(null)).catch(() => setSearchError('无法定位到该内容。'))
   }
 
+  async function saveHighlight(color: HighlightColor, body: string) {
+    if (!pendingHighlight) return
+    setSavingHighlight(true)
+    try {
+      const mark = await api.createReadingMark(book.id, {
+        kind: 'highlight', ...pendingHighlight, body, quote: pendingHighlight.quote, color,
+      })
+      setHighlights((items) => upsertReadingMark(items, mark))
+      setPendingHighlight(null)
+      hostRef.current?.querySelectorAll('iframe').forEach((frame) => frame.contentDocument?.getSelection()?.removeAllRanges())
+    } catch {
+      setError('文本高亮保存失败。')
+    } finally {
+      setSavingHighlight(false)
+    }
+  }
+
   async function searchEPUB(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const query = searchQuery.trim()
@@ -456,7 +535,7 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
         <div className="reader-tool-group" aria-label="书籍导航">
           <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={() => toggleSidePanel('toc')}>目录</button>
           <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={() => toggleSidePanel('search')}>书内搜索</button>
-          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} onClick={() => toggleSidePanel('marks')}>书签/笔记</button>
+          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} onClick={() => toggleSidePanel('marks')}>书签/高亮</button>
         </div>
         <span className="reader-toolbar-divider" />
         <div className="reader-tool-group" aria-label="阅读方式">
@@ -506,6 +585,7 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
           }}
           onClose={() => setSidePanel(null)}
           onChromeActivity={onChromeActivity}
+          onMarksChange={syncHighlights}
         />
       ) : sidePanel && (
         <aside className="reader-side-panel" aria-label={sidePanel === 'toc' ? 'EPUB 目录' : 'EPUB 书内搜索'} onPointerDown={onChromeActivity}>
@@ -538,6 +618,10 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
             </div>
           )}
         </aside>
+      )}
+
+      {pendingHighlight && (
+        <HighlightComposer selection={pendingHighlight} busy={savingHighlight} onSave={(color, body) => void saveHighlight(color, body)} onCancel={() => setPendingHighlight(null)} />
       )}
 
       {error && <div className="notice error epub-error">{error}</div>}

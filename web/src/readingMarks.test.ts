@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   createEPUBReadingMarkLocation,
+  createPDFHighlightLocation,
   createPDFReadingMarkLocation,
   getReadingMarkNavigationTarget,
   removeReadingMark,
@@ -31,6 +32,26 @@ describe('reading mark position model', () => {
       },
       overallProgress: 0.375,
       label: '阅读进度 38%',
+    })
+  })
+
+  it('stores PDF selection rectangles as zoom-independent page ratios', () => {
+    expect(createPDFHighlightLocation(5, 100,
+      { left: 100, top: 200, width: 500, height: 800 },
+      [
+        { left: 150, top: 280, width: 200, height: 24 },
+        { left: 150, top: 312, width: 300, height: 24 },
+      ],
+    )).toEqual({
+      position: {
+        pageIndex: 4,
+        rects: [
+          { x: 0.1, y: 0.1, width: 0.4, height: 0.03 },
+          { x: 0.1, y: 0.14, width: 0.6, height: 0.03 },
+        ],
+      },
+      overallProgress: 0.05,
+      label: '第 5 页高亮',
     })
   })
 

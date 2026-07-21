@@ -446,7 +446,7 @@ export interface ReadingState {
   updatedAt?: string
 }
 
-export type ReadingMarkKind = 'bookmark' | 'note'
+export type ReadingMarkKind = 'bookmark' | 'note' | 'highlight'
 
 export interface ReadingMark {
   id: number
@@ -456,6 +456,8 @@ export interface ReadingMark {
   overallProgress: number
   label: string
   body: string
+  quote: string
+  color: '' | HighlightColor
   createdAt: string
   updatedAt: string
 }
@@ -466,7 +468,11 @@ export interface ReadingMarkInput {
   overallProgress: number
   label: string
   body: string
+  quote?: string
+  color?: HighlightColor
 }
+
+export type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
 
 export interface ReadingSession {
   id: number

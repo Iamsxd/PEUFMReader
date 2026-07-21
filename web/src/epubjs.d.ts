@@ -24,6 +24,10 @@ declare module 'epubjs' {
   export interface Rendition {
     themes: ThemeManager
     hooks: { content: Hook }
+    annotations: {
+      highlight(cfiRange: string, data?: object, callback?: (...args: unknown[]) => void, className?: string, styles?: Record<string, string>): void
+      remove(cfiRange: string, type: 'highlight'): void
+    }
     display(target?: string | number): Promise<unknown>
     prev(): Promise<unknown>
     next(): Promise<unknown>

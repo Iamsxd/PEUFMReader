@@ -17,11 +17,12 @@ import {
   PDF_PREFERENCES_KEY,
 } from '../../pdf'
 import type { PDFPageFlow, PDFPageLayout, PDFReaderPreferences } from '../../pdf'
-import type { BookFile, ReadingState } from '../../types'
+import type { BookFile, HighlightColor, ReadingMark, ReadingState } from '../../types'
 import { clampProgress } from '../../utils'
-import { createPDFReadingMarkLocation, getReadingMarkNavigationTarget } from '../../readingMarks'
+import { createPDFHighlightLocation, createPDFReadingMarkLocation, getReadingMarkNavigationTarget, upsertReadingMark } from '../../readingMarks'
 import { PDFPageCanvas } from './PDFPageCanvas'
 import { ReadingMarksPanel } from './ReadingMarksPanel'
+import { HighlightComposer, type PendingHighlight } from './HighlightComposer'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerURL
 
@@ -102,6 +103,9 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
   const [searching, setSearching] = useState(false)
   const [searchProgress, setSearchProgress] = useState('')
   const [searchError, setSearchError] = useState('')
+  const [highlights, setHighlights] = useState<ReadingMark[]>([])
+  const [pendingHighlight, setPendingHighlight] = useState<PendingHighlight | null>(null)
+  const [savingHighlight, setSavingHighlight] = useState(false)
 
   const pageCount = pdfDocument?.numPages ?? 0
   const effectiveLayout: PDFPageLayout = isNarrow ? 'single' : preferences.layout
@@ -170,6 +174,48 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
       void document?.destroy()
     }
   }, [book.id])
+
+  useEffect(() => {
+    let disposed = false
+    void api.listReadingMarks(book.id).then((marks) => {
+      if (!disposed) setHighlights(marks.filter((mark) => mark.kind === 'highlight'))
+    }).catch(() => {
+      if (!disposed) setError('文本高亮加载失败。')
+    })
+    return () => { disposed = true }
+  }, [book.id])
+
+  const syncHighlights = useCallback((marks: ReadingMark[]) => {
+    setHighlights(marks.filter((mark) => mark.kind === 'highlight'))
+  }, [])
+
+  const handleTextSelection = useCallback((selectedPage: number, pageBounds: DOMRect, selectionRects: DOMRect[], quote: string) => {
+    const location = createPDFHighlightLocation(selectedPage, pageCount, pageBounds, selectionRects)
+    if (!Array.isArray(location.position.rects) || location.position.rects.length === 0) return
+    setPendingHighlight({ ...location, quote: quote.slice(0, 4000) })
+    onChromeActivity()
+  }, [onChromeActivity, pageCount])
+
+  async function saveHighlight(color: HighlightColor, body: string) {
+    if (!pendingHighlight) return
+    setSavingHighlight(true)
+    try {
+      const mark = await api.createReadingMark(book.id, {
+        kind: 'highlight',
+        ...pendingHighlight,
+        body,
+        quote: pendingHighlight.quote,
+        color,
+      })
+      setHighlights((items) => upsertReadingMark(items, mark))
+      setPendingHighlight(null)
+      window.getSelection()?.removeAllRanges()
+    } catch {
+      setError('文本高亮保存失败。')
+    } finally {
+      setSavingHighlight(false)
+    }
+  }
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -373,7 +419,7 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
         <div className="reader-tool-group" aria-label="书籍导航">
           <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={() => toggleSidePanel('toc')}>目录</button>
           <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={() => toggleSidePanel('search')}>书内搜索</button>
-          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} onClick={() => toggleSidePanel('marks')}>书签/笔记</button>
+          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} onClick={() => toggleSidePanel('marks')}>书签/高亮</button>
         </div>
         <span className="reader-toolbar-divider" />
         <div className="reader-tool-group" aria-label="阅读方式">
@@ -416,6 +462,7 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
           }}
           onClose={() => setSidePanel(null)}
           onChromeActivity={onChromeActivity}
+          onMarksChange={syncHighlights}
         />
       ) : sidePanel && (
         <aside className="reader-side-panel" aria-label={sidePanel === 'toc' ? 'PDF 目录' : 'PDF 书内搜索'} onPointerDown={onChromeActivity}>
@@ -452,6 +499,10 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
         </aside>
       )}
 
+      {pendingHighlight && (
+        <HighlightComposer selection={pendingHighlight} busy={savingHighlight} onSave={(color, body) => void saveHighlight(color, body)} onCancel={() => { setPendingHighlight(null); window.getSelection()?.removeAllRanges() }} />
+      )}
+
       {error && <div className="notice error pdf-error">{error}</div>}
       {!pdfDocument && !error && <div className="pdf-loading">正在加载 PDF…</div>}
 
@@ -469,6 +520,8 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
                 fallbackSize={basePageSize}
                 onVisibilityChange={handleVisibilityChange}
                 onRenderError={handleRenderError}
+                highlights={highlights.filter((mark) => Number(mark.position.pageIndex) === number - 1)}
+                onTextSelection={handleTextSelection}
               />
             ))}
           </div>

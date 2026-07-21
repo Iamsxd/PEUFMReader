@@ -13,6 +13,20 @@ interface EPUBReadingPosition {
   progression: number
 }
 
+export interface HighlightRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+interface ClientRectLike {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
 function clampProgress(value: number): number {
   if (!Number.isFinite(value)) return 0
   return Math.min(1, Math.max(0, value))
@@ -25,6 +39,36 @@ export function createPDFReadingMarkLocation(pageNumber: number, pageCount: numb
     position: { pageIndex: safePage - 1, yRatio: 0 },
     overallProgress: safePage / safePageCount,
     label: `第 ${safePage} 页`,
+  }
+}
+
+export function createPDFHighlightLocation(
+  pageNumber: number,
+  pageCount: number,
+  pageBounds: ClientRectLike,
+  selectionRects: ClientRectLike[],
+): ReadingMarkLocation {
+  const location = createPDFReadingMarkLocation(pageNumber, pageCount)
+  const round = (value: number) => Math.round(value * 1_000_000) / 1_000_000
+  const right = pageBounds.left + pageBounds.width
+  const bottom = pageBounds.top + pageBounds.height
+  const rects = selectionRects.flatMap((rect): HighlightRect[] => {
+    const left = Math.max(pageBounds.left, rect.left)
+    const top = Math.max(pageBounds.top, rect.top)
+    const clippedRight = Math.min(right, rect.left + rect.width)
+    const clippedBottom = Math.min(bottom, rect.top + rect.height)
+    if (clippedRight <= left || clippedBottom <= top || pageBounds.width <= 0 || pageBounds.height <= 0) return []
+    return [{
+      x: round((left - pageBounds.left) / pageBounds.width),
+      y: round((top - pageBounds.top) / pageBounds.height),
+      width: round((clippedRight - left) / pageBounds.width),
+      height: round((clippedBottom - top) / pageBounds.height),
+    }]
+  })
+  return {
+    ...location,
+    position: { pageIndex: Number(location.position.pageIndex), rects },
+    label: `${location.label}高亮`,
   }
 }
 

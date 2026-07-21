@@ -373,7 +373,7 @@ class APIClient {
     })
   }
 
-  updateReadingMark(markID: number, input: Pick<ReadingMark, 'label' | 'body'>): Promise<ReadingMark> {
+  updateReadingMark(markID: number, input: Pick<ReadingMark, 'label' | 'body'> & { color?: ReadingMark['color'] }): Promise<ReadingMark> {
     return this.request(`/api/v1/reading-marks/${markID}`, {
       method: 'PATCH',
       body: JSON.stringify(input),

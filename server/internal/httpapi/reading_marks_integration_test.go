@@ -65,6 +65,17 @@ func TestReadingMarksArePrivateAndOwnerManaged(t *testing.T) {
 		"kind": "note", "position": map[string]any{"pageIndex": 4, "yRatio": 0}, "overallProgress": 0.05,
 		"label": "第 5 页", "body": "同一位置的另一条笔记",
 	}, http.StatusCreated)
+	highlight := requestJSON(t, server.URL, first, http.MethodPost, fmt.Sprintf("/api/v1/book-files/%d/marks", bookID), map[string]any{
+		"kind": "highlight", "position": map[string]any{
+			"pageIndex": 4,
+			"rects":     []map[string]any{{"x": 0.1, "y": 0.2, "width": 0.4, "height": 0.03}},
+		},
+		"overallProgress": 0.05, "label": "第 5 页高亮", "body": "我的批注",
+		"quote": "这是一段需要高亮的原文", "color": "green",
+	}, http.StatusCreated)
+	if highlight["kind"] != "highlight" || highlight["quote"] != "这是一段需要高亮的原文" || highlight["color"] != "green" {
+		t.Fatalf("highlight fields were not preserved: %#v", highlight)
+	}
 	firstBookmark := requestJSON(t, server.URL, first, http.MethodPost, fmt.Sprintf("/api/v1/book-files/%d/marks", bookID), map[string]any{
 		"kind": "bookmark", "position": map[string]any{"pageIndex": 4, "yRatio": 0}, "overallProgress": 0.05,
 		"label": "第 5 页", "body": "",
@@ -78,8 +89,8 @@ func TestReadingMarksArePrivateAndOwnerManaged(t *testing.T) {
 	}
 
 	firstList := requestJSON(t, server.URL, first, http.MethodGet, fmt.Sprintf("/api/v1/book-files/%d/marks", bookID), nil, http.StatusOK)
-	if items := firstList["items"].([]any); len(items) != 3 {
-		t.Fatalf("owner mark count=%d, want 2 notes and 1 de-duplicated bookmark", len(items))
+	if items := firstList["items"].([]any); len(items) != 4 {
+		t.Fatalf("owner mark count=%d, want 2 notes, 1 highlight and 1 de-duplicated bookmark", len(items))
 	}
 	secondList := requestJSON(t, server.URL, second, http.MethodGet, fmt.Sprintf("/api/v1/book-files/%d/marks", bookID), nil, http.StatusOK)
 	if items := secondList["items"].([]any); len(items) != 0 {

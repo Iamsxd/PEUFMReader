@@ -1535,21 +1535,42 @@ type readingMarkInput struct {
 	OverallProgress float64         `json:"overallProgress"`
 	Label           string          `json:"label"`
 	Body            string          `json:"body"`
+	Quote           string          `json:"quote"`
+	Color           string          `json:"color"`
 }
 
-func normalizeReadingMarkText(kind, label, body string) (string, string, bool) {
+func normalizeReadingMarkText(kind, label, body, quote, color string) (string, string, string, string, bool) {
 	label = strings.TrimSpace(label)
 	body = strings.TrimSpace(body)
-	if (kind != "bookmark" && kind != "note") || utf8.RuneCountInString(label) < 1 || utf8.RuneCountInString(label) > 200 || utf8.RuneCountInString(body) > 10000 {
-		return "", "", false
+	quote = strings.TrimSpace(quote)
+	color = strings.ToLower(strings.TrimSpace(color))
+	if (kind != "bookmark" && kind != "note" && kind != "highlight") || utf8.RuneCountInString(label) < 1 || utf8.RuneCountInString(label) > 200 || utf8.RuneCountInString(body) > 10000 || utf8.RuneCountInString(quote) > 4000 {
+		return "", "", "", "", false
 	}
 	if kind == "note" && body == "" {
-		return "", "", false
+		return "", "", "", "", false
 	}
 	if kind == "bookmark" {
 		body = ""
 	}
-	return label, body, true
+	if kind == "highlight" {
+		if quote == "" || !validHighlightColor(color) {
+			return "", "", "", "", false
+		}
+	} else {
+		quote = ""
+		color = ""
+	}
+	return label, body, quote, color, true
+}
+
+func validHighlightColor(color string) bool {
+	switch color {
+	case "yellow", "green", "blue", "pink", "purple":
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *API) listReadingMarks(w http.ResponseWriter, r *http.Request) {
@@ -1583,7 +1604,7 @@ func (a *API) createReadingMark(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_reading_mark", err.Error())
 		return
 	}
-	label, body, validText := normalizeReadingMarkText(input.Kind, input.Label, input.Body)
+	label, body, quote, color, validText := normalizeReadingMarkText(input.Kind, input.Label, input.Body, input.Quote, input.Color)
 	if !validPosition(input.Position) || input.OverallProgress < 0 || input.OverallProgress > 1 || !validText {
 		writeError(w, http.StatusBadRequest, "invalid_reading_mark", "kind, position, progress, label or note body is invalid")
 		return
@@ -1596,7 +1617,7 @@ func (a *API) createReadingMark(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID := sessionFromContext(r.Context()).User.ID
-	mark, err := a.store.SaveReadingMark(r.Context(), userID, bookID, input.Kind, input.Position, input.OverallProgress, label, body)
+	mark, err := a.store.SaveReadingMark(r.Context(), userID, bookID, input.Kind, input.Position, input.OverallProgress, label, body, quote, color)
 	if err != nil {
 		a.internalError(w, err)
 		return
@@ -1612,6 +1633,7 @@ func (a *API) updateReadingMark(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Label string `json:"label"`
 		Body  string `json:"body"`
+		Color string `json:"color"`
 	}
 	if err := readJSON(w, r, &input, 16<<10); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_reading_mark", err.Error())
@@ -1630,12 +1652,16 @@ func (a *API) updateReadingMark(w http.ResponseWriter, r *http.Request) {
 	if !a.ensureBookAccess(w, r, existing.BookFileID) {
 		return
 	}
-	label, body, valid := normalizeReadingMarkText(existing.Kind, input.Label, input.Body)
+	color := input.Color
+	if existing.Kind == "highlight" && strings.TrimSpace(color) == "" {
+		color = existing.Color
+	}
+	label, body, _, color, valid := normalizeReadingMarkText(existing.Kind, input.Label, input.Body, existing.Quote, color)
 	if !valid {
 		writeError(w, http.StatusBadRequest, "invalid_reading_mark", "label or note body is invalid")
 		return
 	}
-	mark, found, err := a.store.UpdateReadingMark(r.Context(), userID, markID, label, body)
+	mark, found, err := a.store.UpdateReadingMark(r.Context(), userID, markID, label, body, color)
 	if err != nil {
 		a.internalError(w, err)
 		return
