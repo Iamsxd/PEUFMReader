@@ -76,7 +76,11 @@ func (s *Scanner) Preview(limit int) (Preview, error) {
 	if limit <= 0 || limit > 10000 {
 		limit = 10000
 	}
-	info, err := os.Stat(s.root)
+	root, err := s.absoluteRoot()
+	if err != nil {
+		return preview, err
+	}
+	info, err := os.Stat(root)
 	if errors.Is(err, os.ErrNotExist) {
 		return preview, nil
 	}
@@ -84,12 +88,12 @@ func (s *Scanner) Preview(limit int) (Preview, error) {
 		return preview, fmt.Errorf("inspect Calibre library root: %w", err)
 	}
 
-	err = filepath.WalkDir(s.root, func(path string, entry os.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			preview.Errors = append(preview.Errors, walkErr.Error())
 			return nil
 		}
-		if entry.IsDir() || !strings.EqualFold(entry.Name(), "metadata.opf") {
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || !strings.EqualFold(entry.Name(), "metadata.opf") {
 			return nil
 		}
 		records, parseErr := s.recordsFromOPF(path)
@@ -122,7 +126,7 @@ func (s *Scanner) Preview(limit int) (Preview, error) {
 }
 
 func (s *Scanner) Load(sourcePath string) (Record, string, error) {
-	absoluteSource, err := library.SecureResolve(s.root, filepath.FromSlash(sourcePath))
+	absoluteSource, err := s.resolveRegularFile(sourcePath)
 	if err != nil {
 		return Record{}, "", err
 	}
@@ -144,7 +148,19 @@ func (s *Scanner) Load(sourcePath string) (Record, string, error) {
 }
 
 func (s *Scanner) recordsFromOPF(opfPath string) ([]Record, error) {
-	file, err := os.Open(opfPath)
+	root, err := s.absoluteRoot()
+	if err != nil {
+		return nil, err
+	}
+	metadataRelative, err := filepath.Rel(root, opfPath)
+	if err != nil || !filepath.IsLocal(metadataRelative) {
+		return nil, library.ErrUnsafePath
+	}
+	safeOPFPath, err := s.resolveRegularFile(filepath.ToSlash(metadataRelative))
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", opfPath, err)
+	}
+	file, err := os.Open(safeOPFPath)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", opfPath, err)
 	}
@@ -157,7 +173,7 @@ func (s *Scanner) recordsFromOPF(opfPath string) ([]Record, error) {
 	if err := xml.Unmarshal(content, &document); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", opfPath, err)
 	}
-	directory := filepath.Dir(opfPath)
+	directory := filepath.Dir(safeOPFPath)
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return nil, err
@@ -172,19 +188,16 @@ func (s *Scanner) recordsFromOPF(opfPath string) ([]Record, error) {
 		Description:   first(document.Metadata.Descriptions),
 		Subjects:      cleanUnique(document.Metadata.Subjects),
 	}
-	metadataRelative, err := filepath.Rel(s.root, opfPath)
-	if err != nil {
-		return nil, err
-	}
 	base.MetadataPath = filepath.ToSlash(metadataRelative)
 	coverAbsolute := filepath.Join(directory, "cover.jpg")
-	if _, err := os.Stat(coverAbsolute); err == nil {
-		coverRelative, _ := filepath.Rel(s.root, coverAbsolute)
-		base.CoverPath = filepath.ToSlash(coverRelative)
+	if coverRelative, err := filepath.Rel(root, coverAbsolute); err == nil {
+		if _, err := s.resolveRegularFile(filepath.ToSlash(coverRelative)); err == nil {
+			base.CoverPath = filepath.ToSlash(coverRelative)
+		}
 	}
 	records := make([]Record, 0, 2)
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 			continue
 		}
 		extension := strings.ToLower(filepath.Ext(entry.Name()))
@@ -192,7 +205,7 @@ func (s *Scanner) recordsFromOPF(opfPath string) ([]Record, error) {
 			continue
 		}
 		absoluteSource := filepath.Join(directory, entry.Name())
-		relativeSource, relErr := filepath.Rel(s.root, absoluteSource)
+		relativeSource, relErr := filepath.Rel(root, absoluteSource)
 		if relErr != nil {
 			continue
 		}
@@ -226,7 +239,7 @@ func (s *Scanner) Metadata(record Record) (metadata.Result, error) {
 	if record.CoverPath == "" {
 		return result, nil
 	}
-	absoluteCover, err := library.SecureResolve(s.root, filepath.FromSlash(record.CoverPath))
+	absoluteCover, err := s.resolveRegularFile(record.CoverPath)
 	if err != nil {
 		return result, err
 	}
@@ -239,6 +252,55 @@ func (s *Scanner) Metadata(record Record) (metadata.Result, error) {
 	}
 	result.Cover = &metadata.Cover{Bytes: cover, Extension: "jpg", MIMEType: "image/jpeg"}
 	return result, nil
+}
+
+func (s *Scanner) resolveRegularFile(sourcePath string) (string, error) {
+	root, err := s.absoluteRoot()
+	if err != nil {
+		return "", err
+	}
+	absolutePath, err := library.SecureResolve(root, filepath.FromSlash(sourcePath))
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Lstat(absolutePath)
+	if err != nil {
+		return "", err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return "", errors.New("Calibre source must be a regular file inside the configured library")
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve Calibre library root: %w", err)
+	}
+	resolvedPath, err := filepath.EvalSymlinks(absolutePath)
+	if err != nil {
+		return "", fmt.Errorf("resolve Calibre source: %w", err)
+	}
+	relative, err := filepath.Rel(resolvedRoot, resolvedPath)
+	if err != nil || !filepath.IsLocal(relative) {
+		return "", library.ErrUnsafePath
+	}
+	resolvedInfo, err := os.Stat(resolvedPath)
+	if err != nil {
+		return "", err
+	}
+	if !resolvedInfo.Mode().IsRegular() {
+		return "", errors.New("Calibre source must be a regular file inside the configured library")
+	}
+	return resolvedPath, nil
+}
+
+func (s *Scanner) absoluteRoot() (string, error) {
+	if strings.TrimSpace(s.root) == "" {
+		return "", errors.New("Calibre library root is required")
+	}
+	root, err := filepath.Abs(s.root)
+	if err != nil {
+		return "", fmt.Errorf("resolve Calibre library root: %w", err)
+	}
+	return root, nil
 }
 
 func first(values []string) string {

@@ -1503,6 +1503,15 @@ func (a *API) importCalibre(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
+		existsAlready, existsErr := a.store.BackgroundJobExists(r.Context(), calibre.ImportJobKind, record.SourcePath)
+		if existsErr != nil {
+			a.internalError(w, existsErr)
+			return
+		}
+		if existsAlready {
+			existing++
+			continue
+		}
 		job, created, enqueueErr := a.store.EnqueueBackgroundJob(
 			r.Context(), calibre.ImportJobKind, record.SourcePath,
 			calibre.ImportPayload{SourcePath: record.SourcePath}, &userID, nil, 3,

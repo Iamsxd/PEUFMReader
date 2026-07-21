@@ -61,3 +61,69 @@ func TestLoadRejectsPathTraversal(t *testing.T) {
 		t.Fatal("expected unsafe Calibre path to fail")
 	}
 }
+
+func TestPreviewSkipsSymlinkedCalibreFiles(t *testing.T) {
+	root := t.TempDir()
+	bookDir := filepath.Join(root, "Author", "Safe Book (1)")
+	if err := os.MkdirAll(bookDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	opf := `<?xml version="1.0"?><package xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>Safe Book</dc:title></metadata></package>`
+	if err := os.WriteFile(filepath.Join(bookDir, "metadata.opf"), []byte(opf), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bookDir, "safe.pdf"), []byte("%PDF-safe"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	externalDir := t.TempDir()
+	externalBook := filepath.Join(externalDir, "outside.pdf")
+	if err := os.WriteFile(externalBook, []byte("%PDF-outside"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(externalBook, filepath.Join(bookDir, "outside.pdf")); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+	if err := os.Symlink(externalBook, filepath.Join(bookDir, "cover.jpg")); err != nil {
+		t.Fatal(err)
+	}
+
+	preview, err := NewScanner(root).Preview(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Total != 1 || len(preview.Books) != 1 || preview.Books[0].SourcePath != "Author/Safe Book (1)/safe.pdf" {
+		t.Fatalf("symlinked Calibre file was included in preview: %#v", preview)
+	}
+	metadata, err := NewScanner(root).Metadata(preview.Books[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Cover != nil {
+		t.Fatal("symlinked Calibre cover was loaded")
+	}
+}
+
+func TestLoadSupportsRelativeCalibreRoot(t *testing.T) {
+	parent := t.TempDir()
+	t.Chdir(parent)
+	bookDir := filepath.Join("library", "Author", "Relative Book (1)")
+	if err := os.MkdirAll(bookDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bookDir, "metadata.opf"), []byte(`<?xml version="1.0"?><package xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>Relative Book</dc:title></metadata></package>`), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bookDir, "relative.pdf"), []byte("%PDF-relative"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := NewScanner("./library")
+	preview, err := scanner.Preview(10)
+	if err != nil || preview.Total != 1 {
+		t.Fatalf("preview=%#v err=%v", preview, err)
+	}
+	if _, _, err := scanner.Load(preview.Books[0].SourcePath); err != nil {
+		t.Fatalf("load source from relative Calibre root: %v", err)
+	}
+}
