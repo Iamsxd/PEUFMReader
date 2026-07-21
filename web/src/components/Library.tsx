@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { type MouseEvent, useCallback, useEffect, useState } from 'react'
 import type { BookFile, CatalogQuery, Session } from '../types'
 import { AdminPage } from './AdminPage'
 import { BookDetailPage } from './BookDetailPage'
@@ -36,6 +36,16 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [])
 
+  useEffect(() => {
+    const closeMenus = (event: PointerEvent) => {
+      document.querySelectorAll<HTMLDetailsElement>('.app-header details[open]').forEach((menu) => {
+        if (!menu.contains(event.target as Node)) menu.removeAttribute('open')
+      })
+    }
+    document.addEventListener('pointerdown', closeMenus)
+    return () => document.removeEventListener('pointerdown', closeMenus)
+  }, [])
+
   const navigate = useCallback((view: NavigationView, query: CatalogQuery = {}) => {
     const path = view === 'books' ? 'books' : view
     const params = new URLSearchParams()
@@ -52,6 +62,17 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
   }, [])
 
   const activeView = route.view === 'admin' && !isAdmin ? 'home' : route.view
+  const secondaryLabel = activeView === 'recommendations' ? '为你推荐'
+    : activeView === 'favorites' ? '我的收藏'
+      : activeView === 'devices' ? '设备同步'
+        : activeView === 'admin' ? '管理后台'
+          : '更多'
+  const secondaryActive = activeView === 'recommendations' || activeView === 'favorites' || activeView === 'devices' || activeView === 'admin'
+
+  function navigateFromMenu(event: MouseEvent<HTMLButtonElement>, view: NavigationView) {
+    event.currentTarget.closest('details')?.removeAttribute('open')
+    navigate(view)
+  }
 
   return (
     <main className="app-shell">
@@ -60,18 +81,26 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
           <span>PR</span><strong>PEUFMReader</strong>
         </button>
         <nav className="app-navigation" aria-label="主导航">
-          <button className={activeView === 'home' ? 'active' : ''} onClick={() => navigate('home')}>首页</button>
-          <button className={activeView === 'books' ? 'active' : ''} onClick={() => navigate('books')}>全部书籍</button>
-          <button className={activeView === 'recommendations' ? 'active' : ''} onClick={() => navigate('recommendations')}>为你推荐</button>
-          <button className={activeView === 'favorites' ? 'active' : ''} onClick={() => navigate('favorites')}>我的收藏</button>
-          <button className={activeView === 'categories' ? 'active' : ''} onClick={() => navigate('categories')}>分类</button>
-          <button className={activeView === 'devices' ? 'active' : ''} onClick={() => navigate('devices')}>设备同步</button>
-          {isAdmin && <button className={activeView === 'admin' ? 'active' : ''} onClick={() => navigate('admin')}>管理后台</button>}
+          <div className="app-navigation-primary">
+            <button className={activeView === 'home' ? 'active' : ''} onClick={() => navigate('home')}>首页</button>
+            <button className={activeView === 'books' ? 'active' : ''} onClick={() => navigate('books')}>全部书籍</button>
+            <button className={activeView === 'categories' ? 'active' : ''} onClick={() => navigate('categories')}>分类</button>
+          </div>
+          <details className={`navigation-menu${secondaryActive ? ' active' : ''}`}>
+            <summary>{secondaryLabel}<span aria-hidden="true">⌄</span></summary>
+            <div className="navigation-popover">
+              <p>个人书架</p>
+              <button className={activeView === 'recommendations' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'recommendations')}><span>为你推荐</span><small>根据阅读与收藏生成</small></button>
+              <button className={activeView === 'favorites' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'favorites')}><span>我的收藏</span><small>个人收藏书架</small></button>
+              <button className={activeView === 'devices' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'devices')}><span>设备同步</span><small>OPDS、KOReader 与 Kobo</small></button>
+              {isAdmin && <><hr /><p>系统</p><button className={activeView === 'admin' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'admin')}><span>管理后台</span><small>书库、用户与系统维护</small></button></>}
+            </div>
+          </details>
         </nav>
-        <div className="account-menu">
-          <span><strong>{session.user.username}</strong><small>{session.user.role === 'admin' ? '管理员' : '阅读者'}</small></span>
-          <button className="quiet" onClick={onLogout}>退出</button>
-        </div>
+        <details className="account-menu">
+          <summary aria-label="账号菜单"><span className="account-avatar">{session.user.username.slice(0, 1).toUpperCase()}</span><span className="account-summary"><strong>{session.user.username}</strong><small>{session.user.role === 'admin' ? '管理员' : '阅读者'}</small></span><span aria-hidden="true">⌄</span></summary>
+          <div className="account-popover"><div><strong>{session.user.username}</strong><small>{session.user.role === 'admin' ? '管理员账号' : '阅读者账号'}</small></div><button className="quiet" onClick={onLogout}>退出登录</button></div>
+        </details>
       </header>
 
       <div className="app-content">

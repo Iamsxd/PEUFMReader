@@ -12,6 +12,14 @@ interface Props {
 }
 
 type UploadState = 'queued' | 'uploading' | 'processing' | 'completed' | 'duplicate' | 'failed'
+type AdminSection = 'imports' | 'catalog' | 'users' | 'operations'
+
+const ADMIN_SECTIONS: Array<{ id: AdminSection; label: string; eyebrow: string; description: string }> = [
+  { id: 'imports', label: '书籍导入', eyebrow: '采集', description: '网页上传、目录监控与 Calibre 迁移' },
+  { id: 'catalog', label: '书目与分类', eyebrow: '整理', description: '元数据审核、分类规则与重复合并' },
+  { id: 'users', label: '用户与权限', eyebrow: '访问', description: '账号、登录设备与书库访问控制' },
+  { id: 'operations', label: '任务与运维', eyebrow: '系统', description: '后台任务、存储检查与安全审计' },
+]
 
 interface UploadItem {
   id: string
@@ -22,6 +30,7 @@ interface UploadItem {
 }
 
 export function AdminPage({ initialEditionID, currentUserID }: Props) {
+  const [activeSection, setActiveSection] = useState<AdminSection>(initialEditionID ? 'catalog' : 'imports')
   const [categories, setCategories] = useState<Category[]>([])
   const [adminCategories, setAdminCategories] = useState<Category[]>([])
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
@@ -64,6 +73,7 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
 
   useEffect(() => {
     if (!initialEditionID) return
+    setActiveSection('catalog')
     void api.getEditionReview(initialEditionID).then((item) => {
       setManualReviewItem(item)
       window.setTimeout(() => document.querySelector('.review-panel')?.scrollIntoView({ behavior: 'smooth' }), 0)
@@ -215,166 +225,76 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
     await refreshAdmin()
   }
 
+  const activeDefinition = ADMIN_SECTIONS.find((section) => section.id === activeSection) ?? ADMIN_SECTIONS[0]
+  const activeJobCount = backgroundJobs.filter((job) => job.state === 'queued' || job.state === 'running').length
+
   return (
     <div className="admin-page">
       <section className="page-heading admin-heading">
-        <div><p className="eyebrow">系统管理</p><h1>管理后台</h1><p className="muted">导入书籍、确认分类、管理用户和检查后台任务。</p></div>
-        <label className={`upload-button ${uploading ? 'disabled' : ''}`}>
-          {uploading ? '正在批量导入…' : '选择电子书'}
-          <input type="file" multiple accept=".epub,.pdf,.mobi,.azw3,application/epub+zip,application/pdf,application/x-mobipocket-ebook,application/vnd.amazon.ebook" onChange={selectFiles} disabled={uploading} />
-        </label>
+        <div><p className="eyebrow">系统管理</p><h1>管理后台</h1><p className="muted">按工作区管理书库，不必在一个长页面中寻找功能。</p></div>
       </section>
 
       {error && <div className="notice error" role="alert">{error}</div>}
       {notice && <div className="notice success" role="status">{notice}</div>}
 
-      <section
-        className={`upload-drop-zone${draggingFiles ? ' dragging' : ''}${uploading ? ' busy' : ''}`}
-        onDragEnter={(event) => { event.preventDefault(); if (!uploading) setDraggingFiles(true) }}
-        onDragOver={(event) => event.preventDefault()}
-        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingFiles(false) }}
-        onDrop={dropFiles}
-      >
-        <div><p className="eyebrow">批量导入</p><h2>{uploading ? '正在处理导入队列' : '拖放 PDF / EPUB / MOBI / AZW3 到这里'}</h2><p className="muted">每次最多 2 本并行处理；原文件会复制到应用书库，MOBI/AZW3 会额外生成可再生的 EPUB 阅读缓存。</p></div>
-        {uploads.length > 0 && (
-          <div className="upload-queue" aria-live="polite">
-            {uploads.map((item) => (
-              <div className="upload-queue-item" key={item.id}>
-                <span className={`job-state ${item.state}`}>{uploadStateLabel(item.state)}</span>
-                <span><strong>{item.file.name}</strong><small>{item.message}</small></span>
-                <span className="job-progress"><i><b style={{ width: `${item.progress}%` }} /></i><small>{item.progress}%</small></span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <div className="admin-workspace">
+        <nav className="admin-section-navigation" aria-label="管理后台工作区">
+          {ADMIN_SECTIONS.map((section) => {
+            const count = section.id === 'catalog' ? visibleReviewItems.length : section.id === 'operations' ? activeJobCount : section.id === 'imports' && uploading ? uploads.length : 0
+            return (
+              <button key={section.id} className={activeSection === section.id ? 'active' : ''} type="button" onClick={() => setActiveSection(section.id)} aria-current={activeSection === section.id ? 'page' : undefined}>
+                <span><small>{section.eyebrow}</small><strong>{section.label}</strong></span>
+                {count > 0 && <b>{count}</b>}
+                <i aria-hidden="true">›</i>
+              </button>
+            )
+          })}
+        </nav>
 
-      <section className="integration-panel import-sources-panel">
-        <div className="section-title">
-          <div><p className="eyebrow">导入入口</p><h2>上传、移动与只读监控</h2><p className="muted">三个入口共用内容校验、SHA-256 去重、元数据提取与可恢复后台任务。</p></div>
+        <div className="admin-workspace-content">
+          <header className="admin-section-heading">
+            <div><p className="eyebrow">{activeDefinition.eyebrow}</p><h2>{activeDefinition.label}</h2><p className="muted">{activeDefinition.description}</p></div>
+            {activeSection === 'imports' && <label className={`upload-button ${uploading ? 'disabled' : ''}`}>{uploading ? '正在批量导入…' : '选择电子书'}<input type="file" multiple accept=".epub,.pdf,.mobi,.azw3,application/epub+zip,application/pdf,application/x-mobipocket-ebook,application/vnd.amazon.ebook" onChange={selectFiles} disabled={uploading} /></label>}
+          </header>
+
+          {activeSection === 'imports' && <>
+            <section className={`upload-drop-zone${draggingFiles ? ' dragging' : ''}${uploading ? ' busy' : ''}`} onDragEnter={(event) => { event.preventDefault(); if (!uploading) setDraggingFiles(true) }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingFiles(false) }} onDrop={dropFiles}>
+              <div><p className="eyebrow">批量导入</p><h2>{uploading ? '正在处理导入队列' : '拖放 PDF / EPUB / MOBI / AZW3 到这里'}</h2><p className="muted">每次最多 2 本并行处理；原文件会复制到应用书库，MOBI/AZW3 会额外生成可再生的 EPUB 阅读缓存。</p></div>
+              {uploads.length > 0 && <div className="upload-queue" aria-live="polite">{uploads.map((item) => <div className="upload-queue-item" key={item.id}><span className={`job-state ${item.state}`}>{uploadStateLabel(item.state)}</span><span><strong>{item.file.name}</strong><small>{item.message}</small></span><span className="job-progress"><i><b style={{ width: `${item.progress}%` }} /></i><small>{item.progress}%</small></span></div>)}</div>}
+            </section>
+
+            <section className="integration-panel import-sources-panel">
+              <div className="section-title"><div><p className="eyebrow">导入入口</p><h2>上传、移动与只读监控</h2><p className="muted">三个入口共用内容校验、SHA-256 去重、元数据提取与可恢复后台任务。</p></div></div>
+              <div className="import-source-grid">{importSources.map((source) => <article className={`import-source-card${source.enabled ? '' : ' disabled'}`} key={source.id}><div className="import-source-heading"><strong>{source.name}</strong><span className={source.enabled ? 'enabled' : ''}>{source.enabled ? '已启用' : '未启用'}</span></div><p>{importSourceDescription(source)}</p>{source.path && <code title={source.path}>{source.path}</code>}<dl><div><dt>处理方式</dt><dd>{importModeLabel(source.mode)}</dd></div>{source.maxFileBytes ? <div><dt>单文件上限</dt><dd>{formatBytes(source.maxFileBytes)}</dd></div> : null}{source.scanIntervalSeconds ? <div><dt>扫描 / 稳定</dt><dd>{formatCompactSeconds(source.scanIntervalSeconds)} / {formatCompactSeconds(source.stableAgeSeconds ?? 0)}</dd></div> : null}</dl></article>)}</div>
+              <p className="import-source-hint">目录模式由 <code>.env</code> 和 Compose 挂载控制；修改后运行 <code>docker compose up -d</code> 重建容器。</p>
+            </section>
+
+            <section className="integration-panel">
+              <div className="section-title"><div><p className="eyebrow">Calibre 批量迁移</p><h2>只读预检并复制到应用书库</h2></div><div className="integration-actions"><button className="secondary" type="button" disabled={scanningCalibre} onClick={() => void scanCalibre()}>{scanningCalibre ? '扫描中…' : '扫描 Calibre'}</button><button className="primary" type="button" disabled={!calibrePreview?.total || migratingCalibre} onClick={() => void migrateCalibre()}>{migratingCalibre ? '排队中…' : '迁移全部'}</button></div></div>
+              {calibrePreview && <div className="calibre-preview"><p><strong>{calibrePreview.total}</strong> 个文件 · PDF {calibrePreview.pdfCount} · EPUB {calibrePreview.epubCount} · MOBI {calibrePreview.mobiCount} · AZW3 {calibrePreview.azw3Count} · 来源挂载 <code>{calibrePreview.rootLabel}</code></p>{calibrePreview.total === 0 && <p className="muted">没有找到含 metadata.opf 的 Calibre 书目，请检查 CALIBRE_LIBRARY_PATH 挂载。</p>}{calibrePreview.books.slice(0, 6).map((book) => <div className="calibre-row" key={book.sourcePath}><span className={`format-badge ${book.format}`}>{book.format.toUpperCase()}</span><strong>{book.title}</strong><span>{book.authors.join('、') || '未知作者'}</span></div>)}{calibrePreview.total > 6 && <p className="muted">另有 {calibrePreview.total - 6} 个文件将在“迁移全部”后逐项排队。</p>}{calibrePreview.errors.length > 0 && <details><summary>{calibrePreview.errors.length} 个扫描警告</summary><ul>{calibrePreview.errors.slice(0, 20).map((message) => <li key={message}>{message}</li>)}</ul></details>}</div>}
+            </section>
+
+            <section className="jobs-panel compact-admin-panel"><div className="section-title"><div><p className="eyebrow">导入审计</p><h2>最近任务</h2></div></div><div className="job-list">{importJobs.slice(0, 8).map((job) => <div className="job-row" key={job.id}><span className={`job-state ${job.state}`}>{job.state}</span><strong>{job.sourceName}</strong><span>{job.warnings?.join('；') || '无警告'}</span></div>)}</div></section>
+          </>}
+
+          {activeSection === 'catalog' && <>
+            <ReviewQueue categories={categories} items={visibleReviewItems} onChanged={reviewChanged} />
+            <CategoryManager categories={adminCategories} onError={setError} onChanged={async () => { const [active, all] = await Promise.all([api.listCategories(), api.listAdminCategories()]); setCategories(active); setAdminCategories(all) }} />
+            <CatalogMaintenance categories={categories} onError={setError} onNotice={setNotice} />
+            <BibliographySourceManager sources={bibliographySources} onError={setError} onNotice={setNotice} onChanged={async () => setBibliographySources(await api.listBibliographySources())} />
+          </>}
+
+          {activeSection === 'users' && <UserManagement currentUserID={currentUserID} onError={setError} onNotice={setNotice} />}
+
+          {activeSection === 'operations' && <>
+            <section className="jobs-panel compact-admin-panel"><div className="section-title"><div><p className="eyebrow">可恢复后台任务</p><h2>处理队列</h2></div><span className="muted">服务重启后自动接续；失败任务可人工重试</span></div><div className="job-list">{backgroundJobs.length === 0 && <div className="job-empty">暂无后台任务</div>}{backgroundJobs.slice(0, 20).map((job) => <div className="job-row background-job-row" key={job.id}><span className={`job-state ${job.state}`}>{jobStateLabel(job.state)}</span><span><strong>{jobKindLabel(job.kind)}</strong><small>{jobSourceLabel(job)}</small></span><span className="job-progress"><span>{job.lastError || job.progressMessage || `尝试 ${job.attempts} / ${job.maxAttempts}`}</span><i><b style={{ width: `${job.progress}%` }} /></i><small>{job.progress}%</small></span>{job.state === 'failed' && <button className="secondary" type="button" onClick={() => void retryJob(job.id)}>重试</button>}</div>)}</div></section>
+
+            <section className="integration-panel operations-panel"><div className="section-title"><div><p className="eyebrow">存储与备份</p><h2>书库一致性</h2><p className="muted">快速检查文件是否缺失或大小异常；深度校验会读取全部书籍并核对 SHA-256。</p></div><div className="integration-actions"><button className="secondary" type="button" disabled={checkingStorage} onClick={() => void checkStorage(false)}>{checkingStorage ? '检查中…' : '快速检查'}</button><button className="secondary" type="button" disabled={checkingStorage} onClick={() => void checkStorage(true)}>深度校验</button></div></div>{storageReport && <div className="storage-report"><div><strong>{storageReport.databaseFileCount}</strong><span>数据库文件</span></div><div><strong>{storageReport.diskFileCount}</strong><span>磁盘文件</span></div><div className={storageReport.missingCount ? 'has-issue' : ''}><strong>{storageReport.missingCount}</strong><span>缺失</span></div><div className={storageReport.mismatchCount ? 'has-issue' : ''}><strong>{storageReport.mismatchCount}</strong><span>不一致</span></div><div className={storageReport.orphanCount ? 'has-issue' : ''}><strong>{storageReport.orphanCount}</strong><span>孤儿文件</span></div><p>数据库 {formatBytes(storageReport.expectedBytes)} · 磁盘 {formatBytes(storageReport.actualBytes)} · {storageReport.deep ? '已做 SHA-256 深度校验' : '快速检查'} · {formatRelativeTime(storageReport.checkedAt)}</p>{storageReport.issues.length > 0 && <details><summary>查看前 {storageReport.issues.length} 个问题</summary><ul>{storageReport.issues.map((issue, index) => <li key={`${issue.path}-${index}`}>{storageIssueLabel(issue.issue)}：<code>{issue.path}</code></li>)}</ul></details>}</div>}<p className="backup-hint">一致性无误后，在 Unraid 终端运行 <code>sh scripts/backup.sh</code> 创建停写快照；恢复必须使用 <code>sh scripts/restore.sh 快照名 --yes</code>。</p></section>
+
+            <section className="jobs-panel audit-panel"><div className="section-title"><div><p className="eyebrow">安全审计</p><h2>最近操作</h2></div><span className="muted">登录事件与管理员写操作</span></div><div className="job-list">{auditEvents.length === 0 && <div className="job-empty">暂无审计事件</div>}{auditEvents.slice(0, 20).map((event) => <div className="job-row audit-row" key={event.id}><span className={`job-state ${event.statusCode >= 400 ? 'failed' : 'completed'}`}>{event.statusCode}</span><span><strong>{auditActionLabel(event.action)}</strong><small>{event.actorName || '未知账号'} · {event.clientIp || '未知地址'}</small></span><span>{formatRelativeTime(event.createdAt)}</span></div>)}</div></section>
+          </>}
         </div>
-        <div className="import-source-grid">
-          {importSources.map((source) => (
-            <article className={`import-source-card${source.enabled ? '' : ' disabled'}`} key={source.id}>
-              <div className="import-source-heading"><strong>{source.name}</strong><span className={source.enabled ? 'enabled' : ''}>{source.enabled ? '已启用' : '未启用'}</span></div>
-              <p>{importSourceDescription(source)}</p>
-              {source.path && <code title={source.path}>{source.path}</code>}
-              <dl>
-                <div><dt>处理方式</dt><dd>{importModeLabel(source.mode)}</dd></div>
-                {source.maxFileBytes ? <div><dt>单文件上限</dt><dd>{formatBytes(source.maxFileBytes)}</dd></div> : null}
-                {source.scanIntervalSeconds ? <div><dt>扫描 / 稳定</dt><dd>{formatCompactSeconds(source.scanIntervalSeconds)} / {formatCompactSeconds(source.stableAgeSeconds ?? 0)}</dd></div> : null}
-              </dl>
-            </article>
-          ))}
-        </div>
-        <p className="import-source-hint">目录模式由 <code>.env</code> 和 Compose 挂载控制；修改后运行 <code>docker compose up -d</code> 重建容器。</p>
-      </section>
-
-      <CategoryManager
-        categories={adminCategories}
-        onError={setError}
-        onChanged={async () => {
-          const [active, all] = await Promise.all([api.listCategories(), api.listAdminCategories()])
-          setCategories(active)
-          setAdminCategories(all)
-        }}
-      />
-
-      <CatalogMaintenance categories={categories} onError={setError} onNotice={setNotice} />
-
-      <BibliographySourceManager
-        sources={bibliographySources}
-        onError={setError}
-        onNotice={setNotice}
-        onChanged={async () => setBibliographySources(await api.listBibliographySources())}
-      />
-
-      <ReviewQueue categories={categories} items={visibleReviewItems} onChanged={reviewChanged} />
-
-      <section className="integration-panel">
-        <div className="section-title">
-          <div><p className="eyebrow">Calibre 批量迁移</p><h2>只读预检并复制到应用书库</h2></div>
-          <div className="integration-actions">
-            <button className="secondary" type="button" disabled={scanningCalibre} onClick={() => void scanCalibre()}>{scanningCalibre ? '扫描中…' : '扫描 Calibre'}</button>
-            <button className="primary" type="button" disabled={!calibrePreview?.total || migratingCalibre} onClick={() => void migrateCalibre()}>{migratingCalibre ? '排队中…' : '迁移全部'}</button>
-          </div>
-        </div>
-        {calibrePreview && (
-          <div className="calibre-preview">
-            <p><strong>{calibrePreview.total}</strong> 个文件 · PDF {calibrePreview.pdfCount} · EPUB {calibrePreview.epubCount} · MOBI {calibrePreview.mobiCount} · AZW3 {calibrePreview.azw3Count} · 来源挂载 <code>{calibrePreview.rootLabel}</code></p>
-            {calibrePreview.total === 0 && <p className="muted">没有找到含 metadata.opf 的 Calibre 书目，请检查 CALIBRE_LIBRARY_PATH 挂载。</p>}
-            {calibrePreview.books.slice(0, 6).map((book) => (
-              <div className="calibre-row" key={book.sourcePath}>
-                <span className={`format-badge ${book.format}`}>{book.format.toUpperCase()}</span><strong>{book.title}</strong><span>{book.authors.join('、') || '未知作者'}</span>
-              </div>
-            ))}
-            {calibrePreview.total > 6 && <p className="muted">另有 {calibrePreview.total - 6} 个文件将在“迁移全部”后逐项排队。</p>}
-            {calibrePreview.errors.length > 0 && <details><summary>{calibrePreview.errors.length} 个扫描警告</summary><ul>{calibrePreview.errors.slice(0, 20).map((message) => <li key={message}>{message}</li>)}</ul></details>}
-          </div>
-        )}
-      </section>
-
-      <section className="jobs-panel">
-        <div className="section-title"><div><p className="eyebrow">可恢复后台任务</p><h2>处理队列</h2></div><span className="muted">服务重启后自动接续；失败任务可人工重试</span></div>
-        <div className="job-list">
-          {backgroundJobs.length === 0 && <div className="job-empty">暂无后台任务</div>}
-          {backgroundJobs.slice(0, 20).map((job) => (
-            <div className="job-row background-job-row" key={job.id}>
-              <span className={`job-state ${job.state}`}>{jobStateLabel(job.state)}</span>
-              <span><strong>{jobKindLabel(job.kind)}</strong><small>{jobSourceLabel(job)}</small></span>
-              <span className="job-progress"><span>{job.lastError || job.progressMessage || `尝试 ${job.attempts} / ${job.maxAttempts}`}</span><i><b style={{ width: `${job.progress}%` }} /></i><small>{job.progress}%</small></span>
-              {job.state === 'failed' && <button className="secondary" type="button" onClick={() => void retryJob(job.id)}>重试</button>}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <UserManagement currentUserID={currentUserID} onError={setError} onNotice={setNotice} />
-
-      <section className="integration-panel operations-panel">
-        <div className="section-title">
-          <div><p className="eyebrow">存储与备份</p><h2>书库一致性</h2><p className="muted">快速检查文件是否缺失或大小异常；深度校验会读取全部书籍并核对 SHA-256。</p></div>
-          <div className="integration-actions">
-            <button className="secondary" type="button" disabled={checkingStorage} onClick={() => void checkStorage(false)}>{checkingStorage ? '检查中…' : '快速检查'}</button>
-            <button className="secondary" type="button" disabled={checkingStorage} onClick={() => void checkStorage(true)}>深度校验</button>
-          </div>
-        </div>
-        {storageReport && (
-          <div className="storage-report">
-            <div><strong>{storageReport.databaseFileCount}</strong><span>数据库文件</span></div>
-            <div><strong>{storageReport.diskFileCount}</strong><span>磁盘文件</span></div>
-            <div className={storageReport.missingCount ? 'has-issue' : ''}><strong>{storageReport.missingCount}</strong><span>缺失</span></div>
-            <div className={storageReport.mismatchCount ? 'has-issue' : ''}><strong>{storageReport.mismatchCount}</strong><span>不一致</span></div>
-            <div className={storageReport.orphanCount ? 'has-issue' : ''}><strong>{storageReport.orphanCount}</strong><span>孤儿文件</span></div>
-            <p>数据库 {formatBytes(storageReport.expectedBytes)} · 磁盘 {formatBytes(storageReport.actualBytes)} · {storageReport.deep ? '已做 SHA-256 深度校验' : '快速检查'} · {formatRelativeTime(storageReport.checkedAt)}</p>
-            {storageReport.issues.length > 0 && <details><summary>查看前 {storageReport.issues.length} 个问题</summary><ul>{storageReport.issues.map((issue, index) => <li key={`${issue.path}-${index}`}>{storageIssueLabel(issue.issue)}：<code>{issue.path}</code></li>)}</ul></details>}
-          </div>
-        )}
-        <p className="backup-hint">一致性无误后，在 Unraid 终端运行 <code>sh scripts/backup.sh</code> 创建停写快照；恢复必须使用 <code>sh scripts/restore.sh 快照名 --yes</code>。</p>
-      </section>
-
-      <section className="jobs-panel">
-        <div className="section-title"><div><p className="eyebrow">导入审计</p><h2>最近任务</h2></div></div>
-        <div className="job-list">
-          {importJobs.slice(0, 8).map((job) => (
-            <div className="job-row" key={job.id}><span className={`job-state ${job.state}`}>{job.state}</span><strong>{job.sourceName}</strong><span>{job.warnings?.join('；') || '无警告'}</span></div>
-          ))}
-        </div>
-      </section>
-
-      <section className="jobs-panel audit-panel">
-        <div className="section-title"><div><p className="eyebrow">安全审计</p><h2>最近操作</h2></div><span className="muted">登录事件与管理员写操作</span></div>
-        <div className="job-list">
-          {auditEvents.length === 0 && <div className="job-empty">暂无审计事件</div>}
-          {auditEvents.slice(0, 20).map((event) => (
-            <div className="job-row audit-row" key={event.id}>
-              <span className={`job-state ${event.statusCode >= 400 ? 'failed' : 'completed'}`}>{event.statusCode}</span>
-              <span><strong>{auditActionLabel(event.action)}</strong><small>{event.actorName || '未知账号'} · {event.clientIp || '未知地址'}</small></span>
-              <span>{formatRelativeTime(event.createdAt)}</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      </div>
     </div>
   )
 }
