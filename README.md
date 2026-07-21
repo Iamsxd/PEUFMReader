@@ -373,6 +373,9 @@ pnpm test
 pnpm build
 # 需要先安装 Chromium，并提供 E2E 管理员账号
 pnpm test:e2e
+
+# 使用专用阅读者账号，对真实 PDF/EPUB 语料执行阅读器回归
+pnpm test:reader-regression
 ```
 
 后端：
@@ -396,6 +399,8 @@ docker compose build
 docker compose up -d
 docker compose ps
 ```
+
+真实书籍内容烟测和桌面/移动阅读器回归的专用账号、语料选择与执行方式见 [reader-corpus-regression.md](docs/validation/reader-corpus-regression.md)。
 
 性能基线脚本位于 `scripts/performance-seed.sql` 和 `scripts/performance-smoke.mjs`。设计决策、同类项目比较和阶段验证记录位于 [docs](docs/README.md)。
 
