@@ -36,6 +36,8 @@ type DeviceProgress struct {
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
+var ErrBookAccessDenied = errors.New("book access denied")
+
 func (s *Store) CreateDeviceToken(ctx context.Context, userID int64, name, rawToken string, expiresAt *time.Time) (DeviceToken, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || len([]rune(name)) > 100 || rawToken == "" {
@@ -136,9 +138,12 @@ func (s *Store) SaveDeviceProgress(ctx context.Context, userID int64, progress D
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if progress.BookFileID != nil {
-		var exists bool
-		if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM book_files WHERE id=$1)", *progress.BookFileID).Scan(&exists); err != nil || !exists {
-			return DeviceProgress{}, errors.New("book file does not exist")
+		allowed, found, accessErr := s.CanAccessBook(ctx, userID, *progress.BookFileID)
+		if accessErr != nil {
+			return DeviceProgress{}, accessErr
+		}
+		if !found || !allowed {
+			return DeviceProgress{}, ErrBookAccessDenied
 		}
 	}
 	err = tx.QueryRow(ctx, `INSERT INTO external_reading_progress(user_id,provider,document_key,book_file_id,locator,percentage,device,device_id)
@@ -182,6 +187,13 @@ func (s *Store) GetDeviceProgress(ctx context.Context, userID int64, provider, d
 		return DeviceProgress{}, false, err
 	}
 	if progress.BookFileID != nil {
+		allowed, _, accessErr := s.CanAccessBook(ctx, userID, *progress.BookFileID)
+		if accessErr != nil {
+			return DeviceProgress{}, false, accessErr
+		}
+		if !allowed {
+			return DeviceProgress{}, false, nil
+		}
 		var webProgress float64
 		var webUpdated time.Time
 		if err := s.pool.QueryRow(ctx, `SELECT overall_progress,updated_at FROM reading_states WHERE user_id=$1 AND book_file_id=$2`, userID, *progress.BookFileID).Scan(&webProgress, &webUpdated); err == nil && webUpdated.After(progress.UpdatedAt) {

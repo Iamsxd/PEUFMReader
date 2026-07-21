@@ -1,4 +1,4 @@
-import type { AuditEvent, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, ClassificationRule, DeviceToken, DuplicateCatalogGroup, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ImportSource, ManagedUser, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
+import type { AuditEvent, AuthProviders, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, BookPermission, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, ClassificationRule, DeviceToken, DuplicateCatalogGroup, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ImportSource, ManagedUser, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
 
 interface ErrorBody {
   error?: { code?: string; message?: string }
@@ -35,6 +35,10 @@ class APIClient {
     }, false)
     this.setSession(session)
     return session
+  }
+
+  authProviders(): Promise<AuthProviders> {
+    return this.request('/api/v1/auth/providers', {}, false)
   }
 
   async me(): Promise<Session> {
@@ -297,6 +301,21 @@ class APIClient {
 
   getUserAccess(userID: number): Promise<UserAccessInfo> {
     return this.request(`/api/v1/users/${userID}/access`)
+  }
+
+  async listUserBookPermissions(userID: number): Promise<BookPermission[]> {
+    const result = await this.request<{ items: BookPermission[] }>(`/api/v1/users/${userID}/book-permissions`)
+    return result.items
+  }
+
+  setUserBookPermission(userID: number, bookFileID: number, canRead: boolean): Promise<BookPermission> {
+    return this.request(`/api/v1/users/${userID}/book-permissions/${bookFileID}`, {
+      method: 'PUT', body: JSON.stringify({ canRead }), headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  deleteUserBookPermission(userID: number, bookFileID: number): Promise<void> {
+    return this.request(`/api/v1/users/${userID}/book-permissions/${bookFileID}`, { method: 'DELETE' })
   }
 
   resetUserPassword(userID: number, password: string): Promise<void> {

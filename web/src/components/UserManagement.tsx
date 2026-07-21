@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { APIError, api } from '../api'
 import type { ManagedUser, Role, UserAccessInfo, UserSessionInfo } from '../types'
 import { formatDuration, formatRelativeTime } from '../utils'
+import { LibraryPermissionManager } from './LibraryPermissionManager'
 
 interface Props {
   currentUserID: number
@@ -89,6 +90,7 @@ export function UserManagement({ currentUserID, onError, onNotice }: Props) {
           />
         ))}
       </div>
+      <LibraryPermissionManager users={users} onError={onError} onNotice={onNotice} />
     </section>
   )
 }
@@ -248,6 +250,7 @@ function UserManagementRow({ user, currentUserID, onChanged, onDeleted, onError,
     <article className={`user-management-card${disabled ? ' disabled' : ''}`}>
       <header className="user-card-heading">
         <div className="user-avatar" aria-hidden="true">{user.username.slice(0, 1).toUpperCase()}</div>
+        <span className="auth-source-badge">{authSourceLabel(user.authSource)}</span>
         <div><strong>{user.username}</strong><span>{roleLabel(user.role)}{isCurrent ? ' · 当前账号' : ''}</span></div>
         <span className={`account-status ${disabled ? 'disabled' : 'active'}`}>{disabled ? '已禁用' : user.activeSessionCount > 0 ? `${user.activeSessionCount} 个会话` : '可登录'}</span>
       </header>
@@ -308,6 +311,12 @@ function formatDateTime(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '未知'
   return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+}
+
+function authSourceLabel(source?: ManagedUser['authSource']): string {
+  if (source === 'oidc') return 'OIDC'
+  if (source === 'ldap') return 'LDAP'
+  return '本地'
 }
 
 function deviceLabel(userAgent: string): string {

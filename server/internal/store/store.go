@@ -21,9 +21,10 @@ type Store struct {
 }
 
 type User struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	ID         int64  `json:"id"`
+	Username   string `json:"username"`
+	Role       string `json:"role"`
+	AuthSource string `json:"authSource,omitempty"`
 }
 
 type Session struct {
@@ -111,10 +112,10 @@ func (s *Store) Authenticate(ctx context.Context, username, password string) (Us
 	var user User
 	var passwordHash string
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, username, role, password_hash
+		SELECT id, username, role, auth_source, password_hash
 		FROM users
-		WHERE username=$1 AND disabled_at IS NULL`, username,
-	).Scan(&user.ID, &user.Username, &user.Role, &passwordHash)
+		WHERE username=$1 AND auth_source='local' AND disabled_at IS NULL`, username,
+	).Scan(&user.ID, &user.Username, &user.Role, &user.AuthSource, &passwordHash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, false, nil
 	}
@@ -136,8 +137,8 @@ func (s *Store) CreateUser(ctx context.Context, username, password, role string)
 	var user User
 	err = s.pool.QueryRow(ctx, `
 		INSERT INTO users(username,password_hash,role) VALUES ($1,$2,$3)
-		RETURNING id,username,role`, username, passwordHash, role,
-	).Scan(&user.ID, &user.Username, &user.Role)
+		RETURNING id,username,role,auth_source`, username, passwordHash, role,
+	).Scan(&user.ID, &user.Username, &user.Role, &user.AuthSource)
 	if err != nil {
 		return User{}, fmt.Errorf("create user: %w", err)
 	}
@@ -165,8 +166,8 @@ func (s *Store) GetActiveUserByUsername(ctx context.Context, username string) (U
 	username = strings.ToLower(strings.TrimSpace(username))
 	var user User
 	err := s.pool.QueryRow(ctx, `
-		SELECT id,username,role FROM users WHERE username=$1 AND disabled_at IS NULL`, username,
-	).Scan(&user.ID, &user.Username, &user.Role)
+		SELECT id,username,role,auth_source FROM users WHERE username=$1 AND disabled_at IS NULL`, username,
+	).Scan(&user.ID, &user.Username, &user.Role, &user.AuthSource)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, false, nil
 	}
@@ -192,11 +193,11 @@ func (s *Store) GetSession(ctx context.Context, rawToken string) (Session, bool,
 	hash := sha256.Sum256([]byte(rawToken))
 	var session Session
 	err := s.pool.QueryRow(ctx, `
-		SELECT u.id,u.username,u.role,s.csrf_token,s.expires_at
+		SELECT u.id,u.username,u.role,u.auth_source,s.csrf_token,s.expires_at
 		FROM user_sessions s
 		JOIN users u ON u.id=s.user_id
 		WHERE s.token_hash=$1 AND s.expires_at > now() AND u.disabled_at IS NULL`, hash[:],
-	).Scan(&session.User.ID, &session.User.Username, &session.User.Role, &session.CSRFToken, &session.ExpiresAt)
+	).Scan(&session.User.ID, &session.User.Username, &session.User.Role, &session.User.AuthSource, &session.CSRFToken, &session.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, false, nil
 	}
@@ -354,8 +355,12 @@ func (s *Store) AdvanceReadingSession(ctx context.Context, userID, sessionID, re
 
 	var session ReadingSession
 	err = tx.QueryRow(ctx, `
-		SELECT id,book_file_id,started_at,last_heartbeat_at,ended_at,active_seconds
-		FROM reading_sessions WHERE id=$1 AND user_id=$2 FOR UPDATE`, sessionID, userID,
+		SELECT rs.id,rs.book_file_id,rs.started_at,rs.last_heartbeat_at,rs.ended_at,rs.active_seconds
+		FROM reading_sessions rs
+		JOIN users u ON u.id=rs.user_id AND u.disabled_at IS NULL
+		LEFT JOIN book_file_permissions p ON p.user_id=u.id AND p.book_file_id=rs.book_file_id
+		WHERE rs.id=$1 AND rs.user_id=$2 AND (u.role='admin' OR COALESCE(p.can_read,true))
+		FOR UPDATE OF rs`, sessionID, userID,
 	).Scan(&session.ID, &session.BookFileID, &session.StartedAt, &session.LastHeartbeat, &session.EndedAt, &session.ActiveSeconds)
 	if err != nil {
 		return ReadingSession{}, err

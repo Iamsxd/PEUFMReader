@@ -20,6 +20,7 @@ import (
 	"peufmreader/internal/classification"
 	"peufmreader/internal/config"
 	"peufmreader/internal/database"
+	"peufmreader/internal/externalauth"
 	"peufmreader/internal/httpapi"
 	"peufmreader/internal/importinbox"
 	"peufmreader/internal/importing"
@@ -183,6 +184,21 @@ func main() {
 		},
 	}
 	api := httpapi.New(dataStore, libraryManager, kindleConverter, importService, calibreScanner, bibliographyService, importSources, advisor, cfg.WebRoot, cfg.CookieSecure, cfg.SessionTTL, cfg.MaxUploadBytes, cfg.TrustedProxyCIDR, logger)
+	externalAuth, err := externalauth.New(ctx, externalauth.Config{
+		OIDCIssuerURL: cfg.OIDCIssuerURL, OIDCClientID: cfg.OIDCClientID, OIDCClientSecret: cfg.OIDCClientSecret,
+		OIDCRedirectURL: cfg.OIDCRedirectURL, OIDCUsernameClaim: cfg.OIDCUsernameClaim,
+		OIDCGroupsClaim: cfg.OIDCGroupsClaim, OIDCAdminGroup: cfg.OIDCAdminGroup,
+		LDAPURL: cfg.LDAPURL, LDAPStartTLS: cfg.LDAPStartTLS, LDAPBaseDN: cfg.LDAPBaseDN,
+		LDAPBindDN: cfg.LDAPBindDN, LDAPBindPassword: cfg.LDAPBindPassword,
+		LDAPUserFilter: cfg.LDAPUserFilter, LDAPUsernameAttribute: cfg.LDAPUsernameAttribute,
+		LDAPAdminGroupDN: cfg.LDAPAdminGroupDN,
+	})
+	if err != nil {
+		logger.Error("external authentication setup failed", "error", err)
+		os.Exit(1)
+	}
+	api.ConfigureExternalAuth(externalAuth)
+	api.ConfigurePublicSecurity(cfg.PublicAccess, cfg.AllowedHosts)
 	server := &http.Server{
 		Addr:              cfg.Address,
 		Handler:           api.Handler(),

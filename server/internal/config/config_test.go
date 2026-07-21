@@ -52,3 +52,51 @@ func TestLoadRejectsInvalidWatchLibraryEnabled(t *testing.T) {
 		t.Fatal("invalid WATCH_LIBRARY_ENABLED was accepted")
 	}
 }
+
+func TestLoadRequiresCompletePublicSecurityConfiguration(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example.invalid/peufmreader")
+	t.Setenv("ADMIN_PASSWORD", "a-secure-test-password")
+	t.Setenv("BIBLIOGRAPHY_PROVIDERS", "")
+	t.Setenv("AI_PROVIDER", "")
+	t.Setenv("PUBLIC_ACCESS", "true")
+	t.Setenv("PUBLIC_URL", "https://reader.example.com")
+	t.Setenv("COOKIE_SECURE", "true")
+	t.Setenv("TRUSTED_PROXY_CIDR", "172.18.0.0/16")
+	t.Setenv("ALLOWED_HOSTS", "reader.example.com")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.PublicAccess || len(cfg.AllowedHosts) != 1 || cfg.AllowedHosts[0] != "reader.example.com" {
+		t.Fatalf("unexpected public security config: %#v", cfg)
+	}
+}
+
+func TestLoadRejectsPublicHTTPURL(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example.invalid/peufmreader")
+	t.Setenv("ADMIN_PASSWORD", "a-secure-test-password")
+	t.Setenv("BIBLIOGRAPHY_PROVIDERS", "")
+	t.Setenv("AI_PROVIDER", "")
+	t.Setenv("PUBLIC_ACCESS", "true")
+	t.Setenv("PUBLIC_URL", "http://reader.example.com")
+	t.Setenv("COOKIE_SECURE", "true")
+	t.Setenv("TRUSTED_PROXY_CIDR", "172.18.0.0/16")
+	t.Setenv("ALLOWED_HOSTS", "reader.example.com")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("PUBLIC_ACCESS accepted an HTTP public URL")
+	}
+}
+
+func TestLoadRejectsIncompleteOIDCConfiguration(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example.invalid/peufmreader")
+	t.Setenv("ADMIN_PASSWORD", "a-secure-test-password")
+	t.Setenv("BIBLIOGRAPHY_PROVIDERS", "")
+	t.Setenv("AI_PROVIDER", "")
+	t.Setenv("OIDC_ISSUER_URL", "https://id.example.com")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("incomplete OIDC configuration was accepted")
+	}
+}

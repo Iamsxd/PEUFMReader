@@ -14,15 +14,18 @@ import (
 )
 
 var (
-	ErrUserNotFound    = errors.New("user not found")
-	ErrSessionNotFound = errors.New("session not found")
-	ErrLastActiveAdmin = errors.New("cannot remove the last active administrator")
+	ErrUserNotFound             = errors.New("user not found")
+	ErrSessionNotFound          = errors.New("session not found")
+	ErrLastActiveAdmin          = errors.New("cannot remove the last active administrator")
+	ErrExternalIdentityConflict = errors.New("external identity conflicts with an existing username")
+	ErrExternalUserDisabled     = errors.New("external user is disabled")
 )
 
 type ManagedUser struct {
 	ID                 int64      `json:"id"`
 	Username           string     `json:"username"`
 	Role               string     `json:"role"`
+	AuthSource         string     `json:"authSource"`
 	CreatedAt          time.Time  `json:"createdAt"`
 	DisabledAt         *time.Time `json:"disabledAt,omitempty"`
 	LastLoginAt        *time.Time `json:"lastLoginAt,omitempty"`
@@ -55,7 +58,7 @@ type UserAccessInfo struct {
 }
 
 const managedUserSelect = `
-	SELECT u.id,u.username,u.role,u.created_at,u.disabled_at,
+	SELECT u.id,u.username,u.role,u.auth_source,u.created_at,u.disabled_at,
 		login.created_at,COALESCE(login.client_ip,''),sessions.last_seen_at,
 		COALESCE(sessions.active_count,0),
 		COALESCE(reading.book_count,0),COALESCE(reading.active_seconds,0)
@@ -84,7 +87,7 @@ type userScanner interface {
 func scanManagedUser(row userScanner) (ManagedUser, error) {
 	var user ManagedUser
 	err := row.Scan(
-		&user.ID, &user.Username, &user.Role, &user.CreatedAt, &user.DisabledAt,
+		&user.ID, &user.Username, &user.Role, &user.AuthSource, &user.CreatedAt, &user.DisabledAt,
 		&user.LastLoginAt, &user.LastLoginIP, &user.LastSeenAt,
 		&user.ActiveSessionCount, &user.ReadingBookCount, &user.TotalActiveSeconds,
 	)
@@ -184,7 +187,7 @@ func (s *Store) ResetUserPassword(ctx context.Context, userID int64, password st
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	result, err := tx.Exec(ctx, "UPDATE users SET password_hash=$2 WHERE id=$1", userID, passwordHash)
+	result, err := tx.Exec(ctx, "UPDATE users SET password_hash=$2,auth_source='local',external_subject=NULL WHERE id=$1", userID, passwordHash)
 	if err != nil {
 		return fmt.Errorf("reset user password: %w", err)
 	}

@@ -121,12 +121,18 @@ func (s *Store) ListFavoriteBooks(ctx context.Context, userID int64, page, pageS
 		pageSize = DefaultCatalogPageSize
 	}
 	var total int
-	if err := s.pool.QueryRow(ctx, "SELECT COUNT(*) FROM user_favorites WHERE user_id=$1", userID).Scan(&total); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM user_favorites uf
+		JOIN users u ON u.id=uf.user_id AND u.disabled_at IS NULL
+		LEFT JOIN book_file_permissions p ON p.user_id=u.id AND p.book_file_id=uf.book_file_id
+		WHERE uf.user_id=$1 AND (u.role='admin' OR COALESCE(p.can_read,true))`, userID).Scan(&total); err != nil {
 		return FavoritePage{}, fmt.Errorf("count favorites: %w", err)
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT book_file_id,created_at FROM user_favorites
-		WHERE user_id=$1 ORDER BY created_at DESC,book_file_id DESC LIMIT $2 OFFSET $3`,
+		SELECT uf.book_file_id,uf.created_at FROM user_favorites uf
+		JOIN users u ON u.id=uf.user_id AND u.disabled_at IS NULL
+		LEFT JOIN book_file_permissions p ON p.user_id=u.id AND p.book_file_id=uf.book_file_id
+		WHERE uf.user_id=$1 AND (u.role='admin' OR COALESCE(p.can_read,true))
+		ORDER BY uf.created_at DESC,uf.book_file_id DESC LIMIT $2 OFFSET $3`,
 		userID, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return FavoritePage{}, fmt.Errorf("list favorites: %w", err)
@@ -182,6 +188,19 @@ func (s *Store) GetRecommendations(ctx context.Context, userID int64, limit int)
 	for _, metric := range metrics {
 		ids = append(ids, metric.BookFileID)
 	}
+	allowedIDs, err := s.FilterAccessibleBookIDs(ctx, userID, ids)
+	if err != nil {
+		return RecommendationPage{}, err
+	}
+	filteredMetrics := metrics[:0]
+	filteredIDs := ids[:0]
+	for _, metric := range metrics {
+		if allowedIDs[metric.BookFileID] {
+			filteredMetrics = append(filteredMetrics, metric)
+			filteredIDs = append(filteredIDs, metric.BookFileID)
+		}
+	}
+	metrics, ids = filteredMetrics, filteredIDs
 	books, err := s.catalogBooksByID(ctx, ids)
 	if err != nil {
 		return RecommendationPage{}, err
@@ -283,6 +302,8 @@ func (s *Store) listRecommendationMetrics(ctx context.Context, userID int64, pro
 			 + CASE WHEN bf.created_at >= now()-INTERVAL '30 days' THEN 0.5 ELSE 0 END)::double precision AS score
 		FROM book_files bf
 		JOIN editions e ON e.id=bf.edition_id
+		JOIN users access_user ON access_user.id=$1 AND access_user.disabled_at IS NULL
+		LEFT JOIN book_file_permissions permission ON permission.user_id=access_user.id AND permission.book_file_id=bf.id
 		LEFT JOIN LATERAL (
 			SELECT pref.name,pref.score
 			FROM unnest($2::bigint[],$3::double precision[],$4::text[]) AS pref(id,score,name)
@@ -301,7 +322,8 @@ func (s *Store) listRecommendationMetrics(ctx context.Context, userID int64, pro
 			SELECT (COALESCE(SUM(rs.active_seconds),0)+COUNT(*)*30+COUNT(DISTINCT rs.user_id)*300)::double precision AS score
 			FROM reading_sessions rs WHERE rs.book_file_id=bf.id AND rs.started_at >= now()-INTERVAL '30 days'
 		) hot ON true
-		WHERE NOT EXISTS (SELECT 1 FROM user_favorites uf WHERE uf.user_id=$1 AND uf.book_file_id=bf.id)
+		WHERE (access_user.role='admin' OR COALESCE(permission.can_read,true))
+			AND NOT EXISTS (SELECT 1 FROM user_favorites uf WHERE uf.user_id=$1 AND uf.book_file_id=bf.id)
 			AND NOT EXISTS (SELECT 1 FROM reading_states state WHERE state.user_id=$1 AND state.book_file_id=bf.id
 				AND state.status IN ('reading','paused','finished','abandoned'))
 		ORDER BY score DESC,bf.created_at DESC,bf.id DESC LIMIT $8`,

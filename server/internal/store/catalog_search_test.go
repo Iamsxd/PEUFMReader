@@ -19,14 +19,14 @@ func TestBuildCatalogWhereUsesBoundParameters(t *testing.T) {
 	where, args, searchPlaceholder := buildCatalogWhere(42, CatalogQuery{
 		Query: "100%_Go", CategorySlug: "technology", Format: "pdf", Status: "reading",
 	})
-	if len(args) != 5 || searchPlaceholder != "$1" {
+	if len(args) != 6 || searchPlaceholder != "$2" {
 		t.Fatalf("unexpected arguments: placeholder=%q args=%#v", searchPlaceholder, args)
 	}
-	if strings.Contains(where, "100%_Go") || !strings.Contains(where, "filter_rs.user_id=$4") || !strings.Contains(where, "filter_rs.status=$5") {
+	if strings.Contains(where, "100%_Go") || !strings.Contains(where, "filter_rs.user_id=$5") || !strings.Contains(where, "filter_rs.status=$6") {
 		t.Fatalf("query values were not safely bound: %s", where)
 	}
-	if args[0] != `100\%\_Go` {
-		t.Fatalf("LIKE pattern was not escaped: %q", args[0])
+	if args[1] != `100\%\_Go` {
+		t.Fatalf("LIKE pattern was not escaped: %q", args[1])
 	}
 }
 

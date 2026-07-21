@@ -15,6 +15,11 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .loading-page, .login-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
 .login-page { background: radial-gradient(circle at top right, #d8e6d5, transparent 44%), #17211b; }
 .login-card { width: min(440px, 100%); padding: 42px; border-radius: 24px; background: #fbf8f0; box-shadow: 0 24px 80px #08100b80; }
+.login-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: #829087; font-size: .78rem; }
+.login-divider::before, .login-divider::after { content: ""; flex: 1; height: 1px; background: #d7ddd4; }
+.oidc-login-button { display: block; padding: 12px 16px; border: 1px solid #8ca896; border-radius: 11px; color: #193f2d; font-weight: 750; text-align: center; text-decoration: none; }
+.oidc-login-button:hover { background: #e6eee7; }
+.login-provider-hint { margin: 14px 0 0; color: #66766d; font-size: .78rem; text-align: center; }
 h1, h2, h3, p { margin-top: 0; }
 .login-card h1, .topbar h1 { font-family: Georgia, serif; letter-spacing: -.035em; }
 .eyebrow { margin-bottom: 8px; color: #677b6c; font-size: .75rem; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
@@ -355,6 +360,19 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .danger-button { border: 1px solid #dfb8b2; border-radius: 10px; padding: 10px 14px; background: #f7e2df; color: #8a2d27; font-weight: 750; }
 .danger-button:hover:not(:disabled) { background: #f1d2ce; }
 .user-management-panel { margin: 54px 0; padding: 26px; border: 1px solid #cad6ca; border-radius: 20px; background: #edf2e9; }
+.auth-source-badge { padding: 4px 7px; border: 1px solid #c9d6cb; border-radius: 999px; background: #f4f7f1; color: #476151 !important; font-size: .62rem !important; font-weight: 800; }
+.library-permission-panel { margin-top: 28px; padding: 22px; border: 1px solid #cad6ca; border-radius: 16px; background: #f9faf6; }
+.library-permission-panel h3 { margin: 0 0 6px; font: 700 1.35rem Georgia, serif; }
+.permission-toolbar { display: grid; grid-template-columns: minmax(170px, .7fr) minmax(240px, 1.5fr) auto; gap: 12px; align-items: end; }
+.permission-toolbar label { display: grid; gap: 6px; font-size: .74rem; font-weight: 750; }
+.permission-toolbar input, .permission-toolbar select { width: 100%; }
+.permission-book-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+.permission-book-list label { display: flex; gap: 9px; align-items: start; padding: 10px; border: 1px solid #d8dfd5; border-radius: 10px; background: white; }
+.permission-book-list label > span { min-width: 0; display: grid; gap: 3px; }
+.permission-book-list strong, .permission-book-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.permission-book-list small { color: #718078; }
+.permission-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.permission-actions > span { margin-left: auto; color: #718078; font-size: .76rem; }
 .user-management-panel .section-title h2 { margin-bottom: 7px; font-family: Georgia, serif; font-size: 1.7rem; }
 .user-management-panel .section-title p:last-child { margin-bottom: 0; }
 .user-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(110px, 1fr)); gap: 10px; margin: 20px 0; }
@@ -369,10 +387,10 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .user-management-list { display: grid; gap: 14px; margin-top: 18px; }
 .user-management-card { padding: 18px; border: 1px solid #d5dcd3; border-radius: 16px; background: #fbfaf5; box-shadow: 0 8px 24px #3f55410a; }
 .user-management-card.disabled { background: #efefeb; }
-.user-card-heading { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.user-card-heading { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 12px; }
 .user-avatar { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: #28573b; color: white; font-family: Georgia, serif; font-size: 1.1rem; font-weight: 800; }
 .user-management-card.disabled .user-avatar { background: #7b827d; }
-.user-card-heading > div:nth-child(2) { min-width: 0; display: grid; gap: 3px; }
+.user-card-heading > div:nth-child(3) { min-width: 0; display: grid; gap: 3px; }
 .user-card-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .user-card-heading span:not(.account-status) { color: #728078; font-size: .72rem; }
 .account-status { padding: 5px 9px; border-radius: 999px; background: #dcebdd; color: #24563a; font-size: .68rem; font-weight: 800; }
@@ -648,6 +666,9 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .user-create-form, .user-profile-form, .user-password-form { grid-template-columns: 1fr; }
   .user-activity-grid { grid-template-columns: 1fr 1fr; }
   .user-card-actions .danger-button { margin-left: 0; }
+  .permission-toolbar, .permission-book-list { grid-template-columns: 1fr; }
+  .user-card-heading { grid-template-columns: auto auto 1fr; }
+  .user-card-heading .account-status { grid-column: 1 / -1; justify-self: start; }
   .session-row { align-items: start; }
   .session-row small { white-space: normal; }
   .upload-queue-item { grid-template-columns: 58px 1fr; }

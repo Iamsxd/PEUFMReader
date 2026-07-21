@@ -5,6 +5,7 @@ export interface User {
   id: number
   username: string
   role: Role
+  authSource?: 'local' | 'oidc' | 'ldap'
 }
 
 export interface ManagedUser extends User {
@@ -37,6 +38,19 @@ export interface UserLoginEvent {
 export interface UserAccessInfo {
   sessions: UserSessionInfo[]
   recentLogins: UserLoginEvent[]
+}
+
+export interface AuthProviders {
+  oidc: boolean
+  ldap: boolean
+}
+
+export interface BookPermission {
+  userId: number
+  bookFileId: number
+  title: string
+  canRead: boolean
+  updatedAt: string
 }
 
 export interface Session {

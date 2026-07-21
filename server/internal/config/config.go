@@ -33,6 +33,24 @@ type Config struct {
 	SessionTTL            time.Duration
 	MaxUploadBytes        int64
 	TrustedProxyCIDR      string
+	PublicURL             string
+	PublicAccess          bool
+	AllowedHosts          []string
+	OIDCIssuerURL         string
+	OIDCClientID          string
+	OIDCClientSecret      string
+	OIDCRedirectURL       string
+	OIDCUsernameClaim     string
+	OIDCGroupsClaim       string
+	OIDCAdminGroup        string
+	LDAPURL               string
+	LDAPStartTLS          bool
+	LDAPBaseDN            string
+	LDAPBindDN            string
+	LDAPBindPassword      string
+	LDAPUserFilter        string
+	LDAPUsernameAttribute string
+	LDAPAdminGroupDN      string
 	AIProvider            string
 	AIBaseURL             string
 	AIModel               string
@@ -74,6 +92,22 @@ func Load() (Config, error) {
 		SessionTTL:            30 * 24 * time.Hour,
 		MaxUploadBytes:        500 << 20,
 		TrustedProxyCIDR:      strings.TrimSpace(os.Getenv("TRUSTED_PROXY_CIDR")),
+		PublicURL:             strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_URL")), "/"),
+		AllowedHosts:          splitCSV(os.Getenv("ALLOWED_HOSTS")),
+		OIDCIssuerURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("OIDC_ISSUER_URL")), "/"),
+		OIDCClientID:          strings.TrimSpace(os.Getenv("OIDC_CLIENT_ID")),
+		OIDCClientSecret:      os.Getenv("OIDC_CLIENT_SECRET"),
+		OIDCRedirectURL:       strings.TrimSpace(os.Getenv("OIDC_REDIRECT_URL")),
+		OIDCUsernameClaim:     strings.TrimSpace(envOr("OIDC_USERNAME_CLAIM", "preferred_username")),
+		OIDCGroupsClaim:       strings.TrimSpace(envOr("OIDC_GROUPS_CLAIM", "groups")),
+		OIDCAdminGroup:        strings.TrimSpace(os.Getenv("OIDC_ADMIN_GROUP")),
+		LDAPURL:               strings.TrimSpace(os.Getenv("LDAP_URL")),
+		LDAPBaseDN:            strings.TrimSpace(os.Getenv("LDAP_BASE_DN")),
+		LDAPBindDN:            strings.TrimSpace(os.Getenv("LDAP_BIND_DN")),
+		LDAPBindPassword:      os.Getenv("LDAP_BIND_PASSWORD"),
+		LDAPUserFilter:        strings.TrimSpace(envOr("LDAP_USER_FILTER", "(uid={username})")),
+		LDAPUsernameAttribute: strings.TrimSpace(envOr("LDAP_USERNAME_ATTRIBUTE", "uid")),
+		LDAPAdminGroupDN:      strings.TrimSpace(os.Getenv("LDAP_ADMIN_GROUP_DN")),
 		AIProvider:            strings.ToLower(strings.TrimSpace(os.Getenv("AI_PROVIDER"))),
 		AIBaseURL:             strings.TrimRight(strings.TrimSpace(os.Getenv("AI_BASE_URL")), "/"),
 		AIModel:               strings.TrimSpace(os.Getenv("AI_MODEL")),
@@ -126,6 +160,18 @@ func Load() (Config, error) {
 		cfg.CookieSecure, err = strconv.ParseBool(raw)
 		if err != nil {
 			return Config{}, fmt.Errorf("parse COOKIE_SECURE: %w", err)
+		}
+	}
+	if raw := os.Getenv("PUBLIC_ACCESS"); raw != "" {
+		cfg.PublicAccess, err = strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("parse PUBLIC_ACCESS: %w", err)
+		}
+	}
+	if raw := os.Getenv("LDAP_START_TLS"); raw != "" {
+		cfg.LDAPStartTLS, err = strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("parse LDAP_START_TLS: %w", err)
 		}
 	}
 	if raw := os.Getenv("SESSION_TTL"); raw != "" {
@@ -233,8 +279,70 @@ func Load() (Config, error) {
 	if cfg.MOBIConverterBinary == "" {
 		return Config{}, fmt.Errorf("MOBI_CONVERTER_BIN is required")
 	}
+	if cfg.OIDCIssuerURL != "" {
+		if cfg.OIDCClientID == "" || cfg.OIDCClientSecret == "" || cfg.OIDCRedirectURL == "" {
+			return Config{}, fmt.Errorf("OIDC_CLIENT_ID, OIDC_CLIENT_SECRET and OIDC_REDIRECT_URL are required when OIDC is enabled")
+		}
+		if err := validateAbsoluteHTTPURL(cfg.OIDCIssuerURL); err != nil {
+			return Config{}, fmt.Errorf("OIDC_ISSUER_URL: %w", err)
+		}
+		if err := validateAbsoluteHTTPURL(cfg.OIDCRedirectURL); err != nil {
+			return Config{}, fmt.Errorf("OIDC_REDIRECT_URL: %w", err)
+		}
+	}
+	if cfg.LDAPURL != "" {
+		ldapURL, parseErr := url.Parse(cfg.LDAPURL)
+		if parseErr != nil || (ldapURL.Scheme != "ldap" && ldapURL.Scheme != "ldaps") || ldapURL.Host == "" {
+			return Config{}, fmt.Errorf("LDAP_URL must be an absolute ldap:// or ldaps:// URL")
+		}
+		if ldapURL.Scheme == "ldaps" && cfg.LDAPStartTLS {
+			return Config{}, fmt.Errorf("LDAP_START_TLS must be false when LDAP_URL uses ldaps://")
+		}
+		if cfg.LDAPBaseDN == "" || !strings.Contains(cfg.LDAPUserFilter, "{username}") {
+			return Config{}, fmt.Errorf("LDAP_BASE_DN and an LDAP_USER_FILTER containing {username} are required when LDAP is enabled")
+		}
+	}
+	if cfg.PublicAccess {
+		publicURL, parseErr := url.Parse(cfg.PublicURL)
+		if parseErr != nil || publicURL.Scheme != "https" || publicURL.Hostname() == "" {
+			return Config{}, fmt.Errorf("PUBLIC_URL must be an absolute HTTPS URL when PUBLIC_ACCESS=true")
+		}
+		if !cfg.CookieSecure || cfg.TrustedProxyCIDR == "" || len(cfg.AllowedHosts) == 0 {
+			return Config{}, fmt.Errorf("PUBLIC_ACCESS requires COOKIE_SECURE=true, TRUSTED_PROXY_CIDR and ALLOWED_HOSTS")
+		}
+		if !containsFold(cfg.AllowedHosts, publicURL.Host) && !containsFold(cfg.AllowedHosts, publicURL.Hostname()) {
+			return Config{}, fmt.Errorf("ALLOWED_HOSTS must include the PUBLIC_URL host")
+		}
+	}
 
 	return cfg, nil
+}
+
+func validateAbsoluteHTTPURL(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return fmt.Errorf("must be an absolute HTTP(S) URL")
+	}
+	return nil
+}
+
+func splitCSV(raw string) []string {
+	values := make([]string, 0)
+	for _, value := range strings.Split(raw, ",") {
+		if value = strings.TrimSpace(value); value != "" {
+			values = append(values, value)
+		}
+	}
+	return values
+}
+
+func containsFold(values []string, expected string) bool {
+	for _, value := range values {
+		if strings.EqualFold(value, expected) {
+			return true
+		}
+	}
+	return false
 }
 
 func envOr(key, fallback string) string {

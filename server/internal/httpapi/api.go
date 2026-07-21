@@ -27,6 +27,7 @@ import (
 	"peufmreader/internal/bibliography"
 	"peufmreader/internal/calibre"
 	"peufmreader/internal/classification"
+	"peufmreader/internal/externalauth"
 	"peufmreader/internal/importing"
 	"peufmreader/internal/library"
 	"peufmreader/internal/mobiconvert"
@@ -54,6 +55,9 @@ type API struct {
 	logger         *slog.Logger
 	loginLimiter   *loginLimiter
 	trustedProxy   *net.IPNet
+	externalAuth   *externalauth.Service
+	publicAccess   bool
+	allowedHosts   map[string]struct{}
 	mux            *http.ServeMux
 }
 
@@ -103,8 +107,21 @@ func (a *API) Handler() http.Handler {
 	return a.securityHeaders(a.requestLog(a.mux))
 }
 
+func (a *API) ConfigurePublicSecurity(publicAccess bool, allowedHosts []string) {
+	a.publicAccess = publicAccess
+	a.allowedHosts = make(map[string]struct{}, len(allowedHosts))
+	for _, host := range allowedHosts {
+		if normalized := normalizeHost(host); normalized != "" {
+			a.allowedHosts[normalized] = struct{}{}
+		}
+	}
+}
+
 func (a *API) routes() {
 	a.mux.HandleFunc("GET /healthz", a.health)
+	a.mux.HandleFunc("GET /api/v1/auth/providers", a.authProviders)
+	a.mux.HandleFunc("GET /api/v1/auth/oidc/start", a.startOIDC)
+	a.mux.HandleFunc("GET /api/v1/auth/oidc/callback", a.oidcCallback)
 	a.mux.HandleFunc("POST /api/v1/auth/login", a.login)
 	a.mux.Handle("GET /api/v1/auth/me", a.requireAuth(http.HandlerFunc(a.me), "", false))
 	a.mux.Handle("POST /api/v1/auth/logout", a.requireAuth(http.HandlerFunc(a.logout), "", true))
@@ -113,13 +130,13 @@ func (a *API) routes() {
 	a.mux.Handle("DELETE /api/v1/device-tokens/{id}", a.requireAuth(http.HandlerFunc(a.revokeDeviceToken), "", true))
 	a.mux.Handle("GET /opds", a.requireDeviceAuth(http.HandlerFunc(a.opdsCatalog)))
 	a.mux.Handle("GET /opds/v1.2/catalog", a.requireDeviceAuth(http.HandlerFunc(a.opdsCatalog)))
-	a.mux.Handle("GET /opds/books/{id}/download", a.requireDeviceAuth(http.HandlerFunc(a.bookContent)))
-	a.mux.Handle("GET /opds/books/{id}/cover", a.requireDeviceAuth(http.HandlerFunc(a.bookCover)))
+	a.mux.Handle("GET /opds/books/{id}/download", a.requireDeviceAuth(a.requireBookAccess(http.HandlerFunc(a.bookContent))))
+	a.mux.Handle("GET /opds/books/{id}/cover", a.requireDeviceAuth(a.requireBookAccess(http.HandlerFunc(a.bookCover))))
 	a.mux.Handle("GET /api/koreader/users/auth", a.requireDeviceAuth(http.HandlerFunc(a.koReaderAuth)))
 	a.mux.Handle("PUT /api/koreader/syncs/progress", a.requireDeviceAuth(http.HandlerFunc(a.saveKOReaderProgress)))
 	a.mux.Handle("GET /api/koreader/syncs/progress/{document}", a.requireDeviceAuth(http.HandlerFunc(a.getKOReaderProgress)))
-	a.mux.Handle("GET /api/kobo/v1/library/{id}/state", a.requireDeviceAuth(http.HandlerFunc(a.getKoboProgress)))
-	a.mux.Handle("PUT /api/kobo/v1/library/{id}/state", a.requireDeviceAuth(http.HandlerFunc(a.saveKoboProgress)))
+	a.mux.Handle("GET /api/kobo/v1/library/{id}/state", a.requireDeviceAuth(a.requireBookAccess(http.HandlerFunc(a.getKoboProgress))))
+	a.mux.Handle("PUT /api/kobo/v1/library/{id}/state", a.requireDeviceAuth(a.requireBookAccess(http.HandlerFunc(a.saveKoboProgress))))
 	a.mux.Handle("GET /api/v1/users", a.requireAuth(http.HandlerFunc(a.listUsers), "admin", false))
 	a.mux.Handle("POST /api/v1/users", a.requireAuth(http.HandlerFunc(a.createUser), "admin", true))
 	a.mux.Handle("PATCH /api/v1/users/{id}", a.requireAuth(http.HandlerFunc(a.updateUser), "admin", true))
@@ -128,25 +145,28 @@ func (a *API) routes() {
 	a.mux.Handle("POST /api/v1/users/{id}/password", a.requireAuth(http.HandlerFunc(a.resetUserPassword), "admin", true))
 	a.mux.Handle("DELETE /api/v1/users/{id}/sessions", a.requireAuth(http.HandlerFunc(a.revokeUserSessions), "admin", true))
 	a.mux.Handle("DELETE /api/v1/users/{id}/sessions/{sessionId}", a.requireAuth(http.HandlerFunc(a.revokeUserSession), "admin", true))
+	a.mux.Handle("GET /api/v1/users/{id}/book-permissions", a.requireAuth(http.HandlerFunc(a.listUserBookPermissions), "admin", false))
+	a.mux.Handle("PUT /api/v1/users/{id}/book-permissions/{bookId}", a.requireAuth(http.HandlerFunc(a.setUserBookPermission), "admin", true))
+	a.mux.Handle("DELETE /api/v1/users/{id}/book-permissions/{bookId}", a.requireAuth(http.HandlerFunc(a.deleteUserBookPermission), "admin", true))
 	a.mux.Handle("GET /api/v1/home", a.requireAuth(http.HandlerFunc(a.homeDashboard), "", false))
 	a.mux.Handle("GET /api/v1/favorites", a.requireAuth(http.HandlerFunc(a.listFavorites), "", false))
 	a.mux.Handle("GET /api/v1/recommendations", a.requireAuth(http.HandlerFunc(a.listRecommendations), "", false))
 	a.mux.Handle("GET /api/v1/book-files", a.requireAuth(http.HandlerFunc(a.listBookFiles), "", false))
 	a.mux.Handle("POST /api/v1/book-files", a.requireAuth(http.HandlerFunc(a.uploadBookFile), "admin", true))
-	a.mux.Handle("GET /api/v1/book-files/{id}", a.requireAuth(http.HandlerFunc(a.bookDetail), "", false))
-	a.mux.Handle("PUT /api/v1/book-files/{id}/favorite", a.requireAuth(http.HandlerFunc(a.favoriteBook), "", true))
-	a.mux.Handle("DELETE /api/v1/book-files/{id}/favorite", a.requireAuth(http.HandlerFunc(a.unfavoriteBook), "", true))
-	a.mux.Handle("GET /api/v1/book-files/{id}/content", a.requireAuth(http.HandlerFunc(a.bookContent), "", false))
-	a.mux.Handle("GET /api/v1/book-files/{id}/cover", a.requireAuth(http.HandlerFunc(a.bookCover), "", false))
+	a.mux.Handle("GET /api/v1/book-files/{id}", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.bookDetail)), "", false))
+	a.mux.Handle("PUT /api/v1/book-files/{id}/favorite", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.favoriteBook)), "", true))
+	a.mux.Handle("DELETE /api/v1/book-files/{id}/favorite", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.unfavoriteBook)), "", true))
+	a.mux.Handle("GET /api/v1/book-files/{id}/content", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.bookContent)), "", false))
+	a.mux.Handle("GET /api/v1/book-files/{id}/cover", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.bookCover)), "", false))
 	a.mux.Handle("POST /api/v1/book-files/{id}/cover/regenerate", a.requireAuth(http.HandlerFunc(a.regeneratePDFCover), "admin", true))
-	a.mux.Handle("GET /api/v1/book-files/{id}/text", a.requireAuth(http.HandlerFunc(a.bookExtractedText), "", false))
-	a.mux.Handle("GET /api/v1/book-files/{id}/progress", a.requireAuth(http.HandlerFunc(a.getProgress), "", false))
-	a.mux.Handle("PUT /api/v1/book-files/{id}/progress", a.requireAuth(http.HandlerFunc(a.saveProgress), "", true))
-	a.mux.Handle("GET /api/v1/book-files/{id}/marks", a.requireAuth(http.HandlerFunc(a.listReadingMarks), "", false))
-	a.mux.Handle("POST /api/v1/book-files/{id}/marks", a.requireAuth(http.HandlerFunc(a.createReadingMark), "", true))
+	a.mux.Handle("GET /api/v1/book-files/{id}/text", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.bookExtractedText)), "", false))
+	a.mux.Handle("GET /api/v1/book-files/{id}/progress", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.getProgress)), "", false))
+	a.mux.Handle("PUT /api/v1/book-files/{id}/progress", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.saveProgress)), "", true))
+	a.mux.Handle("GET /api/v1/book-files/{id}/marks", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.listReadingMarks)), "", false))
+	a.mux.Handle("POST /api/v1/book-files/{id}/marks", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.createReadingMark)), "", true))
 	a.mux.Handle("PATCH /api/v1/reading-marks/{id}", a.requireAuth(http.HandlerFunc(a.updateReadingMark), "", true))
 	a.mux.Handle("DELETE /api/v1/reading-marks/{id}", a.requireAuth(http.HandlerFunc(a.deleteReadingMark), "", true))
-	a.mux.Handle("POST /api/v1/book-files/{id}/reading-sessions", a.requireAuth(http.HandlerFunc(a.startReadingSession), "", true))
+	a.mux.Handle("POST /api/v1/book-files/{id}/reading-sessions", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.startReadingSession)), "", true))
 	a.mux.Handle("PATCH /api/v1/reading-sessions/{id}", a.requireAuth(http.HandlerFunc(a.advanceReadingSession), "", true))
 	a.mux.Handle("GET /api/v1/categories", a.requireAuth(http.HandlerFunc(a.listCategories), "", false))
 	a.mux.Handle("GET /api/v1/admin/categories", a.requireAuth(http.HandlerFunc(a.listAdminCategories), "admin", false))
@@ -210,6 +230,22 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, err)
 		return
 	}
+	if !valid && a.externalAuth != nil && a.externalAuth.Providers().LDAP {
+		identity, ldapValid, ldapErr := a.externalAuth.AuthenticateLDAP(r.Context(), input.Username, input.Password)
+		if ldapErr != nil {
+			a.logger.Warn("LDAP login failed", "username", username, "error", ldapErr)
+			writeError(w, http.StatusServiceUnavailable, "ldap_unavailable", "LDAP authentication is temporarily unavailable")
+			return
+		}
+		if ldapValid {
+			user, err = a.store.UpsertExternalUser(r.Context(), identity.Source, identity.Subject, identity.Username, identity.Role)
+			if err != nil {
+				a.externalUserError(w, err)
+				return
+			}
+			valid = true
+		}
+	}
 	if !valid {
 		blocked, retryAfter := a.loginLimiter.failure(limitKey, time.Now())
 		status := http.StatusUnauthorized
@@ -226,33 +262,34 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.loginLimiter.success(limitKey)
-	rawToken, err := randomToken(32)
+	csrfToken, err := a.establishSession(w, r, user)
 	if err != nil {
 		a.internalError(w, err)
 		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": user, "csrfToken": csrfToken})
+}
+
+func (a *API) establishSession(w http.ResponseWriter, r *http.Request, user store.User) (string, error) {
+	rawToken, err := randomToken(32)
+	if err != nil {
+		return "", err
 	}
 	csrfToken, err := randomToken(24)
 	if err != nil {
-		a.internalError(w, err)
-		return
+		return "", err
 	}
 	expiresAt := time.Now().UTC().Add(a.sessionTTL)
+	clientIP := a.clientIP(r)
 	if err := a.store.CreateSession(r.Context(), rawToken, csrfToken, user.ID, expiresAt, clientIP, truncateRunes(r.UserAgent(), 512)); err != nil {
-		a.internalError(w, err)
-		return
+		return "", err
 	}
-	a.recordAudit(&user.ID, user.Username, "auth.login.succeeded", clientIP, http.StatusOK, nil)
+	a.recordAudit(&user.ID, user.Username, "auth.login.succeeded", clientIP, http.StatusOK, map[string]any{"source": user.AuthSource})
 	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookieName,
-		Value:    rawToken,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   a.cookieSecure,
-		SameSite: http.SameSiteLaxMode,
-		Expires:  expiresAt,
-		MaxAge:   int(time.Until(expiresAt).Seconds()),
+		Name: sessionCookieName, Value: rawToken, Path: "/", HttpOnly: true, Secure: a.cookieSecure,
+		SameSite: http.SameSiteLaxMode, Expires: expiresAt, MaxAge: int(time.Until(expiresAt).Seconds()),
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"user": user, "csrfToken": csrfToken})
+	return csrfToken, nil
 }
 
 func (a *API) me(w http.ResponseWriter, r *http.Request) {
@@ -1559,6 +1596,9 @@ func (a *API) updateReadingMark(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "reading_mark_not_found", "reading mark not found")
 		return
 	}
+	if !a.ensureBookAccess(w, r, existing.BookFileID) {
+		return
+	}
 	label, body, valid := normalizeReadingMarkText(existing.Kind, input.Label, input.Body)
 	if !valid {
 		writeError(w, http.StatusBadRequest, "invalid_reading_mark", "label or note body is invalid")
@@ -1582,6 +1622,18 @@ func (a *API) deleteReadingMark(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID := sessionFromContext(r.Context()).User.ID
+	existing, found, err := a.store.GetReadingMark(r.Context(), userID, markID)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "reading_mark_not_found", "reading mark not found")
+		return
+	}
+	if !a.ensureBookAccess(w, r, existing.BookFileID) {
+		return
+	}
 	deleted, err := a.store.DeleteReadingMark(r.Context(), userID, markID)
 	if err != nil {
 		a.internalError(w, err)
@@ -1753,12 +1805,58 @@ func (a *API) serveFrontend(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a.publicAccess && !a.localHealthRequest(r) {
+			if _, allowed := a.allowedHosts[normalizeHost(r.Host)]; !allowed {
+				writeError(w, http.StatusMisdirectedRequest, "host_not_allowed", "request host is not allowed")
+				return
+			}
+			if !a.isSecureRequest(r) {
+				writeError(w, http.StatusUpgradeRequired, "https_required", "HTTPS is required")
+				return
+			}
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Referrer-Policy", "same-origin")
+		w.Header().Set("X-Permitted-Cross-Domain-Policies", "none")
+		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; frame-src 'self' blob:; font-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+		if strings.HasPrefix(r.URL.Path, "/api/v1/auth/") {
+			w.Header().Set("Cache-Control", "no-store")
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func normalizeHost(raw string) string {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	if host, _, err := net.SplitHostPort(raw); err == nil {
+		return strings.Trim(host, "[]")
+	}
+	return strings.Trim(raw, "[]")
+}
+
+func (a *API) remoteIP(r *http.Request) net.IP {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err != nil {
+		host = strings.TrimSpace(r.RemoteAddr)
+	}
+	return net.ParseIP(host)
+}
+
+func (a *API) localHealthRequest(r *http.Request) bool {
+	remoteIP := a.remoteIP(r)
+	return r.URL.Path == "/healthz" && remoteIP != nil && remoteIP.IsLoopback()
+}
+
+func (a *API) isSecureRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	remoteIP := a.remoteIP(r)
+	return a.trustedProxy != nil && remoteIP != nil && a.trustedProxy.Contains(remoteIP) && strings.EqualFold(strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0]), "https")
 }
 
 func (a *API) requestLog(next http.Handler) http.Handler {
