@@ -62,12 +62,8 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
   }, [])
 
   const activeView = route.view === 'admin' && !isAdmin ? 'home' : route.view
-  const secondaryLabel = activeView === 'recommendations' ? '为你推荐'
-    : activeView === 'favorites' ? '我的收藏'
-      : activeView === 'devices' ? '设备同步'
-        : activeView === 'admin' ? '管理后台'
-          : '更多'
-  const secondaryActive = activeView === 'recommendations' || activeView === 'favorites' || activeView === 'devices' || activeView === 'admin'
+  const secondaryLabel = activeView === 'devices' ? '设备同步' : activeView === 'admin' ? '管理后台' : '更多'
+  const secondaryActive = activeView === 'devices' || activeView === 'admin'
 
   function navigateFromMenu(event: MouseEvent<HTMLButtonElement>, view: NavigationView) {
     event.currentTarget.closest('details')?.removeAttribute('open')
@@ -83,15 +79,15 @@ export function Library({ session, onOpenBook, onLogout }: Props) {
         <nav className="app-navigation" aria-label="主导航">
           <div className="app-navigation-primary">
             <button className={activeView === 'home' ? 'active' : ''} onClick={() => navigate('home')}>首页</button>
+            <button className={activeView === 'recommendations' ? 'active' : ''} onClick={() => navigate('recommendations')}>推荐</button>
+            <button className={activeView === 'favorites' ? 'active' : ''} onClick={() => navigate('favorites')}>收藏</button>
             <button className={activeView === 'books' ? 'active' : ''} onClick={() => navigate('books')}>全部书籍</button>
             <button className={activeView === 'categories' ? 'active' : ''} onClick={() => navigate('categories')}>分类</button>
           </div>
           <details className={`navigation-menu${secondaryActive ? ' active' : ''}`}>
             <summary>{secondaryLabel}<span aria-hidden="true">⌄</span></summary>
             <div className="navigation-popover">
-              <p>个人书架</p>
-              <button className={activeView === 'recommendations' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'recommendations')}><span>为你推荐</span><small>根据阅读与收藏生成</small></button>
-              <button className={activeView === 'favorites' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'favorites')}><span>我的收藏</span><small>个人收藏书架</small></button>
+              <p>阅读设备</p>
               <button className={activeView === 'devices' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'devices')}><span>设备同步</span><small>OPDS、KOReader 与 Kobo</small></button>
               {isAdmin && <><hr /><p>系统</p><button className={activeView === 'admin' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'admin')}><span>管理后台</span><small>书库、用户与系统维护</small></button></>}
             </div>
