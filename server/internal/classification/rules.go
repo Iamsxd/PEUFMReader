@@ -17,12 +17,12 @@ type Suggestion struct {
 	Status       string  `json:"status"`
 }
 
-type categoryRule struct {
+type Rule struct {
 	Slug     string
 	Keywords []string
 }
 
-var rules = []categoryRule{
+var rules = []Rule{
 	{Slug: "true-crime", Keywords: []string{"纪实犯罪", "真实犯罪", "true crime"}},
 	{Slug: "horror", Keywords: []string{"恐怖", "惊悚", "horror", "supernatural horror"}},
 	{Slug: "historical-fiction", Keywords: []string{"历史小说", "historical fiction"}},
@@ -65,6 +65,21 @@ var rules = []categoryRule{
 }
 
 func Classify(book metadata.Result) []Suggestion {
+	return ClassifyWithRules(book, rules)
+}
+
+func DefaultRules() []Rule {
+	result := make([]Rule, 0, len(rules))
+	for _, rule := range rules {
+		result = append(result, Rule{Slug: rule.Slug, Keywords: append([]string(nil), rule.Keywords...)})
+	}
+	return result
+}
+
+func ClassifyWithRules(book metadata.Result, configured []Rule) []Suggestion {
+	if len(configured) == 0 {
+		configured = rules
+	}
 	title := normalize(book.Title)
 	description := normalize(book.Description)
 	subjects := make([]string, 0, len(book.Subjects))
@@ -73,7 +88,7 @@ func Classify(book metadata.Result) []Suggestion {
 	}
 
 	suggestions := make([]Suggestion, 0, 3)
-	for _, rule := range rules {
+	for _, rule := range configured {
 		score, reason := scoreRule(rule, title, description, subjects)
 		if score < 0.65 {
 			continue
@@ -106,7 +121,7 @@ func Classify(book metadata.Result) []Suggestion {
 	return suggestions
 }
 
-func scoreRule(rule categoryRule, title, description string, subjects []string) (float64, string) {
+func scoreRule(rule Rule, title, description string, subjects []string) (float64, string) {
 	for _, keyword := range rule.Keywords {
 		normalizedKeyword := normalize(keyword)
 		for _, subject := range subjects {

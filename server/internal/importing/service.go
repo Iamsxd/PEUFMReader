@@ -103,7 +103,7 @@ func (s *Service) Import(
 		ctx,
 		stored,
 		extracted,
-		classification.Classify(extracted),
+		classify(s.store, ctx, extracted),
 		coverPath,
 		userID,
 		job.ID,
@@ -125,6 +125,14 @@ func (s *Service) Import(
 		}
 	}
 	return Result{Book: book, Duplicate: duplicate, ImportJobID: job.ID}, nil
+}
+
+func classify(dataStore *store.Store, ctx context.Context, extracted metadata.Result) []classification.Suggestion {
+	rules, err := dataStore.EnabledClassificationRules(ctx)
+	if err != nil {
+		return classification.Classify(extracted)
+	}
+	return classification.ClassifyWithRules(extracted, rules)
 }
 
 func mergeMetadata(embedded, preferred metadata.Result) metadata.Result {

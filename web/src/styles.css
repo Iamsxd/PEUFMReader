@@ -272,6 +272,42 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .category-identity small { color: #758078; font-size: .68rem; }
 .category-management-row input, .category-management-row select { min-width: 0; padding: 8px 9px; font-size: .76rem; }
 .category-management-row button { padding: 8px 10px; font-size: .73rem; }
+.catalog-maintenance-panel { margin-top: 24px; background: linear-gradient(145deg, #edf2e9, #f6f1e5); }
+.catalog-maintenance-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; margin-top: 18px; }
+.catalog-maintenance-results { max-height: 300px; display: grid; overflow-y: auto; margin-top: 12px; border: 1px solid #d3dbd1; border-radius: 12px; background: #fbfcf8; }
+.catalog-maintenance-results > label { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; padding: 9px 11px; border-bottom: 1px solid #e2e6df; }
+.catalog-maintenance-results > label.selected { background: #e2eee3; }
+.catalog-maintenance-results span { min-width: 0; display: grid; gap: 3px; }
+.catalog-maintenance-results small { overflow: hidden; color: #728077; font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
+.batch-metadata-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 11px; margin-top: 14px; padding: 14px; border: 1px solid #d0d9ce; border-radius: 13px; background: #f9faf6; }
+.batch-metadata-form > strong, .batch-metadata-form > fieldset { grid-column: 1 / -1; }
+.batch-metadata-form > label { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 7px; color: #53645a; font-size: .73rem; }
+.batch-metadata-form > label input:last-child { min-width: 0; }
+.batch-metadata-form fieldset { padding: 10px; border: 1px solid #d5ddd3; border-radius: 10px; }
+.batch-metadata-form fieldset > select { width: auto; margin-bottom: 8px; padding: 7px; }
+.batch-metadata-form fieldset > div { max-height: 150px; display: flex; flex-wrap: wrap; gap: 6px; overflow-y: auto; }
+.batch-metadata-form fieldset > div label { display: flex; align-items: center; gap: 4px; padding: 5px 7px; border-radius: 8px; background: #e9eee7; font-size: .7rem; }
+.batch-metadata-form > button { grid-column: 3; }
+.duplicate-heading { display: flex; justify-content: space-between; margin-top: 24px; padding-top: 18px; border-top: 1px solid #cfd8cd; }
+.duplicate-heading span { color: #738077; font-size: .75rem; }
+.duplicate-group-list { display: grid; gap: 10px; margin-top: 10px; }
+.duplicate-group { overflow: hidden; border: 1px solid #d5d9cf; border-radius: 12px; background: #fbfaf6; }
+.duplicate-group > header { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; background: #e7ece4; }
+.duplicate-group > header span { color: #708077; font-size: .68rem; }
+.duplicate-group > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; border-top: 1px solid #e4e7df; }
+.duplicate-group > div > span:first-child { min-width: 0; display: grid; gap: 3px; }
+.duplicate-group small { overflow: hidden; color: #738078; font-size: .68rem; text-overflow: ellipsis; white-space: nowrap; }
+.duplicate-actions { display: flex; flex: 0 0 auto; gap: 6px; }
+.duplicate-actions button { padding: 6px 8px; border: 1px solid #bdc9bd; border-radius: 7px; background: #edf2eb; color: #35513f; font-size: .68rem; }
+.classification-rule-panel { margin-top: 24px; }
+.classification-rule-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; max-height: 720px; overflow-y: auto; margin-top: 16px; }
+.classification-rule-grid > article { display: grid; gap: 9px; padding: 12px; border: 1px solid #d1dad0; border-radius: 12px; background: #fbfcf8; }
+.classification-rule-grid > article.disabled { opacity: .58; background: #eceeea; }
+.classification-rule-grid header, .classification-rule-grid footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.classification-rule-grid header label, .classification-rule-grid footer label { width: auto; display: flex; flex-direction: row; align-items: center; gap: 6px; color: #68756c; font-size: .7rem; }
+.classification-rule-grid textarea { resize: vertical; font-size: .75rem; line-height: 1.45; }
+.classification-rule-grid footer input { width: 78px; padding: 6px; }
+.classification-rule-grid footer button { padding: 7px 9px; }
 .bibliography-source-panel { margin-top: 24px; background: linear-gradient(145deg, #edf2e9, #f5f2e8); }
 .bibliography-source-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-top: 20px; }
 .bibliography-source-card { min-width: 0; padding: 18px; border: 1px solid #d1d9cf; border-radius: 15px; background: #fbfaf5; box-shadow: 0 9px 25px #3c503d0a; }
@@ -580,6 +616,9 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .import-source-card p { min-height: 0; }
   .category-create-form { grid-template-columns: 1fr; }
   .category-management-row { grid-template-columns: 1fr 1fr; }
+  .batch-metadata-form { grid-template-columns: 1fr; }
+  .batch-metadata-form > strong, .batch-metadata-form > fieldset, .batch-metadata-form > button { grid-column: 1; }
+  .duplicate-group > div { align-items: stretch; flex-direction: column; }
   .category-identity { grid-column: 1 / -1; }
   .bibliography-source-list { grid-template-columns: 1fr; }
   .bibliography-source-heading, .bibliography-source-footer { align-items: stretch; flex-direction: column; }

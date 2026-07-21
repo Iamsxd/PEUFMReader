@@ -4,6 +4,7 @@ import type { AuditEvent, BackgroundJob, BibliographySource, BibliographySourceI
 import { formatBytes, formatRelativeTime } from '../utils'
 import { ReviewQueue } from './ReviewQueue'
 import { UserManagement } from './UserManagement'
+import { CatalogMaintenance } from './CatalogMaintenance'
 
 interface Props {
   initialEditionID?: number
@@ -278,6 +279,8 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
           setAdminCategories(all)
         }}
       />
+
+      <CatalogMaintenance categories={categories} onError={setError} onNotice={setNotice} />
 
       <BibliographySourceManager
         sources={bibliographySources}

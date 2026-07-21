@@ -26,3 +26,10 @@ func TestClassifyFallsBackToOther(t *testing.T) {
 		t.Fatalf("unexpected fallback: %+v", result)
 	}
 }
+
+func TestClassifyWithRulesUsesAdministratorKeywords(t *testing.T) {
+	result := ClassifyWithRules(metadata.Result{Title: "建筑营造入门"}, []Rule{{Slug: "technology", Keywords: []string{"建筑营造"}}})
+	if len(result) != 1 || result[0].CategorySlug != "technology" || result[0].Confidence < 0.7 {
+		t.Fatalf("custom classification result = %#v", result)
+	}
+}

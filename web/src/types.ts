@@ -173,6 +173,42 @@ export interface Category {
   bookCount?: number
 }
 
+export interface ClassificationRule {
+  id: number
+  categoryId: number
+  categorySlug: string
+  categoryName: string
+  keywords: string[]
+  enabled: boolean
+  priority: number
+  updatedAt: string
+}
+
+export interface BatchMetadataPatch {
+  editionIds: number[]
+  language?: string
+  publisher?: string
+  publishedYear?: number
+  categorySlugs?: string[]
+  categoryMode?: 'add' | 'replace'
+}
+
+export interface DuplicateCatalogItem {
+  workId: number
+  editionId: number
+  bookFileId: number
+  title: string
+  isbn?: string
+  format: BookFormat
+  originalFilename: string
+}
+
+export interface DuplicateCatalogGroup {
+  kind: 'title' | 'isbn'
+  key: string
+  items: DuplicateCatalogItem[]
+}
+
 export interface MetadataCandidate {
   id: number
   fieldName: string

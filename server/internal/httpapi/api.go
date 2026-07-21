@@ -140,6 +140,12 @@ func (a *API) routes() {
 	a.mux.Handle("GET /api/v1/admin/categories", a.requireAuth(http.HandlerFunc(a.listAdminCategories), "admin", false))
 	a.mux.Handle("POST /api/v1/admin/categories", a.requireAuth(http.HandlerFunc(a.createCategory), "admin", true))
 	a.mux.Handle("PATCH /api/v1/admin/categories/{id}", a.requireAuth(http.HandlerFunc(a.updateCategory), "admin", true))
+	a.mux.Handle("GET /api/v1/admin/classification-rules", a.requireAuth(http.HandlerFunc(a.listClassificationRules), "admin", false))
+	a.mux.Handle("PATCH /api/v1/admin/classification-rules/{id}", a.requireAuth(http.HandlerFunc(a.updateClassificationRule), "admin", true))
+	a.mux.Handle("PATCH /api/v1/admin/metadata/batch", a.requireAuth(http.HandlerFunc(a.batchUpdateMetadata), "admin", true))
+	a.mux.Handle("GET /api/v1/admin/catalog/duplicates", a.requireAuth(http.HandlerFunc(a.listDuplicateCatalogGroups), "admin", false))
+	a.mux.Handle("POST /api/v1/admin/catalog/merge-works", a.requireAuth(http.HandlerFunc(a.mergeWorks), "admin", true))
+	a.mux.Handle("POST /api/v1/admin/catalog/merge-editions", a.requireAuth(http.HandlerFunc(a.mergeEditions), "admin", true))
 	a.mux.Handle("GET /api/v1/admin/bibliography-sources", a.requireAuth(http.HandlerFunc(a.listBibliographySources), "admin", false))
 	a.mux.Handle("PATCH /api/v1/admin/bibliography-sources/{id}", a.requireAuth(http.HandlerFunc(a.updateBibliographySource), "admin", true))
 	a.mux.Handle("POST /api/v1/admin/bibliography-sources/{id}/test", a.requireAuth(http.HandlerFunc(a.testBibliographySource), "admin", true))
@@ -858,6 +864,114 @@ func (a *API) listAdminCategories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (a *API) listClassificationRules(w http.ResponseWriter, r *http.Request) {
+	items, err := a.store.ListClassificationRules(r.Context(), false)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (a *API) updateClassificationRule(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	var input struct {
+		Keywords []string `json:"keywords"`
+		Enabled  bool     `json:"enabled"`
+		Priority int      `json:"priority"`
+	}
+	if err := readJSON(w, r, &input, 32<<10); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_classification_rule", err.Error())
+		return
+	}
+	for _, keyword := range input.Keywords {
+		if utf8.RuneCountInString(strings.TrimSpace(keyword)) > 100 {
+			writeError(w, http.StatusBadRequest, "invalid_classification_rule", "each keyword must contain at most 100 characters")
+			return
+		}
+	}
+	item, found, err := a.store.UpdateClassificationRule(r.Context(), id, input.Keywords, input.Enabled, input.Priority)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_classification_rule", err.Error())
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "classification_rule_not_found", "classification rule not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (a *API) batchUpdateMetadata(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		EditionIDs    []int64  `json:"editionIds"`
+		Language      *string  `json:"language"`
+		Publisher     *string  `json:"publisher"`
+		PublishedYear *int     `json:"publishedYear"`
+		CategorySlugs []string `json:"categorySlugs"`
+		CategoryMode  string   `json:"categoryMode"`
+	}
+	if err := readJSON(w, r, &input, 64<<10); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_batch_metadata", err.Error())
+		return
+	}
+	if input.Language != nil && utf8.RuneCountInString(*input.Language) > 35 || input.Publisher != nil && utf8.RuneCountInString(*input.Publisher) > 300 {
+		writeError(w, http.StatusBadRequest, "invalid_batch_metadata", "language or publisher is too long")
+		return
+	}
+	updated, err := a.store.BatchUpdateMetadata(r.Context(), sessionFromContext(r.Context()).User.ID, input.EditionIDs, store.BatchMetadataPatch{
+		Language: input.Language, Publisher: input.Publisher, PublishedYear: input.PublishedYear,
+		CategorySlugs: input.CategorySlugs, CategoryMode: strings.TrimSpace(input.CategoryMode),
+	})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_batch_metadata", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"updated": updated})
+}
+
+func (a *API) listDuplicateCatalogGroups(w http.ResponseWriter, r *http.Request) {
+	items, err := a.store.ListDuplicateCatalogGroups(r.Context())
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (a *API) mergeWorks(w http.ResponseWriter, r *http.Request) {
+	a.mergeCatalogEntity(w, r, "work")
+}
+
+func (a *API) mergeEditions(w http.ResponseWriter, r *http.Request) {
+	a.mergeCatalogEntity(w, r, "edition")
+}
+
+func (a *API) mergeCatalogEntity(w http.ResponseWriter, r *http.Request, kind string) {
+	var input struct {
+		SourceID int64 `json:"sourceId"`
+		TargetID int64 `json:"targetId"`
+	}
+	if err := readJSON(w, r, &input, 8<<10); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_catalog_merge", err.Error())
+		return
+	}
+	var err error
+	if kind == "work" {
+		err = a.store.MergeWorks(r.Context(), input.SourceID, input.TargetID)
+	} else {
+		err = a.store.MergeEditions(r.Context(), input.SourceID, input.TargetID)
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "catalog_merge_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"merged": true, "sourceId": input.SourceID, "targetId": input.TargetID})
 }
 
 func (a *API) createCategory(w http.ResponseWriter, r *http.Request) {

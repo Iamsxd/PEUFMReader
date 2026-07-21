@@ -58,6 +58,10 @@ func main() {
 	}
 
 	dataStore := store.New(pool)
+	if err := dataStore.EnsureClassificationRules(ctx, classification.DefaultRules()); err != nil {
+		logger.Error("classification rule setup failed", "error", err)
+		os.Exit(1)
+	}
 	if err := dataStore.EnsureAdmin(ctx, cfg.AdminUsername, cfg.AdminPassword); err != nil {
 		logger.Error("initial admin setup failed", "error", err)
 		os.Exit(1)

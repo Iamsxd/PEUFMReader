@@ -1,4 +1,4 @@
-import type { AuditEvent, BackgroundJob, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ImportSource, ManagedUser, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
+import type { AuditEvent, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, ClassificationRule, DuplicateCatalogGroup, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ImportSource, ManagedUser, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
 
 interface ErrorBody {
   error?: { code?: string; message?: string }
@@ -132,6 +132,40 @@ class APIClient {
       method: 'PATCH',
       body: JSON.stringify({ ...input, parentId: input.parentId ?? null }),
       headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  async listClassificationRules(): Promise<ClassificationRule[]> {
+    const result = await this.request<{ items: ClassificationRule[] }>('/api/v1/admin/classification-rules')
+    return result.items
+  }
+
+  updateClassificationRule(ruleID: number, input: Pick<ClassificationRule, 'keywords' | 'enabled' | 'priority'>): Promise<ClassificationRule> {
+    return this.request(`/api/v1/admin/classification-rules/${ruleID}`, {
+      method: 'PATCH', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  batchUpdateMetadata(input: BatchMetadataPatch): Promise<{ updated: number }> {
+    return this.request('/api/v1/admin/metadata/batch', {
+      method: 'PATCH', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  async listDuplicateCatalogGroups(): Promise<DuplicateCatalogGroup[]> {
+    const result = await this.request<{ items: DuplicateCatalogGroup[] }>('/api/v1/admin/catalog/duplicates')
+    return result.items
+  }
+
+  mergeWorks(sourceId: number, targetId: number): Promise<void> {
+    return this.request('/api/v1/admin/catalog/merge-works', {
+      method: 'POST', body: JSON.stringify({ sourceId, targetId }), headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  mergeEditions(sourceId: number, targetId: number): Promise<void> {
+    return this.request('/api/v1/admin/catalog/merge-editions', {
+      method: 'POST', body: JSON.stringify({ sourceId, targetId }), headers: { 'Content-Type': 'application/json' },
     })
   }
 
