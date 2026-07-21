@@ -365,6 +365,10 @@ class APIClient {
     return result.items
   }
 
+  readingMarksExportURL(bookFileID: number, format: 'markdown' | 'json'): string {
+    return `/api/v1/book-files/${bookFileID}/marks/export?format=${format}`
+  }
+
   createReadingMark(bookFileID: number, input: ReadingMarkInput): Promise<ReadingMark> {
     return this.request(`/api/v1/book-files/${bookFileID}/marks`, {
       method: 'POST',

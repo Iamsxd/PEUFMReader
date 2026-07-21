@@ -113,6 +113,11 @@ export function ReadingMarksPanel({ bookFileID, current, onNavigate, onClose, on
         <button className="reading-mark-bookmark" disabled={Boolean(busy)} onClick={() => void createMark('bookmark')}>
           {busy === 'create-bookmark' ? '添加中…' : '＋ 添加书签'}
         </button>
+        <div className="reading-mark-export" aria-label="导出阅读批注">
+          <span>导出</span>
+          <a href={api.readingMarksExportURL(bookFileID, 'markdown')} download>Markdown</a>
+          <a href={api.readingMarksExportURL(bookFileID, 'json')} download>JSON</a>
+        </div>
         <textarea
           value={noteBody}
           onChange={(event) => setNoteBody(event.target.value)}

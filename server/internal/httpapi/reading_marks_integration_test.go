@@ -96,6 +96,17 @@ func TestReadingMarksArePrivateAndOwnerManaged(t *testing.T) {
 	if items := secondList["items"].([]any); len(items) != 0 {
 		t.Fatalf("other user can see private marks: %#v", items)
 	}
+	markdown, headers := requestContent(t, server.URL, first, http.MethodGet, fmt.Sprintf("/api/v1/book-files/%d/marks/export?format=markdown", bookID), http.StatusOK)
+	if !strings.Contains(markdown, "# Test Book") || !strings.Contains(markdown, "这是一段需要高亮的原文") || !strings.Contains(markdown, "记住这一段") {
+		t.Fatalf("markdown export is missing private marks: %s", markdown)
+	}
+	if !strings.Contains(headers.Get("Content-Disposition"), ".md") {
+		t.Fatalf("markdown export filename is missing: %s", headers.Get("Content-Disposition"))
+	}
+	otherMarkdown, _ := requestContent(t, server.URL, second, http.MethodGet, fmt.Sprintf("/api/v1/book-files/%d/marks/export?format=markdown", bookID), http.StatusOK)
+	if strings.Contains(otherMarkdown, "记住这一段") || strings.Contains(otherMarkdown, "需要高亮") {
+		t.Fatalf("export leaked another user's marks: %s", otherMarkdown)
+	}
 	requestJSON(t, server.URL, second, http.MethodPatch, fmt.Sprintf("/api/v1/reading-marks/%d", markID), map[string]any{
 		"label": "changed", "body": "not allowed",
 	}, http.StatusNotFound)
@@ -107,6 +118,25 @@ func TestReadingMarksArePrivateAndOwnerManaged(t *testing.T) {
 	if firstUser.ID == 0 {
 		t.Fatal("created user has no ID")
 	}
+}
+
+func requestContent(t *testing.T, baseURL string, session testSession, method, path string, wantStatus int) (string, http.Header) {
+	t.Helper()
+	request, err := http.NewRequest(method, baseURL+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.AddCookie(session.cookie)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	content, _ := io.ReadAll(response.Body)
+	if response.StatusCode != wantStatus {
+		t.Fatalf("%s %s status=%d want=%d body=%s", method, path, response.StatusCode, wantStatus, content)
+	}
+	return string(content), response.Header
 }
 
 func newIsolatedPool(t *testing.T, ctx context.Context) *pgxpool.Pool {

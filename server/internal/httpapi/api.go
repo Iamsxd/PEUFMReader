@@ -164,6 +164,7 @@ func (a *API) routes() {
 	a.mux.Handle("GET /api/v1/book-files/{id}/progress", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.getProgress)), "", false))
 	a.mux.Handle("PUT /api/v1/book-files/{id}/progress", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.saveProgress)), "", true))
 	a.mux.Handle("GET /api/v1/book-files/{id}/marks", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.listReadingMarks)), "", false))
+	a.mux.Handle("GET /api/v1/book-files/{id}/marks/export", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.exportReadingMarks)), "", false))
 	a.mux.Handle("POST /api/v1/book-files/{id}/marks", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.createReadingMark)), "", true))
 	a.mux.Handle("PATCH /api/v1/reading-marks/{id}", a.requireAuth(http.HandlerFunc(a.updateReadingMark), "", true))
 	a.mux.Handle("DELETE /api/v1/reading-marks/{id}", a.requireAuth(http.HandlerFunc(a.deleteReadingMark), "", true))
@@ -1592,6 +1593,88 @@ func (a *API) listReadingMarks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": marks})
+}
+
+func (a *API) exportReadingMarks(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	book, found, err := a.store.GetCatalogBook(r.Context(), bookID)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "book_not_found", "book file not found")
+		return
+	}
+	marks, err := a.store.ListReadingMarks(r.Context(), sessionFromContext(r.Context()).User.ID, bookID)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+	if format == "" {
+		format = "markdown"
+	}
+	filename := strings.TrimSpace(book.Title)
+	if filename == "" {
+		filename = "reading-marks"
+	}
+	if format == "json" {
+		w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(filename+"-批注.json"))
+		writeJSON(w, http.StatusOK, map[string]any{
+			"book":       map[string]any{"id": book.ID, "title": book.Title, "format": book.Format},
+			"exportedAt": time.Now().UTC(),
+			"items":      marks,
+		})
+		return
+	}
+	if format != "markdown" && format != "md" {
+		writeError(w, http.StatusBadRequest, "invalid_export_format", "format must be markdown or json")
+		return
+	}
+
+	var output strings.Builder
+	fmt.Fprintf(&output, "# %s\n\n", book.Title)
+	fmt.Fprintf(&output, "> PEUFMReader 导出 · %s\n\n", time.Now().Format("2006-01-02 15:04"))
+	if len(marks) == 0 {
+		output.WriteString("暂无书签、高亮或笔记。\n")
+	}
+	for _, mark := range marks {
+		fmt.Fprintf(&output, "## %s · %s\n\n", readingMarkKindName(mark.Kind), mark.Label)
+		fmt.Fprintf(&output, "- 阅读进度：%d%%\n", int(mark.OverallProgress*100+0.5))
+		fmt.Fprintf(&output, "- 创建时间：%s\n", mark.CreatedAt.Local().Format("2006-01-02 15:04"))
+		if mark.Color != "" {
+			fmt.Fprintf(&output, "- 颜色：%s\n", mark.Color)
+		}
+		output.WriteString("\n")
+		if mark.Quote != "" {
+			for _, line := range strings.Split(mark.Quote, "\n") {
+				fmt.Fprintf(&output, "> %s\n", line)
+			}
+			output.WriteString("\n")
+		}
+		if mark.Body != "" {
+			fmt.Fprintf(&output, "%s\n\n", mark.Body)
+		}
+	}
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(filename+"-批注.md"))
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, output.String())
+}
+
+func readingMarkKindName(kind string) string {
+	switch kind {
+	case "bookmark":
+		return "书签"
+	case "highlight":
+		return "高亮"
+	default:
+		return "笔记"
+	}
 }
 
 func (a *API) createReadingMark(w http.ResponseWriter, r *http.Request) {
