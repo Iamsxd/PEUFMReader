@@ -152,6 +152,7 @@ func (a *API) routes() {
 	a.mux.Handle("GET /api/v1/home", a.requireAuth(http.HandlerFunc(a.homeDashboard), "", false))
 	a.mux.Handle("GET /api/v1/favorites", a.requireAuth(http.HandlerFunc(a.listFavorites), "", false))
 	a.mux.Handle("GET /api/v1/recommendations", a.requireAuth(http.HandlerFunc(a.listRecommendations), "", false))
+	a.mux.Handle("PUT /api/v1/book-files/{id}/recommendation-feedback", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.setRecommendationFeedback)), "", true))
 	a.mux.Handle("GET /api/v1/book-files", a.requireAuth(http.HandlerFunc(a.listBookFiles), "", false))
 	a.mux.Handle("POST /api/v1/book-files", a.requireAuth(http.HandlerFunc(a.uploadBookFile), "admin", true))
 	a.mux.Handle("GET /api/v1/book-files/{id}", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.bookDetail)), "", false))
@@ -610,6 +611,31 @@ func (a *API) listRecommendations(w http.ResponseWriter, r *http.Request) {
 	}
 	for index := range result.Items {
 		a.decorateBook(&result.Items[index].Book)
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (a *API) setRecommendationFeedback(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	var input struct {
+		Feedback string `json:"feedback"`
+	}
+	if err := readJSON(w, r, &input, 2<<10); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_recommendation_feedback", err.Error())
+		return
+	}
+	input.Feedback = strings.ToLower(strings.TrimSpace(input.Feedback))
+	if input.Feedback != "interested" && input.Feedback != "not_interested" {
+		writeError(w, http.StatusBadRequest, "invalid_recommendation_feedback", "feedback must be interested or not_interested")
+		return
+	}
+	result, err := a.store.SetRecommendationFeedback(r.Context(), sessionFromContext(r.Context()).User.ID, bookID, input.Feedback)
+	if err != nil {
+		a.internalError(w, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, result)
 }

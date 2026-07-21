@@ -169,6 +169,16 @@ export interface Recommendation {
   reason: string
   score: number
   personalized: boolean
+  feedback?: RecommendationFeedbackValue
+  signals: string[]
+}
+
+export type RecommendationFeedbackValue = 'interested' | 'not_interested'
+
+export interface RecommendationFeedback {
+  bookFileId: number
+  feedback: RecommendationFeedbackValue
+  updatedAt: string
 }
 
 export interface RecommendationPage {

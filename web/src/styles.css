@@ -138,6 +138,14 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .book-progress > span { height: 5px; }
 .book-progress small, .book-activity { color: #6f7c73; font-size: .68rem; }
 .recommendation-reason { display: block; padding: 7px 9px; border-radius: 8px; background: #e3e9dc; color: #416149; font-size: .69rem; line-height: 1.35; }
+.recommendation-item { min-width: 0; display: grid; align-content: start; gap: 8px; }
+.recommendation-item .book-card { height: 100%; }
+.recommendation-signals { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 4px; }
+.recommendation-signals span { padding: 4px 7px; border-radius: 999px; background: #e8eee6; color: #52705a; font-size: .64rem; }
+.recommendation-feedback { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0 4px; }
+.recommendation-feedback button { min-height: 34px; padding: 6px 8px; border: 1px solid #cbd5cc; border-radius: 9px; background: #f8f8f3; color: #526359; font-size: .72rem; font-weight: 720; }
+.recommendation-feedback button.active { border-color: #3b7050; background: #dfeade; color: #27583b; }
+.recommendation-feedback button:hover:not(:disabled) { border-color: #77947f; background: #e8f0e7; }
 .catalog-controls { position: sticky; top: 88px; z-index: 12; display: grid; grid-template-columns: minmax(260px, 1fr) repeat(4, minmax(120px, 170px)); gap: 9px; margin-bottom: 26px; padding: 12px; border: 1px solid #d5dad2; border-radius: 16px; background: #f7f5eeee; box-shadow: 0 10px 30px #233c2b0d; backdrop-filter: blur(16px); }
 .catalog-search-field, .category-search { position: relative; display: flex; align-items: center; }
 .catalog-search-field > span, .category-search > span { position: absolute; left: 13px; z-index: 1; color: #6f7f74; }

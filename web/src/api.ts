@@ -1,4 +1,4 @@
-import type { AuditEvent, AuthProviders, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, BookPermission, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, ClassificationRule, DeviceToken, DuplicateCatalogGroup, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ImportSource, ManagedUser, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
+import type { AuditEvent, AuthProviders, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, BookPermission, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, ClassificationRule, DeviceToken, DuplicateCatalogGroup, FavoritePage, FavoriteState, HomeDashboard, ImportJob, ImportSource, ManagedUser, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState, RecommendationFeedback, RecommendationFeedbackValue, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo } from './types'
 
 interface ErrorBody {
   error?: { code?: string; message?: string }
@@ -94,6 +94,12 @@ class APIClient {
 
   getRecommendations(limit = 12): Promise<RecommendationPage> {
     return this.request(`/api/v1/recommendations?limit=${limit}`)
+  }
+
+  setRecommendationFeedback(bookFileID: number, feedback: RecommendationFeedbackValue): Promise<RecommendationFeedback> {
+    return this.request(`/api/v1/book-files/${bookFileID}/recommendation-feedback`, {
+      method: 'PUT', body: JSON.stringify({ feedback }), headers: { 'Content-Type': 'application/json' },
+    })
   }
 
   uploadBook(file: File, onProgress?: (progress: number) => void): Promise<UploadBookResult> {

@@ -42,6 +42,14 @@ type Recommendation struct {
 	Reason       string   `json:"reason"`
 	Score        float64  `json:"score"`
 	Personalized bool     `json:"personalized"`
+	Feedback     string   `json:"feedback,omitempty"`
+	Signals      []string `json:"signals"`
+}
+
+type RecommendationFeedback struct {
+	BookFileID int64     `json:"bookFileId"`
+	Feedback   string    `json:"feedback"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
 type RecommendationPage struct {
@@ -65,6 +73,8 @@ type recommendationMetric struct {
 	Creator     string
 	CreatorFit  float64
 	HeatScore   float64
+	Feedback    string
+	Recent      bool
 	Score       float64
 }
 
@@ -215,10 +225,23 @@ func (s *Store) GetRecommendations(ctx context.Context, userID int64, limit int)
 		itemPersonalized := metric.CategoryFit > 0 || metric.CreatorFit > 0
 		items = append(items, Recommendation{
 			Book: book, Reason: recommendationReason(metric), Score: math.Round(metric.Score*100) / 100,
-			Personalized: itemPersonalized,
+			Personalized: itemPersonalized, Feedback: metric.Feedback, Signals: recommendationSignals(metric),
 		})
 	}
 	return RecommendationPage{Items: items, Personalized: personalized}, nil
+}
+
+func (s *Store) SetRecommendationFeedback(ctx context.Context, userID, bookFileID int64, feedback string) (RecommendationFeedback, error) {
+	var result RecommendationFeedback
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO recommendation_feedback(user_id,book_file_id,feedback) VALUES ($1,$2,$3)
+		ON CONFLICT (user_id,book_file_id) DO UPDATE SET feedback=EXCLUDED.feedback,updated_at=now()
+		RETURNING book_file_id,feedback,updated_at`, userID, bookFileID, feedback,
+	).Scan(&result.BookFileID, &result.Feedback, &result.UpdatedAt)
+	if err != nil {
+		return RecommendationFeedback{}, fmt.Errorf("save recommendation feedback: %w", err)
+	}
+	return result, nil
 }
 
 func (s *Store) loadTasteProfile(ctx context.Context, userID int64) (tasteProfile, error) {
@@ -230,13 +253,15 @@ func (s *Store) loadTasteProfile(ctx context.Context, userID int64) (tasteProfil
 		WITH interactions AS (
 			SELECT bf.edition_id,
 				(CASE WHEN uf.user_id IS NOT NULL THEN 5.0 ELSE 0 END
+				 + CASE COALESCE(rf.feedback,'') WHEN 'interested' THEN 4.0 WHEN 'not_interested' THEN -6.0 ELSE 0 END
 				 + CASE COALESCE(rs.status,'') WHEN 'finished' THEN 3.0 WHEN 'reading' THEN 2.5 WHEN 'paused' THEN 1.5 WHEN 'unread' THEN 0.5 ELSE 0.25 END
 				 + COALESCE(rs.overall_progress,0)*2.0
 				 + LEAST(COALESCE(rs.total_active_seconds,0)/3600.0,3.0))::double precision AS weight
 			FROM book_files bf
 			LEFT JOIN user_favorites uf ON uf.book_file_id=bf.id AND uf.user_id=$1
 			LEFT JOIN reading_states rs ON rs.book_file_id=bf.id AND rs.user_id=$1
-			WHERE uf.user_id IS NOT NULL OR rs.user_id IS NOT NULL
+			LEFT JOIN recommendation_feedback rf ON rf.book_file_id=bf.id AND rf.user_id=$1
+			WHERE uf.user_id IS NOT NULL OR rs.user_id IS NOT NULL OR rf.user_id IS NOT NULL
 		)`
 	categoryRows, err := s.pool.Query(ctx, interactions+`, category_affinity AS (
 			SELECT DISTINCT i.edition_id,i.weight,cat.id,cat.name
@@ -297,13 +322,16 @@ func (s *Store) listRecommendationMetrics(ctx context.Context, userID int64, pro
 	rows, err := s.pool.Query(ctx, `
 		SELECT bf.id,COALESCE(category_match.name,''),COALESCE(category_match.score,0),
 			COALESCE(creator_match.name,''),COALESCE(creator_match.score,0),COALESCE(hot.score,0),
+			COALESCE(feedback.feedback,''),(bf.created_at >= now()-INTERVAL '30 days'),
 			(COALESCE(category_match.score,0)*3.0 + COALESCE(creator_match.score,0)*4.0
-			 + LN(1.0+COALESCE(hot.score,0))*0.4
-			 + CASE WHEN bf.created_at >= now()-INTERVAL '30 days' THEN 0.5 ELSE 0 END)::double precision AS score
+				 + LN(1.0+COALESCE(hot.score,0))*0.4
+				 + CASE WHEN bf.created_at >= now()-INTERVAL '30 days' THEN 0.5 ELSE 0 END
+				 + CASE WHEN feedback.feedback='interested' THEN 25.0 ELSE 0 END)::double precision AS score
 		FROM book_files bf
 		JOIN editions e ON e.id=bf.edition_id
 		JOIN users access_user ON access_user.id=$1 AND access_user.disabled_at IS NULL
 		LEFT JOIN book_file_permissions permission ON permission.user_id=access_user.id AND permission.book_file_id=bf.id
+		LEFT JOIN recommendation_feedback feedback ON feedback.user_id=$1 AND feedback.book_file_id=bf.id
 		LEFT JOIN LATERAL (
 			SELECT pref.name,pref.score
 			FROM unnest($2::bigint[],$3::double precision[],$4::text[]) AS pref(id,score,name)
@@ -323,6 +351,7 @@ func (s *Store) listRecommendationMetrics(ctx context.Context, userID int64, pro
 			FROM reading_sessions rs WHERE rs.book_file_id=bf.id AND rs.started_at >= now()-INTERVAL '30 days'
 		) hot ON true
 		WHERE (access_user.role='admin' OR COALESCE(permission.can_read,true))
+			AND COALESCE(feedback.feedback,'') <> 'not_interested'
 			AND NOT EXISTS (SELECT 1 FROM user_favorites uf WHERE uf.user_id=$1 AND uf.book_file_id=bf.id)
 			AND NOT EXISTS (SELECT 1 FROM reading_states state WHERE state.user_id=$1 AND state.book_file_id=bf.id
 				AND state.status IN ('reading','paused','finished','abandoned'))
@@ -340,7 +369,7 @@ func (s *Store) listRecommendationMetrics(ctx context.Context, userID int64, pro
 		var item recommendationMetric
 		if err := rows.Scan(
 			&item.BookFileID, &item.Category, &item.CategoryFit, &item.Creator, &item.CreatorFit,
-			&item.HeatScore, &item.Score,
+			&item.HeatScore, &item.Feedback, &item.Recent, &item.Score,
 		); err != nil {
 			return nil, err
 		}
@@ -350,6 +379,9 @@ func (s *Store) listRecommendationMetrics(ctx context.Context, userID int64, pro
 }
 
 func recommendationReason(metric recommendationMetric) string {
+	if metric.Feedback == "interested" {
+		return "你标记了对这本书感兴趣"
+	}
 	if metric.CreatorFit > 0 && metric.Creator != "" {
 		return fmt.Sprintf("因为你读过或收藏过 %s 的作品", metric.Creator)
 	}
@@ -360,4 +392,21 @@ func recommendationReason(metric recommendationMetric) string {
 		return "书库近期热门"
 	}
 	return "最近加入书库"
+}
+
+func recommendationSignals(metric recommendationMetric) []string {
+	signals := make([]string, 0, 4)
+	if metric.CreatorFit > 0 && metric.Creator != "" {
+		signals = append(signals, "喜欢作者："+metric.Creator)
+	}
+	if metric.CategoryFit > 0 && metric.Category != "" {
+		signals = append(signals, "偏好题材："+metric.Category)
+	}
+	if metric.HeatScore > 0 {
+		signals = append(signals, "书库近期热门")
+	}
+	if metric.Recent {
+		signals = append(signals, "最近加入")
+	}
+	return signals
 }
