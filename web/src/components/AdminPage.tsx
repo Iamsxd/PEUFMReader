@@ -435,6 +435,7 @@ function auditActionLabel(action: string): string {
     'POST /api/v1/editions/{id}/ai-classify': '请求 AI 分类',
     'POST /api/v1/editions/{id}/bibliography-search': '查询外部书目',
     'POST /api/v1/background-jobs/{id}/retry': '重试后台任务',
+    'POST /api/v1/admin/classification/reclassify': '重新分类未归类书籍',
     'POST /api/v1/calibre/import': '启动 Calibre 迁移',
     'POST /api/v1/admin/categories': '创建题材分类',
     'PATCH /api/v1/admin/categories/{id}': '修改题材分类',

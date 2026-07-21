@@ -193,8 +193,11 @@ export interface ClassificationRule {
   categorySlug: string
   categoryName: string
   keywords: string[]
+  strongKeywords: string[]
   enabled: boolean
   priority: number
+  customized: boolean
+  defaultVersion: number
   updatedAt: string
 }
 

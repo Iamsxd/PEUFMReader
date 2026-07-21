@@ -159,9 +159,15 @@ class APIClient {
     return result.items
   }
 
-  updateClassificationRule(ruleID: number, input: Pick<ClassificationRule, 'keywords' | 'enabled' | 'priority'>): Promise<ClassificationRule> {
+  updateClassificationRule(ruleID: number, input: Pick<ClassificationRule, 'keywords' | 'strongKeywords' | 'enabled' | 'priority'>): Promise<ClassificationRule> {
     return this.request(`/api/v1/admin/classification-rules/${ruleID}`, {
       method: 'PATCH', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  reclassifyUnclassified(): Promise<{ job: BackgroundJob; created: boolean }> {
+    return this.request('/api/v1/admin/classification/reclassify', {
+      method: 'POST', body: JSON.stringify({ scope: 'unclassified' }), headers: { 'Content-Type': 'application/json' },
     })
   }
 

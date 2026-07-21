@@ -309,6 +309,7 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .classification-rule-grid > article { display: grid; gap: 9px; padding: 12px; border: 1px solid #d1dad0; border-radius: 12px; background: #fbfcf8; }
 .classification-rule-grid > article.disabled { opacity: .58; background: #eceeea; }
 .classification-rule-grid header, .classification-rule-grid footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.classification-rule-grid > article > label { display: grid; gap: 5px; color: #68756c; font-size: .7rem; }
 .classification-rule-grid header label, .classification-rule-grid footer label { width: auto; display: flex; flex-direction: row; align-items: center; gap: 6px; color: #68756c; font-size: .7rem; }
 .classification-rule-grid textarea { resize: vertical; font-size: .75rem; line-height: 1.45; }
 .classification-rule-grid footer input { width: 78px; padding: 6px; }

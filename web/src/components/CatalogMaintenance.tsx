@@ -15,6 +15,7 @@ export function CatalogMaintenance({ categories, onError, onNotice }: Props) {
   const [rules, setRules] = useState<ClassificationRule[]>([])
   const [duplicates, setDuplicates] = useState<DuplicateCatalogGroup[]>([])
   const [loading, setLoading] = useState(true)
+  const [reclassifying, setReclassifying] = useState(false)
 
   async function loadMaintenance() {
     setLoading(true)
@@ -44,6 +45,20 @@ export function CatalogMaintenance({ categories, onError, onNotice }: Props) {
 
   function toggleEdition(editionID: number) {
     setSelected((current) => current.includes(editionID) ? current.filter((id) => id !== editionID) : [...current, editionID])
+  }
+
+  async function reclassifyUnclassified() {
+    if (!window.confirm('将使用当前规则重新分析所有尚无已接受分类的书籍。人工分类不会被修改，是否继续？')) return
+    setReclassifying(true)
+    onError('')
+    try {
+      const result = await api.reclassifyUnclassified()
+      onNotice(result.created ? `重新分类任务 #${result.job.id} 已排队，可在后台任务中查看进度。` : `重新分类任务 #${result.job.id} 已在运行。`)
+    } catch (reason) {
+      onError(reason instanceof APIError ? reason.message : '重新分类任务创建失败。')
+    } finally {
+      setReclassifying(false)
+    }
   }
 
   return (
@@ -77,7 +92,8 @@ export function CatalogMaintenance({ categories, onError, onNotice }: Props) {
 
       <section className="integration-panel classification-rule-panel">
         <div className="section-title">
-          <div><p className="eyebrow">可视化分类规则</p><h2>{rules.filter((rule) => rule.enabled).length} 条规则已启用</h2><p className="muted">关键词支持中英文；匹配内嵌题材、书名和简介。排序值越小越优先。</p></div>
+          <div><p className="eyebrow">可视化分类规则</p><h2>{rules.filter((rule) => rule.enabled).length} 条规则已启用</h2><p className="muted">强关键词仅凭书名即可自动分类；普通关键词需要题材或多项证据。排序值越小，同分时越优先。</p></div>
+          <button className="secondary" type="button" disabled={reclassifying} onClick={() => void reclassifyUnclassified()}>{reclassifying ? '正在创建任务…' : '重新分类未归类书籍'}</button>
         </div>
         {loading ? <p className="muted">正在加载分类规则…</p> : (
           <div className="classification-rule-grid">
@@ -176,6 +192,7 @@ function DuplicateGroup({ group, onChanged, onError, onNotice }: { group: Duplic
 
 function ClassificationRuleCard({ rule, onSaved, onError }: { rule: ClassificationRule; onSaved: (rule: ClassificationRule) => void; onError: (message: string) => void }) {
   const [keywords, setKeywords] = useState(rule.keywords.join('、'))
+  const [strongKeywords, setStrongKeywords] = useState(rule.strongKeywords.join('、'))
   const [enabled, setEnabled] = useState(rule.enabled)
   const [priority, setPriority] = useState(rule.priority)
   const [saving, setSaving] = useState(false)
@@ -184,7 +201,11 @@ function ClassificationRuleCard({ rule, onSaved, onError }: { rule: Classificati
     setSaving(true)
     onError('')
     try {
-      const saved = await api.updateClassificationRule(rule.id, { keywords: keywords.split(/[、,，;；\n]/).map((item) => item.trim()).filter(Boolean), enabled, priority })
+      const saved = await api.updateClassificationRule(rule.id, {
+        keywords: keywords.split(/[、,，;；\n]/).map((item) => item.trim()).filter(Boolean),
+        strongKeywords: strongKeywords.split(/[、,，;；\n]/).map((item) => item.trim()).filter(Boolean),
+        enabled, priority,
+      })
       onSaved(saved)
     } catch (reason) {
       onError(reason instanceof APIError ? reason.message : '分类规则保存失败。')
@@ -196,7 +217,8 @@ function ClassificationRuleCard({ rule, onSaved, onError }: { rule: Classificati
   return (
     <article className={enabled ? '' : 'disabled'}>
       <header><strong>{rule.categoryName}</strong><label><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />启用</label></header>
-      <textarea rows={3} value={keywords} onChange={(event) => setKeywords(event.target.value)} aria-label={`${rule.categoryName}关键词`} />
+      <label>强关键词<textarea rows={2} value={strongKeywords} onChange={(event) => setStrongKeywords(event.target.value)} aria-label={`${rule.categoryName}强关键词`} /></label>
+      <label>普通关键词<textarea rows={2} value={keywords} onChange={(event) => setKeywords(event.target.value)} aria-label={`${rule.categoryName}普通关键词`} /></label>
       <footer><label>排序 <input type="number" min="1" max="10000" value={priority} onChange={(event) => setPriority(Number(event.target.value))} /></label><button className="secondary" type="button" disabled={saving} onClick={() => void save()}>{saving ? '保存中…' : '保存规则'}</button></footer>
     </article>
   )

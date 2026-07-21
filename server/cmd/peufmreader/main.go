@@ -18,6 +18,7 @@ import (
 	"peufmreader/internal/bibliographyjobs"
 	"peufmreader/internal/calibre"
 	"peufmreader/internal/classification"
+	"peufmreader/internal/classificationjobs"
 	"peufmreader/internal/config"
 	"peufmreader/internal/database"
 	"peufmreader/internal/externalauth"
@@ -144,10 +145,11 @@ func main() {
 	}
 	workerID := fmt.Sprintf("%s-%d", hostname(), os.Getpid())
 	handlers := map[string]jobs.Handler{
-		calibre.ImportJobKind:    calibre.ImportHandler(calibreScanner, importService),
-		importinbox.JobKind:      importinbox.Handler(importManager, importService),
-		pdfassets.JobKind:        pdfassets.Handler(dataStore, libraryManager, pdfProcessor),
-		bibliographyjobs.JobKind: bibliographyjobs.Handler(dataStore, bibliographyService),
+		calibre.ImportJobKind:      calibre.ImportHandler(calibreScanner, importService),
+		classificationjobs.JobKind: classificationjobs.Handler(dataStore),
+		importinbox.JobKind:        importinbox.Handler(importManager, importService),
+		pdfassets.JobKind:          pdfassets.Handler(dataStore, libraryManager, pdfProcessor),
+		bibliographyjobs.JobKind:   bibliographyjobs.Handler(dataStore, bibliographyService),
 	}
 	if watchedLibraryManager != nil {
 		handlers[watchlibrary.JobKind] = watchlibrary.Handler(watchedLibraryManager, importService)

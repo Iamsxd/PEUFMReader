@@ -74,9 +74,39 @@ func TestCatalogMaintenanceIsTransactionalAndAdminOnly(t *testing.T) {
 	}
 	rule := items[0].(map[string]any)
 	ruleID := int64(rule["id"].(float64))
-	requestJSON(t, server.URL, admin, http.MethodPatch, fmt.Sprintf("/api/v1/admin/classification-rules/%d", ruleID), map[string]any{
-		"keywords": []string{"custom keyword"}, "enabled": true, "priority": 5,
+	updatedRule := requestJSON(t, server.URL, admin, http.MethodPatch, fmt.Sprintf("/api/v1/admin/classification-rules/%d", ruleID), map[string]any{
+		"keywords": []string{"custom keyword"}, "strongKeywords": []string{"distinctive title"}, "enabled": true, "priority": 5,
 	}, http.StatusOK)
+	if updatedRule["customized"] != true || len(updatedRule["strongKeywords"].([]any)) != 1 {
+		t.Fatalf("updated classification rule=%+v", updatedRule)
+	}
+
+	requestJSON(t, server.URL, reader, http.MethodPost, "/api/v1/admin/classification/reclassify", map[string]any{
+		"scope": "unclassified",
+	}, http.StatusForbidden)
+	reclassification := requestJSON(t, server.URL, admin, http.MethodPost, "/api/v1/admin/classification/reclassify", map[string]any{
+		"scope": "unclassified",
+	}, http.StatusAccepted)
+	if reclassification["created"] != true {
+		t.Fatalf("reclassification response=%+v", reclassification)
+	}
+
+	if _, err := pool.Exec(ctx, `INSERT INTO classification_decisions(edition_id,category_id,source,confidence,reason,status)
+		SELECT $1,id,'deterministic-rules-v2',0.91,'strong title','accepted' FROM categories WHERE slug='literature'`, editionIDs[2]); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := dataStore.ReplaceAutomaticClassification(ctx, editionIDs[2], []classification.Suggestion{{
+		CategorySlug: "essays", Confidence: 0.82, Reason: "external title only",
+		Source: "bibliography-rules-v2:test", Status: "suggested",
+	}})
+	if err != nil || changed {
+		t.Fatalf("weaker automatic classification changed=%t err=%v", changed, err)
+	}
+	var acceptedAutomatic int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM classification_decisions
+		WHERE edition_id=$1 AND source='deterministic-rules-v2' AND status='accepted'`, editionIDs[2]).Scan(&acceptedAutomatic); err != nil || acceptedAutomatic != 1 {
+		t.Fatalf("accepted automatic classification count=%d err=%v", acceptedAutomatic, err)
+	}
 
 	requestJSON(t, server.URL, admin, http.MethodPost, "/api/v1/admin/catalog/merge-editions", map[string]any{
 		"sourceId": editionIDs[1], "targetId": editionIDs[0],

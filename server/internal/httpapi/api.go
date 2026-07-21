@@ -27,6 +27,7 @@ import (
 	"peufmreader/internal/bibliography"
 	"peufmreader/internal/calibre"
 	"peufmreader/internal/classification"
+	"peufmreader/internal/classificationjobs"
 	"peufmreader/internal/externalauth"
 	"peufmreader/internal/importing"
 	"peufmreader/internal/library"
@@ -174,6 +175,7 @@ func (a *API) routes() {
 	a.mux.Handle("PATCH /api/v1/admin/categories/{id}", a.requireAuth(http.HandlerFunc(a.updateCategory), "admin", true))
 	a.mux.Handle("GET /api/v1/admin/classification-rules", a.requireAuth(http.HandlerFunc(a.listClassificationRules), "admin", false))
 	a.mux.Handle("PATCH /api/v1/admin/classification-rules/{id}", a.requireAuth(http.HandlerFunc(a.updateClassificationRule), "admin", true))
+	a.mux.Handle("POST /api/v1/admin/classification/reclassify", a.requireAuth(http.HandlerFunc(a.reclassifyCatalog), "admin", true))
 	a.mux.Handle("PATCH /api/v1/admin/metadata/batch", a.requireAuth(http.HandlerFunc(a.batchUpdateMetadata), "admin", true))
 	a.mux.Handle("GET /api/v1/admin/catalog/duplicates", a.requireAuth(http.HandlerFunc(a.listDuplicateCatalogGroups), "admin", false))
 	a.mux.Handle("POST /api/v1/admin/catalog/merge-works", a.requireAuth(http.HandlerFunc(a.mergeWorks), "admin", true))
@@ -930,9 +932,10 @@ func (a *API) updateClassificationRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Keywords []string `json:"keywords"`
-		Enabled  bool     `json:"enabled"`
-		Priority int      `json:"priority"`
+		Keywords       []string `json:"keywords"`
+		StrongKeywords []string `json:"strongKeywords"`
+		Enabled        bool     `json:"enabled"`
+		Priority       int      `json:"priority"`
 	}
 	if err := readJSON(w, r, &input, 32<<10); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_classification_rule", err.Error())
@@ -944,7 +947,13 @@ func (a *API) updateClassificationRule(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	item, found, err := a.store.UpdateClassificationRule(r.Context(), id, input.Keywords, input.Enabled, input.Priority)
+	for _, keyword := range input.StrongKeywords {
+		if utf8.RuneCountInString(strings.TrimSpace(keyword)) > 100 {
+			writeError(w, http.StatusBadRequest, "invalid_classification_rule", "each strong keyword must contain at most 100 characters")
+			return
+		}
+	}
+	item, found, err := a.store.UpdateClassificationRule(r.Context(), id, input.Keywords, input.StrongKeywords, input.Enabled, input.Priority)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_classification_rule", err.Error())
 		return
@@ -954,6 +963,28 @@ func (a *API) updateClassificationRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, item)
+}
+
+func (a *API) reclassifyCatalog(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Scope string `json:"scope"`
+	}
+	if err := readJSON(w, r, &input, 4<<10); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_reclassification", err.Error())
+		return
+	}
+	if input.Scope != "unclassified" {
+		writeError(w, http.StatusBadRequest, "invalid_reclassification", "only the unclassified scope is supported")
+		return
+	}
+	userID := sessionFromContext(r.Context()).User.ID
+	job, created, err := a.store.EnqueueBackgroundJob(r.Context(), classificationjobs.JobKind, input.Scope,
+		classificationjobs.Payload{Scope: input.Scope}, &userID, nil, 3)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"job": job, "created": created})
 }
 
 func (a *API) batchUpdateMetadata(w http.ResponseWriter, r *http.Request) {

@@ -33,6 +33,13 @@ type BackgroundJob struct {
 	CompletedAt     *time.Time      `json:"completedAt,omitempty"`
 }
 
+func (job BackgroundJob) DecodePayload(target any) error {
+	if err := json.Unmarshal(job.Payload, target); err != nil {
+		return fmt.Errorf("decode background job payload: %w", err)
+	}
+	return nil
+}
+
 const backgroundJobColumns = `
 	id,kind,state,dedupe_key,payload,result,progress,COALESCE(progress_message,''),attempts,max_attempts,available_at,
 	COALESCE(locked_by,''),lease_expires_at,COALESCE(last_error,''),created_by,book_file_id,
