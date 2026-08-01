@@ -87,7 +87,7 @@ type ImportJob struct {
 }
 
 const catalogBookSelect = `
-	SELECT bf.id,w.id,e.id,w.title,bf.original_filename,bf.storage_path,bf.sha256,bf.format,bf.mime_type,bf.size_bytes,bf.created_at,
+	SELECT bf.id,w.id,e.id,w.title,bf.original_filename,bf.storage_path,bf.storage_mode,COALESCE(bf.reference_path,''),bf.sha256,bf.format,bf.mime_type,bf.size_bytes,bf.created_at,
 		e.published_year,COALESCE(e.language,''),COALESCE(e.isbn,''),COALESCE(e.publisher,''),COALESCE(bf.cover_path,''),
 		COALESCE(bf.extracted_text_path,''),COALESCE(bf.text_extraction_method,''),bf.page_count,
 		COALESCE((SELECT jsonb_agg(c.name ORDER BY ec.position,c.id)
@@ -113,7 +113,7 @@ func scanCatalogBook(row scanner) (BookFile, error) {
 	var book BookFile
 	var authorsJSON, categoriesJSON []byte
 	err := row.Scan(
-		&book.ID, &book.WorkID, &book.EditionID, &book.Title, &book.OriginalFilename, &book.StoragePath, &book.SHA256,
+		&book.ID, &book.WorkID, &book.EditionID, &book.Title, &book.OriginalFilename, &book.StoragePath, &book.StorageMode, &book.ReferencePath, &book.SHA256,
 		&book.Format, &book.MIMEType, &book.SizeBytes, &book.CreatedAt, &book.PublishedYear, &book.Language,
 		&book.ISBN, &book.Publisher, &book.CoverPath, &book.TextPath, &book.TextMethod, &book.PageCount,
 		&authorsJSON, &categoriesJSON, &book.ReviewRequired,

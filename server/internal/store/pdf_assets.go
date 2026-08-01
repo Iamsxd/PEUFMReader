@@ -42,7 +42,7 @@ func (s *Store) ListPDFsMissingAssets(ctx context.Context, limit int) ([]int64, 
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT id FROM book_files
-		WHERE format='pdf' AND assets_updated_at IS NULL
+		WHERE format='pdf' AND storage_mode='managed' AND assets_updated_at IS NULL
 		ORDER BY id LIMIT $1`, limit)
 	if err != nil {
 		return nil, err

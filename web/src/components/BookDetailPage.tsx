@@ -134,7 +134,7 @@ export function BookDetailPage({ bookID, isAdmin, onBack, onOpenBook, onViewBook
           <div className="detail-cover-wrap">
             {coverURL ? <img src={coverURL} alt={`${book.title}封面`} /> : <span>{book.title.slice(0, 1)}</span>}
           </div>
-          {isAdmin && book.format === 'pdf' && (
+          {isAdmin && book.format === 'pdf' && book.storageMode !== 'calibre-reference' && (
             <div className="detail-cover-tools">
               <label>封面页<input type="number" min={1} max={book.pageCount ?? undefined} value={coverPage} disabled={Boolean(coverJobID)} onChange={(event) => setCoverPage(Math.max(1, Number(event.target.value) || 1))} /></label>
               <button className="secondary" type="button" disabled={Boolean(coverJobID)} onClick={() => void regenerateCover()}>{coverJobID ? '生成中…' : '重新生成封面'}</button>
@@ -145,6 +145,7 @@ export function BookDetailPage({ bookID, isAdmin, onBack, onOpenBook, onViewBook
         <div className="detail-main">
           <div className="card-badges">
             <span className={`format-badge ${book.format}`}>{book.format.toUpperCase()}</span>
+            {book.storageMode === 'calibre-reference' && <span className="format-badge">Calibre 只读引用</span>}
             {book.textExtractionMethod === 'ocr' && <span className="format-badge ocr">OCR</span>}
             {book.textExtractionMethod === 'embedded' && <span className="format-badge text">可搜索文本</span>}
           </div>

@@ -49,6 +49,7 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [scanningCalibre, setScanningCalibre] = useState(false)
   const [migratingCalibre, setMigratingCalibre] = useState(false)
+  const [referencingCalibre, setReferencingCalibre] = useState(false)
   const [checkingStorage, setCheckingStorage] = useState(false)
 
   async function refreshAdmin() {
@@ -198,6 +199,20 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
     }
   }
 
+  async function syncCalibreReferences() {
+    setReferencingCalibre(true)
+    setError('')
+    try {
+      const result = await api.syncCalibreReferences()
+      setNotice(result.created ? 'Calibre 只读引用同步已排队：不会复制或移动原始电子书。' : 'Calibre 只读引用同步已在后台队列中。')
+      setBackgroundJobs(await api.listBackgroundJobs())
+    } catch (reason) {
+      setError(reason instanceof APIError ? reason.message : 'Calibre 只读引用同步排队失败。')
+    } finally {
+      setReferencingCalibre(false)
+    }
+  }
+
   async function retryJob(jobID: number) {
     setError('')
     try {
@@ -274,6 +289,14 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
               {calibrePreview && <div className="calibre-preview"><p><strong>{calibrePreview.total}</strong> 个文件 · PDF {calibrePreview.pdfCount} · EPUB {calibrePreview.epubCount} · MOBI {calibrePreview.mobiCount} · AZW3 {calibrePreview.azw3Count} · 来源挂载 <code>{calibrePreview.rootLabel}</code></p>{calibrePreview.total === 0 && <p className="muted">没有找到含 metadata.opf 的 Calibre 书目，请检查 CALIBRE_LIBRARY_PATH 挂载。</p>}{calibrePreview.books.slice(0, 6).map((book) => <div className="calibre-row" key={book.sourcePath}><span className={`format-badge ${book.format}`}>{book.format.toUpperCase()}</span><strong>{book.title}</strong><span>{book.authors.join('、') || '未知作者'}</span></div>)}{calibrePreview.total > 6 && <p className="muted">另有 {calibrePreview.total - 6} 个文件将在“迁移全部”后逐项排队。</p>}{calibrePreview.errors.length > 0 && <details><summary>{calibrePreview.errors.length} 个扫描警告</summary><ul>{calibrePreview.errors.slice(0, 20).map((message) => <li key={message}>{message}</li>)}</ul></details>}</div>}
             </section>
 
+            <section className="integration-panel">
+              <div className="section-title">
+                <div><p className="eyebrow">Calibre 只读引用</p><h2>索引现有书库，不复制电子书</h2><p className="muted">从 metadata.db 读取书名、作者、出版信息、封面与文件位置；阅读时直接从只读挂载提供内容。Calibre 的标签不会导入为本系统分类。</p></div>
+                <div className="integration-actions"><button className="primary" type="button" disabled={!calibrePreview?.total || referencingCalibre} onClick={() => void syncCalibreReferences()}>{referencingCalibre ? '排队中…' : '同步为只读引用'}</button></div>
+              </div>
+              {!calibrePreview && <p className="muted">先执行“扫描 Calibre”确认挂载与书目数量，再启动同步。</p>}
+            </section>
+
             <section className="jobs-panel compact-admin-panel"><div className="section-title"><div><p className="eyebrow">导入审计</p><h2>最近任务</h2></div></div><div className="job-list">{importJobs.slice(0, 8).map((job) => <div className="job-row" key={job.id}><span className={`job-state ${job.state}`}>{job.state}</span><strong>{job.sourceName}</strong><span>{job.warnings?.join('；') || '无警告'}</span></div>)}</div></section>
           </>}
 
@@ -304,6 +327,7 @@ function jobStateLabel(state: BackgroundJob['state']): string {
 }
 
 function jobKindLabel(kind: string): string {
+  if (kind === 'calibre-reference-sync') return 'Calibre 只读引用同步'
   return { 'calibre-import': 'Calibre 迁移', 'inbox-import': '移动导入箱', 'watched-library-import': '只读目录增量导入', 'pdf-assets': 'PDF 封面 / OCR', 'bibliography-enrichment': '外部书目自动查询' }[kind] ?? kind
 }
 
@@ -317,10 +341,12 @@ function uploadStateLabel(state: UploadState): string {
 }
 
 function importModeLabel(mode: string): string {
+  if (mode === 'reference') return '只读引用，不复制书籍'
   return { upload: '网页上传并复制', move: '导入后移动归档', copy: '复制入库，源文件保留' }[mode] ?? mode
 }
 
 function importSourceDescription(source: ImportSource): string {
+  if (source.id === 'calibre-reference') return '读取 Calibre 的 metadata.db 并建立引用索引；电子书仍保留在 Calibre 书库中。'
   return {
     'browser-upload': '需要时在管理后台选择或拖放多个文件，作为手动备用入口。',
     'moving-inbox': '递归扫描 inbox；成功后移到 processed，连续失败后移到 failed。',
@@ -342,6 +368,7 @@ function auditActionLabel(action: string): string {
   if (action === 'auth.login.succeeded') return '登录成功'
   if (action === 'auth.login.failed') return '登录失败'
   if (action === 'auth.login.blocked') return '登录被限流'
+  if (action === 'POST /api/v1/calibre/references/sync') return '启动 Calibre 只读引用同步'
   const labels: Record<string, string> = {
     'POST /api/v1/users': '创建用户',
     'PATCH /api/v1/users/{id}': '修改用户',

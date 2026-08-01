@@ -104,6 +104,7 @@ export interface BookFile {
   textExtractionMethod?: 'embedded' | 'ocr'
   pageCount?: number
   originalFilename: string
+  storageMode: 'managed' | 'calibre-reference'
   format: BookFormat
   mimeType: string
   sizeBytes: number

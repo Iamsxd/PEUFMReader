@@ -13,7 +13,7 @@ PEUFMReader 是一个面向 NAS 的多用户电子书管理与 Web 阅读应用�
 - 浏览器批量上传 PDF、EPUB、MOBI、AZW3。
 - SHA-256 文件去重和真实格式签名校验。
 - 原文件复制到应用托管书库，不依赖原始上传位置。
-- Calibre 书库只读扫描、预览和可恢复批量迁移。
+- Calibre 书库只读扫描、预览、可恢复批量迁移，以及不复制电子书的只读引用同步。
 - 移动导入箱：自动处理稳定写入的电子书，成功后归档源文件。
 - 只读监控目录：递归增量扫描已有 NAS 书库，复制入库且不改动源文件。
 - 首页提供继续阅读、热门书籍、最近加入、题材分类和个人统计。
@@ -47,7 +47,7 @@ PEUFMReader 是一个面向 NAS 的多用户电子书管理与 Web 阅读应用�
 
 ### 元数据与分类
 
-- 提取 EPUB OPF、PDF Info 和 Calibre `metadata.opf`。
+- 提取 EPUB OPF、PDF Info、Calibre `metadata.db`（优先）和 `metadata.opf`（兼容回退）。
 - PDF 首页封面、原生文本提取和可选中英文 OCR。
 - 按作者、出版年份和管理员维护的层级题材体系分类；内置规则覆盖全部固定分类，并包含中国古典与国学、人际关系与沟通、极简生活等中文书库常用子类。
 - 分类 v2 区分强关键词与普通关键词：强书名信号可直接采用，普通词需要题材或多字段证据共同达到阈值；每项结果保留命中理由和置信度。
@@ -227,7 +227,7 @@ docker compose up -d --build
 | `PEUFM_IMPORT_ROOT` | `./data/import` | 自动导入、成功归档和失败隔离目录 |
 | `WATCH_LIBRARY_ENABLED` | `false` | 是否启用只读监控目录的递归增量扫描 |
 | `WATCH_LIBRARY_PATH` | `./data/watch-library` | 只读监控的 NAS 电子书目录 |
-| `CALIBRE_LIBRARY_PATH` | `./data/calibre` | Calibre 根目录，以只读方式挂载 |
+| `CALIBRE_LIBRARY_PATH` | `./data/calibre` | Calibre 根目录（含 `metadata.db`），以只读方式挂载 |
 | `MAX_UPLOAD_BYTES` | `524288000` | 单个上传文件最大字节数 |
 | `SESSION_TTL` | `720h` | 登录会话有效期 |
 | `COOKIE_SECURE` | `false` | 仅通过 HTTPS 访问时设置为 `true` |
@@ -293,6 +293,10 @@ AI 只提供分类建议，不能直接覆盖人工确认结果。使用云端�
 ## Calibre 与自动导入
 
 `CALIBRE_LIBRARY_PATH` 以只读方式挂载到 `/import/calibre`。管理员可以先扫描预览，再将选中的 PDF、EPUB、MOBI、AZW3 复制到应用书库；原 Calibre 文件不会被修改或删除。
+
+如果 Calibre 根目录中存在标准的 `metadata.db`，还可在“管理后台 → 书籍导入”选择“同步为只读引用”。该模式会从 `metadata.db` 读取书名、作者、出版信息、封面、格式及文件位置，仅在 PEUFMReader 保存目录索引、用户进度、书签/笔记和封面缓存；原始电子书始终从 `/import/calibre` 的只读挂载提供，不会复制、移动、重命名或写入 Calibre 书库。Calibre 的 `tags` 不会导入为 PEUFMReader 的题材分类或分类导航，分类仍由本系统管理员维护的规则和 AI 建议决定。
+
+只读引用的前提是 NAS 上的 `CALIBRE_LIBRARY_PATH` 始终指向同一个 Calibre 书库根目录。若在 Calibre 中移动、删除或新增文件，完成修改后再次运行“同步为只读引用”；已存在的引用会刷新文件定位，但不会覆盖管理员在 PEUFMReader 内人工修订的元数据。
 
 也可以将文件放入 `${PEUFM_IMPORT_ROOT}/inbox`。文件大小和修改时间稳定后会自动排队：
 

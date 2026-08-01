@@ -13,7 +13,7 @@ type StorageRecord struct {
 }
 
 func (s *Store) ListStorageRecords(ctx context.Context) ([]StorageRecord, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id,storage_path,size_bytes,sha256 FROM book_files ORDER BY id`)
+	rows, err := s.pool.Query(ctx, `SELECT id,storage_path,size_bytes,sha256 FROM book_files WHERE storage_mode='managed' ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("list storage records: %w", err)
 	}

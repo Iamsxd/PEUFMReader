@@ -25,6 +25,7 @@ export function BookCard({ book, onOpen, onDetails, onEdit, onToggleFavorite, fa
         <span className="book-card-content">
           <span className="card-badges">
             <span className={`format-badge ${book.format}`}>{book.format.toUpperCase()}</span>
+            {book.storageMode === 'calibre-reference' && <span className="format-badge">Calibre</span>}
             {book.textExtractionMethod === 'ocr' && <span className="format-badge ocr">OCR</span>}
             {book.textExtractionMethod === 'embedded' && <span className="format-badge text">文本</span>}
             {favorite && <span className="favorite-badge">♥ 已收藏</span>}

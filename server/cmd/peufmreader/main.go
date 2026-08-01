@@ -145,11 +145,12 @@ func main() {
 	}
 	workerID := fmt.Sprintf("%s-%d", hostname(), os.Getpid())
 	handlers := map[string]jobs.Handler{
-		calibre.ImportJobKind:      calibre.ImportHandler(calibreScanner, importService),
-		classificationjobs.JobKind: classificationjobs.Handler(dataStore),
-		importinbox.JobKind:        importinbox.Handler(importManager, importService),
-		pdfassets.JobKind:          pdfassets.Handler(dataStore, libraryManager, pdfProcessor),
-		bibliographyjobs.JobKind:   bibliographyjobs.Handler(dataStore, bibliographyService),
+		calibre.ImportJobKind:        calibre.ImportHandler(calibreScanner, importService),
+		calibre.ReferenceSyncJobKind: calibre.ReferenceSyncHandler(calibreScanner, dataStore, libraryManager),
+		classificationjobs.JobKind:   classificationjobs.Handler(dataStore),
+		importinbox.JobKind:          importinbox.Handler(importManager, importService),
+		pdfassets.JobKind:            pdfassets.Handler(dataStore, libraryManager, pdfProcessor),
+		bibliographyjobs.JobKind:     bibliographyjobs.Handler(dataStore, bibliographyService),
 	}
 	if watchedLibraryManager != nil {
 		handlers[watchlibrary.JobKind] = watchlibrary.Handler(watchedLibraryManager, importService)
@@ -184,6 +185,7 @@ func main() {
 			Path:                cfg.WatchLibraryLabel,
 			ScanIntervalSeconds: int64(cfg.WatchLibraryScanEvery.Seconds()), StableAgeSeconds: int64(cfg.WatchLibraryStableAge.Seconds()),
 		},
+		{ID: "calibre-reference", Name: "Calibre 只读引用", Mode: "reference", Enabled: calibreScanner.Configured(), Path: cfg.CalibreRoot},
 	}
 	api := httpapi.New(dataStore, libraryManager, kindleConverter, importService, calibreScanner, bibliographyService, importSources, advisor, cfg.WebRoot, cfg.CookieSecure, cfg.SessionTTL, cfg.MaxUploadBytes, cfg.TrustedProxyCIDR, logger)
 	externalAuth, err := externalauth.New(ctx, externalauth.Config{

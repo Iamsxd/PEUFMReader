@@ -5,7 +5,7 @@ import type { BookFile } from './types'
 function book(id: number, format: BookFile['format']): BookFile {
   return {
     id, workId: id, editionId: id, title: `${format}-${id}`, authors: [], categories: [], reviewRequired: false,
-    textAvailable: false, originalFilename: `${format}-${id}.${format}`, format,
+    textAvailable: false, originalFilename: `${format}-${id}.${format}`, storageMode: 'managed', format,
     mimeType: 'application/octet-stream', sizeBytes: 100, createdAt: '2026-01-01T00:00:00Z',
   }
 }

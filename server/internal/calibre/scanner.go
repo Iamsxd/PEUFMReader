@@ -1,18 +1,24 @@
 package calibre
 
 import (
+	"context"
+	"database/sql"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"peufmreader/internal/library"
 	"peufmreader/internal/metadata"
+
+	_ "modernc.org/sqlite"
 )
 
 const maxOPFBytes = 4 << 20
@@ -24,6 +30,7 @@ type Scanner struct {
 type Record struct {
 	SourcePath     string   `json:"sourcePath"`
 	MetadataPath   string   `json:"metadataPath"`
+	ReferenceKey   string   `json:"referenceKey,omitempty"`
 	CoverPath      string   `json:"coverPath,omitempty"`
 	Title          string   `json:"title"`
 	Authors        []string `json:"authors"`
@@ -34,6 +41,7 @@ type Record struct {
 	Description    string   `json:"description,omitempty"`
 	Subjects       []string `json:"subjects"`
 	OriginalFormat string   `json:"format"`
+	SizeBytes      int64    `json:"sizeBytes,omitempty"`
 }
 
 type Preview struct {
@@ -68,8 +76,22 @@ func NewScanner(root string) *Scanner {
 	return &Scanner{root: filepath.Clean(strings.TrimSpace(root))}
 }
 
+// Configured reports whether the configured Calibre root is currently mounted
+// and readable as a directory. It performs no scan and does not modify it.
+func (s *Scanner) Configured() bool {
+	if s.root == "" || s.root == "." {
+		return false
+	}
+	root, err := s.absoluteRoot()
+	if err != nil {
+		return false
+	}
+	info, err := os.Stat(root)
+	return err == nil && info.IsDir()
+}
+
 func (s *Scanner) Preview(limit int) (Preview, error) {
-	preview := Preview{Configured: s.root != "" && s.root != ".", RootLabel: s.root, Books: []Record{}, Errors: []string{}}
+	preview := Preview{Configured: s.Configured(), RootLabel: s.root, Books: []Record{}, Errors: []string{}}
 	if !preview.Configured {
 		return preview, nil
 	}
@@ -87,6 +109,16 @@ func (s *Scanner) Preview(limit int) (Preview, error) {
 	if err != nil || !info.IsDir() {
 		return preview, fmt.Errorf("inspect Calibre library root: %w", err)
 	}
+	if records, available, databaseErr := s.recordsFromMetadataDB(); available {
+		if databaseErr != nil {
+			return preview, databaseErr
+		}
+		for _, record := range records {
+			preview.add(record, limit)
+		}
+		sort.Slice(preview.Books, func(i, j int) bool { return preview.Books[i].SourcePath < preview.Books[j].SourcePath })
+		return preview, nil
+	}
 
 	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -102,19 +134,7 @@ func (s *Scanner) Preview(limit int) (Preview, error) {
 			return nil
 		}
 		for _, record := range records {
-			preview.Total++
-			if record.OriginalFormat == "pdf" {
-				preview.PDFCount++
-			} else if record.OriginalFormat == "epub" {
-				preview.EPUBCount++
-			} else if record.OriginalFormat == "mobi" {
-				preview.MOBICount++
-			} else if record.OriginalFormat == "azw3" {
-				preview.AZW3Count++
-			}
-			if len(preview.Books) < limit {
-				preview.Books = append(preview.Books, record)
-			}
+			preview.add(record, limit)
 		}
 		return nil
 	})
@@ -125,6 +145,23 @@ func (s *Scanner) Preview(limit int) (Preview, error) {
 	return preview, nil
 }
 
+func (p *Preview) add(record Record, limit int) {
+	p.Total++
+	switch record.OriginalFormat {
+	case "pdf":
+		p.PDFCount++
+	case "epub":
+		p.EPUBCount++
+	case "mobi":
+		p.MOBICount++
+	case "azw3":
+		p.AZW3Count++
+	}
+	if len(p.Books) < limit {
+		p.Books = append(p.Books, record)
+	}
+}
+
 func (s *Scanner) Load(sourcePath string) (Record, string, error) {
 	absoluteSource, err := s.resolveRegularFile(sourcePath)
 	if err != nil {
@@ -133,6 +170,17 @@ func (s *Scanner) Load(sourcePath string) (Record, string, error) {
 	extension := strings.ToLower(filepath.Ext(absoluteSource))
 	if !supportedExtension(extension) {
 		return Record{}, "", errors.New("Calibre source is not a supported PDF, EPUB, MOBI, or AZW3")
+	}
+	if records, available, databaseErr := s.recordsFromMetadataDB(); available {
+		if databaseErr != nil {
+			return Record{}, "", databaseErr
+		}
+		for _, record := range records {
+			if record.SourcePath == filepath.ToSlash(sourcePath) {
+				return record, absoluteSource, nil
+			}
+		}
+		return Record{}, "", errors.New("Calibre source is not described by metadata.db")
 	}
 	opfPath := filepath.Join(filepath.Dir(absoluteSource), "metadata.opf")
 	records, err := s.recordsFromOPF(opfPath)
@@ -145,6 +193,137 @@ func (s *Scanner) Load(sourcePath string) (Record, string, error) {
 		}
 	}
 	return Record{}, "", errors.New("Calibre source is not described by metadata.opf")
+}
+
+func (s *Scanner) recordsFromMetadataDB() ([]Record, bool, error) {
+	metadataPath, err := s.resolveRegularFile("metadata.db")
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, true, fmt.Errorf("open Calibre metadata.db: %w", err)
+	}
+	databaseURL := (&url.URL{Scheme: "file", Path: metadataPath, RawQuery: "mode=ro"}).String()
+	database, err := sql.Open("sqlite", databaseURL)
+	if err != nil {
+		return nil, true, fmt.Errorf("open Calibre metadata.db: %w", err)
+	}
+	defer database.Close()
+	database.SetMaxOpenConns(1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	authors, err := linkedNames(ctx, database, `SELECT link.book,author.name FROM books_authors_link link JOIN authors author ON author.id=link.author ORDER BY link.book,link.id`)
+	if err != nil {
+		return nil, true, fmt.Errorf("read Calibre authors: %w", err)
+	}
+	languages, err := linkedNames(ctx, database, `SELECT link.book,language.lang_code FROM books_languages_link link JOIN languages language ON language.id=link.lang_code ORDER BY link.book,link.item_order,link.id`)
+	if err != nil {
+		return nil, true, fmt.Errorf("read Calibre languages: %w", err)
+	}
+	publishers, err := linkedNames(ctx, database, `SELECT link.book,publisher.name FROM books_publishers_link link JOIN publishers publisher ON publisher.id=link.publisher ORDER BY link.book,link.id`)
+	if err != nil {
+		return nil, true, fmt.Errorf("read Calibre publishers: %w", err)
+	}
+	descriptions, err := linkedNames(ctx, database, `SELECT book,text FROM comments ORDER BY book,id`)
+	if err != nil {
+		return nil, true, fmt.Errorf("read Calibre comments: %w", err)
+	}
+	rows, err := database.QueryContext(ctx, `
+		SELECT data.book,data.format,COALESCE(data.uncompressed_size,0),data.name,books.title,
+			COALESCE(CAST(books.pubdate AS TEXT),''),COALESCE(books.isbn,''),COALESCE(books.path,''),
+			COALESCE(books.uuid,''),COALESCE(books.has_cover,0)
+		FROM data JOIN books ON books.id=data.book
+		ORDER BY books.id,data.id`)
+	if err != nil {
+		return nil, true, fmt.Errorf("read Calibre book files: %w", err)
+	}
+	defer rows.Close()
+	records := make([]Record, 0)
+	for rows.Next() {
+		var bookID int64
+		var rawFormat, name, title, publicationDate, isbn, bookPath, uuid string
+		var sizeBytes int64
+		var hasCover int
+		if err := rows.Scan(&bookID, &rawFormat, &sizeBytes, &name, &title, &publicationDate, &isbn, &bookPath, &uuid, &hasCover); err != nil {
+			return nil, true, fmt.Errorf("scan Calibre book file: %w", err)
+		}
+		format := strings.ToLower(strings.TrimSpace(rawFormat))
+		if !supportedExtension("." + format) {
+			continue
+		}
+		relativeSource := filepath.ToSlash(filepath.Join(filepath.FromSlash(bookPath), name+"."+format))
+		if _, err := s.resolveRegularFile(relativeSource); err != nil {
+			continue
+		}
+		record := Record{
+			SourcePath: relativeSource, MetadataPath: "metadata.db", Title: strings.TrimSpace(title),
+			Authors: cleanUnique(authors[bookID]), PublishedYear: parseYear(publicationDate),
+			Language: strings.ToLower(first(languages[bookID])), ISBN: strings.TrimSpace(isbn),
+			Publisher: first(publishers[bookID]), Description: first(descriptions[bookID]),
+			// Calibre tags deliberately remain in Calibre. PEUFMReader owns its
+			// category tree and classification rules, so an external tag must not
+			// become a category or influence automatic classification here.
+			Subjects: []string{}, OriginalFormat: format, SizeBytes: sizeBytes,
+		}
+		if record.Title == "" {
+			record.Title = strings.TrimSpace(name)
+		}
+		if uuid != "" {
+			record.ReferenceKey = uuid + ":" + format
+		} else {
+			record.ReferenceKey = "path:" + relativeSource
+		}
+		if hasCover != 0 {
+			coverRelative := filepath.ToSlash(filepath.Join(filepath.Dir(relativeSource), "cover.jpg"))
+			if _, err := s.resolveRegularFile(coverRelative); err == nil {
+				record.CoverPath = coverRelative
+			}
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, true, fmt.Errorf("iterate Calibre book files: %w", err)
+	}
+	return records, true, nil
+}
+
+func linkedNames(ctx context.Context, database *sql.DB, query string) (map[int64][]string, error) {
+	rows, err := database.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	values := make(map[int64][]string)
+	for rows.Next() {
+		var bookID int64
+		var value string
+		if err := rows.Scan(&bookID, &value); err != nil {
+			return nil, err
+		}
+		if value = strings.TrimSpace(value); value != "" {
+			values[bookID] = append(values[bookID], value)
+		}
+	}
+	return values, rows.Err()
+}
+
+// Open returns a read-only handle for a referenced Calibre book after applying
+// the same containment and regular-file checks used during library scanning.
+// It never follows a source path outside the configured Calibre library.
+func (s *Scanner) Open(sourcePath string) (*os.File, error) {
+	absoluteSource, err := s.resolveRegularFile(sourcePath)
+	if err != nil {
+		return nil, err
+	}
+	if !supportedExtension(filepath.Ext(absoluteSource)) {
+		return nil, errors.New("Calibre source is not a supported PDF, EPUB, MOBI, or AZW3")
+	}
+	file, err := os.Open(absoluteSource)
+	if err != nil {
+		return nil, fmt.Errorf("open Calibre source: %w", err)
+	}
+	return file, nil
 }
 
 func (s *Scanner) recordsFromOPF(opfPath string) ([]Record, error) {
@@ -230,11 +409,17 @@ func supportedExtension(extension string) bool {
 }
 
 func (s *Scanner) Metadata(record Record) (metadata.Result, error) {
+	source := "calibre-metadata-opf"
+	confidence := 0.98
+	if strings.EqualFold(record.MetadataPath, "metadata.db") {
+		source = "calibre-metadata-db"
+		confidence = 0.99
+	}
 	result := metadata.Result{
 		Title: record.Title, Authors: record.Authors, PublishedYear: record.PublishedYear,
 		Language: record.Language, ISBN: record.ISBN, Publisher: record.Publisher,
 		Description: record.Description, Subjects: record.Subjects,
-		Source: "calibre-metadata-opf", Confidence: 0.98,
+		Source: source, Confidence: confidence,
 	}
 	if record.CoverPath == "" {
 		return result, nil

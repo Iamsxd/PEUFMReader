@@ -213,6 +213,7 @@ func (a *API) routes() {
 	a.mux.Handle("POST /api/v1/background-jobs/{id}/retry", a.requireAuth(http.HandlerFunc(a.retryBackgroundJob), "admin", true))
 	a.mux.Handle("GET /api/v1/calibre/preview", a.requireAuth(http.HandlerFunc(a.previewCalibre), "admin", false))
 	a.mux.Handle("POST /api/v1/calibre/import", a.requireAuth(http.HandlerFunc(a.importCalibre), "admin", true))
+	a.mux.Handle("POST /api/v1/calibre/references/sync", a.requireAuth(http.HandlerFunc(a.syncCalibreReferences), "admin", true))
 	a.mux.HandleFunc("GET /", a.serveFrontend)
 }
 
@@ -728,7 +729,7 @@ func (a *API) uploadBookFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing_file", "multipart field 'file' is required")
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	userSession := sessionFromContext(r.Context())
 	result, err := a.importer.Import(r.Context(), userSession.User.ID, header.Filename, header.Filename, file, nil)
 	if err != nil {
@@ -777,18 +778,51 @@ func (a *API) bookContent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "book_not_found", "book file not found")
 		return
 	}
-	absolutePath, err := a.library.Resolve(book.StoragePath)
-	if err != nil {
-		a.internalError(w, err)
-		return
-	}
 	servedFilename := book.OriginalFilename
 	servedMIMEType := book.MIMEType
+	var file *os.File
+	if book.StorageMode == "calibre-reference" {
+		if a.calibre == nil {
+			writeError(w, http.StatusServiceUnavailable, "calibre_reference_unavailable", "Calibre reference library is not configured")
+			return
+		}
+		file, err = a.calibre.Open(book.ReferencePath)
+		if errors.Is(err, os.ErrNotExist) {
+			writeError(w, http.StatusGone, "calibre_reference_missing", "referenced Calibre file is missing or has moved")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusGone, "calibre_reference_unavailable", "referenced Calibre file cannot be opened safely")
+			return
+		}
+	} else {
+		if a.library == nil {
+			writeError(w, http.StatusServiceUnavailable, "managed_library_unavailable", "managed library is not configured")
+			return
+		}
+		absolutePath, resolveErr := a.library.Resolve(book.StoragePath)
+		if resolveErr != nil {
+			a.internalError(w, resolveErr)
+			return
+		}
+		file, err = os.Open(absolutePath)
+		if errors.Is(err, os.ErrNotExist) {
+			writeError(w, http.StatusGone, "managed_file_missing", "managed file is missing")
+			return
+		}
+		if err != nil {
+			a.internalError(w, err)
+			return
+		}
+	}
+	defer file.Close()
 	if mobiconvert.IsKindleFormat(book.Format) {
 		if a.converter == nil {
 			writeError(w, http.StatusServiceUnavailable, "kindle_converter_unavailable", "MOBI/AZW3 reader conversion is not configured")
 			return
 		}
+		absolutePath := file.Name()
+		_ = file.Close()
 		converted, conversionErr := a.converter.EnsureEPUB(r.Context(), absolutePath, book.Format, hex.EncodeToString(book.SHA256))
 		if conversionErr != nil {
 			status := http.StatusUnprocessableEntity
@@ -800,20 +834,14 @@ func (a *API) bookContent(w http.ResponseWriter, r *http.Request) {
 			writeError(w, status, code, "MOBI/AZW3 reading copy could not be prepared; the file may be DRM-protected or damaged")
 			return
 		}
-		absolutePath = converted.Path
+		file, err = os.Open(converted.Path)
+		if err != nil {
+			a.internalError(w, err)
+			return
+		}
 		servedFilename = strings.TrimSuffix(book.OriginalFilename, filepath.Ext(book.OriginalFilename)) + ".epub"
 		servedMIMEType = "application/epub+zip"
 	}
-	file, err := os.Open(absolutePath)
-	if errors.Is(err, os.ErrNotExist) {
-		writeError(w, http.StatusGone, "managed_file_missing", "managed file is missing")
-		return
-	}
-	if err != nil {
-		a.internalError(w, err)
-		return
-	}
-	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
 		a.internalError(w, err)
@@ -886,6 +914,10 @@ func (a *API) regeneratePDFCover(w http.ResponseWriter, r *http.Request) {
 	}
 	if book.Format != "pdf" {
 		writeError(w, http.StatusConflict, "cover_regeneration_unsupported", "only PDF covers can be regenerated from a selected page")
+		return
+	}
+	if book.StorageMode == "calibre-reference" {
+		writeError(w, http.StatusConflict, "cover_regeneration_unsupported", "referenced Calibre books keep their cover from Calibre; resync the reference library after changing it there")
 		return
 	}
 	if book.PageCount != nil && input.PageNumber > *book.PageCount {
@@ -1514,7 +1546,7 @@ func (a *API) importCalibre(w http.ResponseWriter, r *http.Request) {
 		}
 		job, created, enqueueErr := a.store.EnqueueBackgroundJob(
 			r.Context(), calibre.ImportJobKind, record.SourcePath,
-			calibre.ImportPayload{SourcePath: record.SourcePath}, &userID, nil, 3,
+			calibre.ImportPayload{SourcePath: record.SourcePath, Record: &record}, &userID, nil, 3,
 		)
 		if enqueueErr != nil {
 			a.internalError(w, enqueueErr)
@@ -1530,6 +1562,27 @@ func (a *API) importCalibre(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"queued": queued, "existing": existing, "jobIds": jobIDs})
+}
+
+func (a *API) syncCalibreReferences(w http.ResponseWriter, r *http.Request) {
+	if a.calibre == nil {
+		writeError(w, http.StatusServiceUnavailable, "calibre_reference_unavailable", "Calibre reference scanner is not configured")
+		return
+	}
+	if !a.calibre.Configured() {
+		writeError(w, http.StatusConflict, "calibre_reference_unavailable", "Calibre library root is not mounted or unavailable")
+		return
+	}
+	userID := sessionFromContext(r.Context()).User.ID
+	job, created, err := a.store.EnqueueBackgroundJob(
+		r.Context(), calibre.ReferenceSyncJobKind, calibre.ReferenceSyncJobKind,
+		map[string]any{"mode": "read-only-reference"}, &userID, nil, 3,
+	)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"job": job, "created": created})
 }
 
 func (a *API) getProgress(w http.ResponseWriter, r *http.Request) {

@@ -55,6 +55,8 @@ type BookFile struct {
 	PageCount        *int       `json:"pageCount,omitempty"`
 	OriginalFilename string     `json:"originalFilename"`
 	StoragePath      string     `json:"-"`
+	StorageMode      string     `json:"storageMode"`
+	ReferencePath    string     `json:"-"`
 	Format           string     `json:"format"`
 	MIMEType         string     `json:"mimeType"`
 	SizeBytes        int64      `json:"sizeBytes"`
@@ -293,10 +295,10 @@ func (s *Store) ListBookFiles(ctx context.Context) ([]BookFile, error) {
 func (s *Store) GetBookFile(ctx context.Context, id int64) (BookFile, bool, error) {
 	var book BookFile
 	err := s.pool.QueryRow(ctx, `
-		SELECT bf.id,bf.edition_id,w.title,bf.original_filename,bf.storage_path,bf.sha256,bf.format,bf.mime_type,bf.size_bytes,bf.created_at
+		SELECT bf.id,bf.edition_id,w.title,bf.original_filename,bf.storage_path,bf.storage_mode,COALESCE(bf.reference_path,''),bf.sha256,bf.format,bf.mime_type,bf.size_bytes,bf.created_at
 		FROM book_files bf JOIN editions e ON e.id=bf.edition_id JOIN works w ON w.id=e.work_id
 		WHERE bf.id=$1`, id,
-	).Scan(&book.ID, &book.EditionID, &book.Title, &book.OriginalFilename, &book.StoragePath, &book.SHA256, &book.Format, &book.MIMEType, &book.SizeBytes, &book.CreatedAt)
+	).Scan(&book.ID, &book.EditionID, &book.Title, &book.OriginalFilename, &book.StoragePath, &book.StorageMode, &book.ReferencePath, &book.SHA256, &book.Format, &book.MIMEType, &book.SizeBytes, &book.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return BookFile{}, false, nil
 	}

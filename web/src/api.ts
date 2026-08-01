@@ -290,6 +290,14 @@ class APIClient {
     })
   }
 
+  syncCalibreReferences(): Promise<{ job: BackgroundJob; created: boolean }> {
+    return this.request('/api/v1/calibre/references/sync', {
+      method: 'POST',
+      body: JSON.stringify({}),
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   async listUsers(): Promise<ManagedUser[]> {
     const result = await this.request<{ items: ManagedUser[] }>('/api/v1/users')
     return result.items

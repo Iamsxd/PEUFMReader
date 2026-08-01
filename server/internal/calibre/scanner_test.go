@@ -1,9 +1,13 @@
 package calibre
 
 import (
+	"database/sql"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
+
+	_ "modernc.org/sqlite"
 )
 
 func TestPreviewAndLoadCalibreLibrary(t *testing.T) {
@@ -125,5 +129,95 @@ func TestLoadSupportsRelativeCalibreRoot(t *testing.T) {
 	}
 	if _, _, err := scanner.Load(preview.Books[0].SourcePath); err != nil {
 		t.Fatalf("load source from relative Calibre root: %v", err)
+	}
+}
+
+func TestOpenReadsAReferencedCalibreBookWithoutResolvingOutsideRoot(t *testing.T) {
+	root := t.TempDir()
+	bookPath := filepath.Join(root, "Author", "Referenced Book (1)", "referenced.pdf")
+	if err := os.MkdirAll(filepath.Dir(bookPath), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bookPath, []byte("%PDF-referenced"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	file, err := NewScanner(root).Open("Author/Referenced Book (1)/referenced.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	content, err := io.ReadAll(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "%PDF-referenced" {
+		t.Fatalf("referenced content=%q", content)
+	}
+}
+
+func TestPreviewUsesCalibreMetadataDatabaseWhenAvailable(t *testing.T) {
+	root := t.TempDir()
+	bookPath := filepath.Join(root, "Author", "Database Book (7)", "Database Book.pdf")
+	if err := os.MkdirAll(filepath.Dir(bookPath), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bookPath, []byte("%PDF-database"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(bookPath), "cover.jpg"), []byte{0xff, 0xd8, 0xff, 0xd9}, 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err := sql.Open("sqlite", filepath.Join(root, "metadata.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	for _, statement := range []string{
+		`CREATE TABLE books(id INTEGER PRIMARY KEY,title TEXT,pubdate TEXT,isbn TEXT,path TEXT,uuid TEXT,has_cover BOOLEAN)`,
+		`CREATE TABLE data(id INTEGER PRIMARY KEY,book INTEGER,format TEXT,uncompressed_size INTEGER,name TEXT)`,
+		`CREATE TABLE authors(id INTEGER PRIMARY KEY,name TEXT)`,
+		`CREATE TABLE books_authors_link(id INTEGER PRIMARY KEY,book INTEGER,author INTEGER)`,
+		`CREATE TABLE languages(id INTEGER PRIMARY KEY,lang_code TEXT)`,
+		`CREATE TABLE books_languages_link(id INTEGER PRIMARY KEY,book INTEGER,lang_code INTEGER,item_order INTEGER)`,
+		`CREATE TABLE publishers(id INTEGER PRIMARY KEY,name TEXT)`,
+		`CREATE TABLE books_publishers_link(id INTEGER PRIMARY KEY,book INTEGER,publisher INTEGER)`,
+		`CREATE TABLE comments(id INTEGER PRIMARY KEY,book INTEGER,text TEXT)`,
+	} {
+		if _, err := database.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, statement := range []string{
+		`INSERT INTO books(id,title,pubdate,isbn,path,uuid,has_cover) VALUES (7,'Database title','2022-06-01','9780000000007','Author/Database Book (7)','uuid-7',1)`,
+		`INSERT INTO data(id,book,format,uncompressed_size,name) VALUES (9,7,'PDF',13,'Database Book')`,
+		`INSERT INTO authors(id,name) VALUES (1,'Database author')`,
+		`INSERT INTO books_authors_link(id,book,author) VALUES (1,7,1)`,
+		`INSERT INTO languages(id,lang_code) VALUES (1,'en')`,
+		`INSERT INTO books_languages_link(id,book,lang_code,item_order) VALUES (1,7,1,0)`,
+		`INSERT INTO publishers(id,name) VALUES (1,'Database publisher')`,
+		`INSERT INTO books_publishers_link(id,book,publisher) VALUES (1,7,1)`,
+		`INSERT INTO comments(id,book,text) VALUES (1,7,'Database description')`,
+	} {
+		if _, err := database.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	preview, err := NewScanner(root).Preview(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Total != 1 || len(preview.Books) != 1 {
+		t.Fatalf("unexpected preview: %#v", preview)
+	}
+	record := preview.Books[0]
+	if record.MetadataPath != "metadata.db" || record.SourcePath != "Author/Database Book (7)/Database Book.pdf" || record.Title != "Database title" || record.PublishedYear == nil || *record.PublishedYear != 2022 || record.Publisher != "Database publisher" || record.Description != "Database description" || len(record.Authors) != 1 || record.Authors[0] != "Database author" || len(record.Subjects) != 0 || record.ReferenceKey != "uuid-7:pdf" {
+		t.Fatalf("unexpected metadata database record: %#v", record)
+	}
+	metadata, err := NewScanner(root).Metadata(record)
+	if err != nil || metadata.Source != "calibre-metadata-db" || metadata.Cover == nil {
+		t.Fatalf("unexpected metadata=%#v err=%v", metadata, err)
 	}
 }
