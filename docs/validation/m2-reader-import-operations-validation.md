@@ -19,7 +19,7 @@
 | 检查 | 结果 |
 | --- | --- |
 | Go 全量测试 `go test ./...` | 通过 |
-| 前端 Vitest | 23 项通过 |
+| 前端 Vitest | 里程碑验证通过；当前持续套件为 42 项 |
 | TypeScript + Vite 生产构建 | 通过 |
 | Docker 多阶段构建（构建内再次执行 Go 测试） | 通过 |
 | Compose 配置解析 | 通过 |
@@ -70,4 +70,3 @@
 3. 在反向代理后启用 `COOKIE_SECURE=true`，并只把 `TRUSTED_PROXY_CIDR` 设置为实际代理网段。
 4. 将 `scripts/backup.sh` 加入 Unraid 定时任务，并把 `${PEUFM_BACKUP_ROOT}` 再同步到另一台设备或离线介质。
 5. 在副本环境执行一次 `scripts/restore.sh 快照名 --yes`，验证恢复时间和可用空间。
-

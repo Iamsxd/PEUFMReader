@@ -1,13 +1,15 @@
 # PEUFMReader 设计文档索引
 
-产品方向已确认为 NAS 上的多用户 Web 应用，用户已授权进入实现。当前已完成 M0 技术基线与 M1 导入分类闭环，不代表完整 MVP 已交付。
+产品方向已确认为 NAS 上的多用户 Web 应用。当前已完成 M0～M2 技术闭环及 P1 用户体验优化；P2 增强仍按路线图推进，不代表已经达到无需运维验证的公网发布状态。
 
+- [后续开发计划与当前完成状态](./product/development-roadmap.md)
 - [GitHub 同类项目调研](./discovery/github-project-comparison.md)
 - [NAS 多用户 Web 实现方案](./product/nas-web-implementation-proposal.md)
 - [M0 技术验证记录](./validation/m0-technical-validation.md)
 - [M1 导入分类验证记录](./validation/m1-import-classification-validation.md)
 - [M2 阅读、导入与运维闭环验证](./validation/m2-reader-import-operations-validation.md)
 - [阅读器真实语料与自动化回归](./validation/reader-corpus-regression.md)
+- [桌面与移动浏览器系统测试](./validation/browser-system-test.md)
 - [早期桌面方案（已废弃）](./product/implementation-proposal.md)
 - [领域术语表](./domain/glossary.md)
 - [ADR-0001：local-first 桌面模块化单体](./adr/0001-local-first-desktop.md) — Rejected

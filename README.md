@@ -35,8 +35,16 @@ PEUFMReader 是一个面向 NAS 的多用户电子书管理与 Web 阅读应用�
 - 每位用户可在稳定的 PDF 页码或 EPUB CFI 位置添加、编辑、定位和删除私有书签、文本高亮及笔记；高亮支持五种颜色和可选批注，并可按单本书导出 Markdown 或 JSON。
 - 每位用户可创建独立设备令牌，通过 OPDS 1.2 浏览/下载书籍，并与 KOReader 或 Kobo 状态桥接同步进度。
 - 可在书籍详情中主动选择“保存到此设备”；离线书架、应用外壳和 PDF/EPUB 阅读资源会保存在当前浏览器，断网后仍可打开。离线阅读位置和有效时长会在恢复联网后同步。浏览器离线存储要求使用 HTTPS（localhost 开发访问除外）。
+- 离线书架显示本站占用与剩余配额，支持删除单本、清理最久未读副本和空间压力自动清理；不会默认缓存全部书籍。
+- 提供完整 PWA 图标、Android/桌面浏览器安装入口和 iPhone“添加到主屏幕”引导。
 - 阅读缓存可以删除和重新生成，不修改原始电子书。
 - 不支持受 DRM 保护的 MOBI/AZW3，也不提供 DRM 移除功能。
+
+### 阅读统计
+
+- 首页显示最近 7 天阅读时长、累计阅读时长、阅读中/已读完/收藏数量和可访问书库规模。
+- 书籍详情保存每位用户的阅读进度、状态、有效时长与最近阅读时间；热门书籍使用聚合阅读热度，不公开他人的私有笔记。
+- 管理后台可查看用户最近访问、会话和聚合阅读数据。日/周/月趋势、阅读日历、连续天数和阅读目标列入 P2，当前尚无独立统计中心。
 
 ### 外部阅读器
 
@@ -85,6 +93,7 @@ flowchart LR
 
 - 后端：Go、`net/http`、pgx。
 - 前端：React、TypeScript、Vite、PDF.js、epub.js。
+- Web 性能：管理工作区和阅读器按需加载，封面提供 240/320/480px WebP 响应式缩略图，长列表使用服务端分页和屏外渲染优化。
 - 数据库：PostgreSQL 18。
 - 文档处理：Poppler、Tesseract OCR、libmobi。
 - 部署：Docker Compose，应用容器以非 root 用户运行。
@@ -455,7 +464,9 @@ docker compose ps
 ## 文档
 
 - [NAS Web 实现方案](docs/product/nas-web-implementation-proposal.md)
+- [后续开发计划与 P1/P2 状态](docs/product/development-roadmap.md)
 - [同类 GitHub 项目比较](docs/discovery/github-project-comparison.md)
 - [M0 技术验证](docs/validation/m0-technical-validation.md)
 - [M1 导入分类验证](docs/validation/m1-import-classification-validation.md)
 - [M2 阅读与运维验证](docs/validation/m2-reader-import-operations-validation.md)
+- [桌面与移动浏览器系统测试](docs/validation/browser-system-test.md)
