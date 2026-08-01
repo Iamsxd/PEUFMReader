@@ -486,7 +486,12 @@ class APIClient {
     if (includeCSRF && init.method && init.method !== 'GET' && this.csrfToken) {
       headers.set('X-CSRF-Token', this.csrfToken)
     }
-    const response = await fetch(path, { ...init, headers, credentials: 'include' })
+    let response: Response
+    try {
+      response = await fetch(path, { ...init, headers, credentials: 'include' })
+    } catch {
+      throw new APIError(0, 'network_error', '无法连接服务器。')
+    }
     if (!response.ok) {
       let body: ErrorBody = {}
       try {

@@ -17,6 +17,8 @@ func TestSetFrontendCacheHeaders(t *testing.T) {
 	}{
 		{name: "entry document", path: "index.html", expected: "no-cache"},
 		{name: "manifest", path: "site.webmanifest", expected: "no-cache"},
+		{name: "service worker", path: "sw.js", expected: "no-cache"},
+		{name: "offline asset manifest", path: "offline-assets.json", expected: "no-cache"},
 		{name: "fingerprinted asset", path: "assets/app-123.js", expected: "public, max-age=31536000, immutable"},
 		{name: "site icon", path: "favicon.svg", expected: "public, max-age=86400"},
 	}

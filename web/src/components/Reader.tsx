@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { api } from '../api'
+import { APIError, api } from '../api'
 import { useReadingSession } from '../hooks/useReadingSession'
+import { getOfflineReadingState, offlineDefaultReadingState, rememberOfflineReadingState } from '../offline'
 import type { BookFile, ReadingState } from '../types'
 import { formatDuration } from '../utils'
 
@@ -9,10 +10,13 @@ const PDFReader = lazy(() => import('./readers/PDFReader').then((module) => ({ d
 
 interface Props {
   book: BookFile
+  contentData?: ArrayBuffer
+  userID: number
+  offlineMode: boolean
   onClose: () => void
 }
 
-export function Reader({ book, onClose }: Props) {
+export function Reader({ book, contentData, userID, offlineMode, onClose }: Props) {
   const [state, setState] = useState<ReadingState | null>(null)
   const [error, setError] = useState('')
   const [readerChromeVisible, setReaderChromeVisible] = useState(true)
@@ -20,7 +24,7 @@ export function Reader({ book, onClose }: Props) {
   const stateRef = useRef<ReadingState | null>(null)
   const isKindleBook = book.format === 'mobi' || book.format === 'azw3'
   const isImmersiveReader = book.format === 'pdf' || book.format === 'epub' || isKindleBook
-  useReadingSession(book.id)
+  useReadingSession(book.id, offlineMode ? userID : undefined)
   stateRef.current = state
 
   const clearReaderChromeTimer = useCallback(() => {
@@ -46,8 +50,25 @@ export function Reader({ book, onClose }: Props) {
   }, [clearReaderChromeTimer, isImmersiveReader])
 
   useEffect(() => {
-    void api.getProgress(book.id).then(setState).catch(() => setError('无法读取上次阅读位置。'))
-  }, [book.id])
+    const localState = getOfflineReadingState(userID, book.id)
+    if (offlineMode) {
+      setState(localState ?? offlineDefaultReadingState(book.id))
+      setError(localState ? '当前处于离线阅读，位置将在联网后同步。' : '当前处于离线阅读。')
+      return
+    }
+    void api.getProgress(book.id).then((next) => {
+      setState(next)
+      rememberOfflineReadingState(userID, next, false)
+      setError('')
+    }).catch((reason) => {
+      if (reason instanceof APIError && reason.status === 0 && localState) {
+        setState(localState)
+        setError('网络连接中断，正在使用此设备上的阅读位置。')
+      } else {
+        setError('无法读取上次阅读位置。')
+      }
+    })
+  }, [book.id, offlineMode, userID])
 
   useEffect(() => {
     if (!isImmersiveReader) {
@@ -74,26 +95,50 @@ export function Reader({ book, onClose }: Props) {
 
   async function save(position: Record<string, unknown>, overallProgress: number) {
     const previousStatus = stateRef.current?.status
-    const next = await api.saveProgress(book.id, {
+    const input = {
       position,
       overallProgress,
       status: overallProgress >= 0.999
         ? 'finished'
         : previousStatus === 'finished' || previousStatus === 'abandoned'
           ? previousStatus
-          : 'reading',
-    })
-    setState(next)
+          : 'reading' as const,
+    }
+    if (offlineMode) {
+      const next = { ...(stateRef.current ?? offlineDefaultReadingState(book.id)), ...input, bookFileId: book.id, updatedAt: new Date().toISOString() }
+      rememberOfflineReadingState(userID, next, true)
+      setState(next)
+      return
+    }
+    try {
+      const next = await api.saveProgress(book.id, input)
+      rememberOfflineReadingState(userID, next, false)
+      setState(next)
+    } catch (reason) {
+      if (!(reason instanceof APIError && reason.status === 0)) throw reason
+      const next = { ...(stateRef.current ?? offlineDefaultReadingState(book.id)), ...input, bookFileId: book.id, updatedAt: new Date().toISOString() }
+      rememberOfflineReadingState(userID, next, true)
+      setState(next)
+      setError('网络连接中断，阅读位置已暂存在此设备。')
+    }
   }
 
   async function changeStatus(status: ReadingState['status']) {
     if (!state) return
+    const input = {
+      position: state.position,
+      overallProgress: state.overallProgress,
+      status,
+    }
+    if (offlineMode) {
+      const next = { ...state, status, updatedAt: new Date().toISOString() }
+      rememberOfflineReadingState(userID, next, true)
+      setState(next)
+      return
+    }
     try {
-      const next = await api.saveProgress(book.id, {
-        position: state.position,
-        overallProgress: state.overallProgress,
-        status,
-      })
+      const next = await api.saveProgress(book.id, input)
+      rememberOfflineReadingState(userID, next, false)
       setState(next)
       setError('')
     } catch {
@@ -127,6 +172,9 @@ export function Reader({ book, onClose }: Props) {
           {state && book.format === 'pdf' && (
             <PDFReader
               book={book}
+              contentURL={api.contentURL(book.id)}
+              contentData={contentData}
+              offlineMode={offlineMode}
               initialState={state}
               chromeVisible={readerChromeVisible}
               onChromeActivity={showReaderChrome}
@@ -139,6 +187,9 @@ export function Reader({ book, onClose }: Props) {
           {state && (book.format === 'epub' || isKindleBook) && (
             <EPUBReader
               book={book}
+              contentURL={api.contentURL(book.id)}
+              contentData={contentData}
+              offlineMode={offlineMode}
               initialState={state}
               chromeVisible={readerChromeVisible}
               onChromeActivity={showReaderChrome}

@@ -2051,7 +2051,7 @@ func (a *API) serveFrontend(w http.ResponseWriter, r *http.Request) {
 func setFrontendCacheHeaders(w http.ResponseWriter, relative string) {
 	clean := filepath.ToSlash(filepath.Clean(relative))
 	switch {
-	case clean == "index.html" || strings.HasSuffix(clean, ".webmanifest"):
+	case clean == "index.html" || clean == "sw.js" || clean == "offline-assets.json" || strings.HasSuffix(clean, ".webmanifest"):
 		w.Header().Set("Cache-Control", "no-cache")
 	case strings.HasPrefix(clean, "assets/"):
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")

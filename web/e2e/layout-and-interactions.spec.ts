@@ -1,17 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
-
-async function login(page: Page) {
-  await page.goto('/')
-  const loginButton = page.getByRole('button', { name: '登录' })
-  if (!await loginButton.isVisible().catch(() => false)) return
-  const username = process.env.E2E_ADMIN_USERNAME ?? process.env.ADMIN_USERNAME ?? 'admin'
-  const password = process.env.E2E_ADMIN_PASSWORD ?? process.env.ADMIN_PASSWORD
-  if (!password) throw new Error('Set E2E_ADMIN_PASSWORD or ADMIN_PASSWORD before running browser tests.')
-  await page.getByLabel('用户名').fill(username)
-  await page.getByLabel('密码').fill(password)
-  await loginButton.click()
-  await expect(page.getByRole('navigation', { name: '主导航' })).toBeVisible()
-}
+import { login } from './support/auth'
 
 async function expectNoPageOverflow(page: Page) {
   const overflow = await page.evaluate(() => ({
@@ -85,6 +73,7 @@ test('book detail and reader controls remain reachable', async ({ page }, testIn
   test.skip(await firstBook.count() === 0, 'The current library has no books to open.')
   await firstBook.click()
   await expect(page.locator('.book-detail-page h1')).toBeVisible()
+  await expect(page.getByRole('button', { name: /保存到此设备|已保存到设备/ })).toBeVisible()
   await page.getByRole('button', { name: /开始阅读|继续阅读|重新阅读/ }).click()
   const readerToolbar = page.getByRole('toolbar', { name: /PDF 阅读工具|EPUB 阅读工具/ })
   await expect(readerToolbar).toBeVisible()

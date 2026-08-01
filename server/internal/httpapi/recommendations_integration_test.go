@@ -59,4 +59,3 @@ func TestRecommendationFeedbackImmediatelyChangesPersonalizedResults(t *testing.
 		t.Fatalf("interested feedback was not reflected: %#v", item)
 	}
 }
-

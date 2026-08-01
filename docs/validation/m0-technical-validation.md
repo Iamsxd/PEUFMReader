@@ -32,9 +32,9 @@
 
 ## 尚未满足的 M0 退出条件
 
-- 使用真实中文/英文 EPUB、复杂排版 EPUB、文本 PDF、扫描 PDF、超大 PDF 和损坏文件建立回归语料。
-- 在桌面和移动浏览器完成 PDF/EPUB 的视觉与交互验证。
 - 对同一批真实书籍执行至少十次关闭重开，校准位置恢复误差。
 - 在真实 Unraid 主机验证 PUID/PGID、缓存盘/阵列路径、备份恢复和大文件持续读取。
+
+真实 PDF/EPUB 语料回归及桌面/移动 Chromium 交互矩阵已经补齐；执行方法见 `reader-corpus-regression.md` 和 `browser-system-test.md`。Unraid 可先运行 `sh scripts/preflight.sh` 验证实际 PUID/PGID 和卷权限，再用 `sh scripts/verify-backup.sh 快照名` 做非破坏性备份校验，但仍需在副本环境完成一次完整恢复演练。
 
 这些项目完成前，应把当前版本视为可部署的开发基线，而不是可公网发布的 MVP。

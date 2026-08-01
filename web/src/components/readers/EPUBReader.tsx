@@ -19,6 +19,9 @@ import { HighlightComposer, type PendingHighlight } from './HighlightComposer'
 
 interface Props {
   book: BookFile
+  contentURL: string
+  contentData?: ArrayBuffer
+  offlineMode: boolean
   initialState: ReadingState
   chromeVisible: boolean
   onChromeActivity: () => void
@@ -71,7 +74,7 @@ function readPreferences(): EPUBReaderPreferences {
   }
 }
 
-export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity, onHideChrome, onProgress, readingStatus, onStatusChange }: Props) {
+export function EPUBReader({ book, contentURL, contentData, offlineMode, initialState, chromeVisible, onChromeActivity, onHideChrome, onProgress, readingStatus, onStatusChange }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const renditionRef = useRef<Rendition | null>(null)
   const bookRef = useRef<Book | null>(null)
@@ -189,6 +192,11 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
   }, [])
 
   useEffect(() => {
+    if (offlineMode) {
+      setHighlights([])
+      setSidePanel((current) => current === 'marks' ? null : current)
+      return
+    }
     let disposed = false
     void api.listReadingMarks(book.id).then((marks) => {
       if (!disposed) setHighlights(marks.filter((mark) => mark.kind === 'highlight'))
@@ -196,7 +204,7 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
       if (!disposed) setError('文本高亮加载失败。')
     })
     return () => { disposed = true }
-  }, [book.id])
+  }, [book.id, offlineMode])
 
   useEffect(() => {
     const rendition = renditionRef.current
@@ -230,7 +238,7 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
     setSearchError('')
     setAtStart(initialState.overallProgress <= 0)
     setAtEnd(initialState.overallProgress >= 0.999)
-    const epub = ePub(api.contentURL(book.id), { requestCredentials: true, openAs: 'epub' })
+    const epub = ePub(contentData ?? contentURL, { requestCredentials: !contentData, openAs: 'epub' })
     const initialPreferences = preferencesRef.current
     const rendition = epub.renderTo(host, {
       width: '100%',
@@ -347,6 +355,7 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
       if (event.clientY <= 100) onChromeActivity()
     }
     const selected = (cfiRange: string, contents: Contents) => {
+      if (offlineMode) return
       const quote = contents.document.getSelection()?.toString().replace(/\s+/g, ' ').trim() ?? ''
       if (!quote) return
       const currentProgress = clampProgress(lastProgressRef.current)
@@ -389,7 +398,7 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
       renderedHighlightCFIsRef.current = []
       host.innerHTML = ''
     }
-  }, [book.id])
+  }, [book.id, contentData, contentURL, offlineMode])
 
   useEffect(() => {
     try {
@@ -535,7 +544,7 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
         <div className="reader-tool-group" aria-label="书籍导航">
           <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={() => toggleSidePanel('toc')}>目录</button>
           <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={() => toggleSidePanel('search')}>书内搜索</button>
-          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} onClick={() => toggleSidePanel('marks')}>书签/高亮</button>
+          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} disabled={offlineMode} title={offlineMode ? '离线状态下书签与高亮只读' : undefined} onClick={() => toggleSidePanel('marks')}>书签/高亮</button>
         </div>
         <span className="reader-toolbar-divider" />
         <div className="reader-tool-group" aria-label="阅读方式">
@@ -576,7 +585,7 @@ export function EPUBReader({ book, initialState, chromeVisible, onChromeActivity
       </div>
 
       {sidePanel === 'marks' ? (
-        <ReadingMarksPanel
+        !offlineMode && <ReadingMarksPanel
           bookFileID={book.id}
           current={markLocation}
           onNavigate={(position) => {

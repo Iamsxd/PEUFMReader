@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { APIError, api } from '../api'
+import { findOfflineBook, offlineStorageSupported, removeOfflineBook, saveBookForOffline, type OfflineBookRecord } from '../offline'
 import type { BookDetail, BookFile, Recommendation } from '../types'
 import { formatBytes, formatDuration, formatRelativeTime } from '../utils'
 import { BookCard } from './BookCard'
 
 interface Props {
   bookID: number
+  userID: number
   isAdmin: boolean
   onBack: () => void
   onOpenBook: (book: BookFile) => void
@@ -22,7 +24,7 @@ const statusLabels: Record<BookDetail['readingState']['status'], string> = {
   abandoned: '已放弃',
 }
 
-export function BookDetailPage({ bookID, isAdmin, onBack, onOpenBook, onViewBook, onManageBook, onBrowseCategory }: Props) {
+export function BookDetailPage({ bookID, userID, isAdmin, onBack, onOpenBook, onViewBook, onManageBook, onBrowseCategory }: Props) {
   const [detail, setDetail] = useState<BookDetail | null>(null)
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
   const [error, setError] = useState('')
@@ -31,6 +33,9 @@ export function BookDetailPage({ bookID, isAdmin, onBack, onOpenBook, onViewBook
   const [coverJobID, setCoverJobID] = useState<number | null>(null)
   const [coverNotice, setCoverNotice] = useState('')
   const [coverRevision, setCoverRevision] = useState(0)
+  const [offlineRecord, setOfflineRecord] = useState<OfflineBookRecord | null>(null)
+  const [offlineBusy, setOfflineBusy] = useState(false)
+  const [offlineNotice, setOfflineNotice] = useState('')
 
   useEffect(() => {
     setDetail(null)
@@ -39,13 +44,15 @@ export function BookDetailPage({ bookID, isAdmin, onBack, onOpenBook, onViewBook
     setCoverJobID(null)
     setCoverNotice('')
     setCoverRevision(0)
+    setOfflineRecord(findOfflineBook(userID, bookID) ?? null)
+    setOfflineNotice('')
     void Promise.all([api.getBookDetail(bookID), api.getRecommendations(8)]).then(([nextDetail, result]) => {
       setDetail(nextDetail)
       setRecommendations(result.items.filter((item) => item.book.id !== bookID).slice(0, 6))
     }).catch((reason) => {
       setError(reason instanceof APIError && reason.status === 404 ? '这本书不存在或已被移除。' : '无法加载书籍详情。')
     })
-  }, [bookID])
+  }, [bookID, userID])
 
   useEffect(() => {
     if (!coverJobID) return
@@ -116,6 +123,28 @@ export function BookDetailPage({ bookID, isAdmin, onBack, onOpenBook, onViewBook
     }
   }
 
+  async function toggleOfflineCopy() {
+    if (!detail || offlineBusy) return
+    setOfflineBusy(true)
+    setError('')
+    setOfflineNotice('')
+    try {
+      if (offlineRecord) {
+        await removeOfflineBook(userID, detail.book.id)
+        setOfflineRecord(null)
+        setOfflineNotice('已从当前设备移除离线副本。')
+      } else {
+        const record = await saveBookForOffline(userID, detail.book)
+        setOfflineRecord(record)
+        setOfflineNotice('已保存到当前设备，可以在“更多 → 离线书籍”中打开。')
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '无法更新离线副本。')
+    } finally {
+      setOfflineBusy(false)
+    }
+  }
+
   if (error && !detail) {
     return <section className="empty-state detail-error"><h2>{error}</h2><button className="secondary" onClick={onBack}>返回书库</button></section>
   }
@@ -160,8 +189,11 @@ export function BookDetailPage({ bookID, isAdmin, onBack, onOpenBook, onViewBook
             <button className={detail.favorite ? 'favorite-button active' : 'favorite-button'} disabled={favoriteBusy} onClick={() => void toggleFavorite()}>
               {detail.favorite ? '♥ 已收藏' : '♡ 加入收藏'}
             </button>
+            {offlineStorageSupported() && <button className={offlineRecord ? 'secondary offline-copy active' : 'secondary offline-copy'} disabled={offlineBusy} onClick={() => void toggleOfflineCopy()}>{offlineBusy ? '处理中…' : offlineRecord ? '✓ 已保存到设备' : '↓ 保存到此设备'}</button>}
             {isAdmin && <button className="secondary" onClick={() => onManageBook(book)}>整理书籍信息</button>}
           </div>
+          {offlineRecord && <small className="detail-last-read">设备副本 {formatBytes(offlineRecord.contentBytes)} · 保存于 {formatRelativeTime(offlineRecord.cachedAt)}</small>}
+          {offlineNotice && <small className="detail-offline-notice" role="status">{offlineNotice}</small>}
           {readingState.status !== 'unread' && readingState.updatedAt && <small className="detail-last-read">上次记录于 {formatRelativeTime(readingState.updatedAt)}</small>}
         </div>
       </section>

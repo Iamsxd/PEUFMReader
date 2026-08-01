@@ -696,6 +696,21 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .epub-navigation button:hover:not(:disabled) { background: #477756; }
 .epub-navigation span { min-width: 50px; font-size: .78rem; font-weight: 800; font-variant-numeric: tabular-nums; text-align: center; }
 
+.offline-copy.active { border-color: #7aa088; background: #e3eee6; color: #24563a; }
+.detail-offline-notice { display: block; margin-top: 10px; color: #356246; font-weight: 750; }
+.offline-books-page { display: grid; gap: 24px; }
+.offline-notice { border-color: #d8bd71; background: #fff5d8; color: #665020; }
+.offline-storage-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.offline-storage-summary > div { min-height: 92px; display: flex; flex-direction: column; justify-content: center; gap: 5px; padding: 17px 20px; border: 1px solid #d8ddd6; border-radius: 16px; background: #fbfaf5; box-shadow: 0 10px 28px #42554810; }
+.offline-storage-summary strong { color: #244f37; font-family: Georgia, serif; font-size: 1.45rem; }
+.offline-storage-summary span { color: #68746c; font-size: .8rem; font-weight: 700; }
+.offline-book-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.offline-book-record { min-width: 0; overflow: hidden; border: 1px solid #d8ddd6; border-radius: 18px; background: #fbfaf5; box-shadow: 0 12px 34px #42554814; }
+.offline-book-record .book-card { height: 100%; border: 0; border-radius: 0; box-shadow: none; }
+.offline-book-record footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 13px; border-top: 1px solid #e0e3dd; }
+.offline-book-record footer span { color: #6a756d; font-size: .72rem; }
+.offline-book-record footer button { flex: 0 0 auto; padding: 7px 9px; font-size: .72rem; }
+
 @media (max-width: 1080px) {
   .app-header { gap: 12px; }
   .app-brand strong { display: none; }
@@ -711,6 +726,7 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .book-detail-hero { grid-template-columns: 230px minmax(0, 1fr); }
   .detail-information-grid { grid-template-columns: 1fr 1fr; }
   .detail-community-card { grid-column: 1 / -1; }
+  .offline-book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 720px) {
@@ -810,6 +826,9 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .library-controls, .metadata-form-grid { grid-template-columns: 1fr; }
   .inline-form { grid-template-columns: 1fr; }
   .book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .offline-storage-summary { grid-template-columns: 1fr; }
+  .offline-book-grid { grid-template-columns: 1fr; }
+  .offline-book-record footer { align-items: flex-start; flex-direction: column; }
   .book-card { min-height: 260px; }
   .book-cover, .cover-placeholder { height: 145px; }
   .section-title, .review-card-heading, .review-actions { align-items: stretch; flex-direction: column; }

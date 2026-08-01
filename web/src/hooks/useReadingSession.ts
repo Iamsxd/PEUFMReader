@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { api } from '../api'
+import { addOfflineActiveSeconds } from '../offline'
 
 const HEARTBEAT_SECONDS = 15
 
-export function useReadingSession(bookFileID: number) {
+export function useReadingSession(bookFileID: number, offlineUserID?: number) {
   const lastInteraction = useRef(Date.now())
 
   useEffect(() => {
@@ -13,17 +14,21 @@ export function useReadingSession(bookFileID: number) {
     const events: (keyof WindowEventMap)[] = ['keydown', 'pointerdown', 'wheel', 'touchstart']
     events.forEach((event) => window.addEventListener(event, markInteraction, { passive: true }))
 
-    void api.startReadingSession(bookFileID).then((session) => {
-      if (disposed) {
-        void api.advanceReadingSession(session.id, 'finish', 0).catch(() => undefined)
-      } else {
-        sessionID = session.id
-      }
-    })
+    if (!offlineUserID) {
+      void api.startReadingSession(bookFileID).then((session) => {
+        if (disposed) {
+          void api.advanceReadingSession(session.id, 'finish', 0).catch(() => undefined)
+        } else {
+          sessionID = session.id
+        }
+      }).catch(() => undefined)
+    }
 
     const interval = window.setInterval(() => {
       const recentlyActive = Date.now() - lastInteraction.current < 60_000
-      if (sessionID && document.visibilityState === 'visible' && recentlyActive) {
+      if (offlineUserID && document.visibilityState === 'visible' && recentlyActive) {
+        addOfflineActiveSeconds(offlineUserID, bookFileID, HEARTBEAT_SECONDS)
+      } else if (sessionID && document.visibilityState === 'visible' && recentlyActive) {
         void api.advanceReadingSession(sessionID, 'heartbeat', HEARTBEAT_SECONDS).catch(() => undefined)
       }
     }, HEARTBEAT_SECONDS * 1000)
@@ -36,5 +41,5 @@ export function useReadingSession(bookFileID: number) {
         void api.advanceReadingSession(sessionID, 'finish', 0).catch(() => undefined)
       }
     }
-  }, [bookFileID])
+  }, [bookFileID, offlineUserID])
 }

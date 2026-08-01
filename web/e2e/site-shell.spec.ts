@@ -14,6 +14,16 @@ test('publishes the site icon and mobile application metadata', async ({ page, r
   const manifest = await request.get('/site.webmanifest')
   expect(manifest.ok()).toBeTruthy()
   expect((await manifest.json()).short_name).toBe('PEUFMReader')
+
+  const serviceWorker = await request.get('/sw.js')
+  expect(serviceWorker.ok()).toBeTruthy()
+  expect(await serviceWorker.text()).not.toContain('__BUILD_REVISION__')
+
+  const offlineAssets = await request.get('/offline-assets.json')
+  expect(offlineAssets.ok()).toBeTruthy()
+  const offlineManifest = await offlineAssets.json() as { files: string[] }
+  expect(offlineManifest.files.some((path) => path.includes('/PDFReader-'))).toBeTruthy()
+  expect(offlineManifest.files.some((path) => path.includes('/EPUBReader-'))).toBeTruthy()
 })
 
 test('site shell does not overflow the mobile viewport', async ({ page }, testInfo) => {

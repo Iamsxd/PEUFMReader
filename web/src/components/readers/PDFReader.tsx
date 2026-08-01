@@ -28,6 +28,9 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerURL
 
 interface Props {
   book: BookFile
+  contentURL: string
+  contentData?: ArrayBuffer
+  offlineMode: boolean
   initialState: ReadingState
   chromeVisible: boolean
   onChromeActivity: () => void
@@ -80,7 +83,7 @@ function readPreferences(): PDFReaderPreferences {
   }
 }
 
-export function PDFReader({ book, initialState, chromeVisible, onChromeActivity, onHideChrome, onProgress, readingStatus, onStatusChange }: Props) {
+export function PDFReader({ book, contentURL, contentData, offlineMode, initialState, chromeVisible, onChromeActivity, onHideChrome, onProgress, readingStatus, onStatusChange }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const loadingTaskRef = useRef<pdfjs.PDFDocumentLoadingTask | null>(null)
   const visiblePagesRef = useRef(new Map<number, number>())
@@ -138,7 +141,8 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
     setSearchProgress('')
     setSearchError('')
 
-    void fetchPDFBytes(api.contentURL(book.id), controller.signal).then((bytes) => {
+    const bytesPromise = contentData ? Promise.resolve(new Uint8Array(contentData)) : fetchPDFBytes(contentURL, controller.signal)
+    void bytesPromise.then((bytes) => {
       if (disposed) return null
       const task = pdfjs.getDocument({
         data: bytes,
@@ -173,9 +177,14 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
       loadingTaskRef.current = null
       void document?.destroy()
     }
-  }, [book.id])
+  }, [book.id, contentData, contentURL])
 
   useEffect(() => {
+    if (offlineMode) {
+      setHighlights([])
+      setSidePanel((current) => current === 'marks' ? null : current)
+      return
+    }
     let disposed = false
     void api.listReadingMarks(book.id).then((marks) => {
       if (!disposed) setHighlights(marks.filter((mark) => mark.kind === 'highlight'))
@@ -183,18 +192,19 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
       if (!disposed) setError('文本高亮加载失败。')
     })
     return () => { disposed = true }
-  }, [book.id])
+  }, [book.id, offlineMode])
 
   const syncHighlights = useCallback((marks: ReadingMark[]) => {
     setHighlights(marks.filter((mark) => mark.kind === 'highlight'))
   }, [])
 
   const handleTextSelection = useCallback((selectedPage: number, pageBounds: DOMRect, selectionRects: DOMRect[], quote: string) => {
+    if (offlineMode) return
     const location = createPDFHighlightLocation(selectedPage, pageCount, pageBounds, selectionRects)
     if (!Array.isArray(location.position.rects) || location.position.rects.length === 0) return
     setPendingHighlight({ ...location, quote: quote.slice(0, 4000) })
     onChromeActivity()
-  }, [onChromeActivity, pageCount])
+  }, [offlineMode, onChromeActivity, pageCount])
 
   async function saveHighlight(color: HighlightColor, body: string) {
     if (!pendingHighlight) return
@@ -419,7 +429,7 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
         <div className="reader-tool-group" aria-label="书籍导航">
           <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={() => toggleSidePanel('toc')}>目录</button>
           <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={() => toggleSidePanel('search')}>书内搜索</button>
-          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} onClick={() => toggleSidePanel('marks')}>书签/高亮</button>
+          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} disabled={offlineMode} title={offlineMode ? '离线状态下书签与高亮只读' : undefined} onClick={() => toggleSidePanel('marks')}>书签/高亮</button>
         </div>
         <span className="reader-toolbar-divider" />
         <div className="reader-tool-group" aria-label="阅读方式">
@@ -450,7 +460,7 @@ export function PDFReader({ book, initialState, chromeVisible, onChromeActivity,
       </div>
 
       {sidePanel === 'marks' ? (
-        <ReadingMarksPanel
+        !offlineMode && <ReadingMarksPanel
           bookFileID={book.id}
           current={createPDFReadingMarkLocation(pageNumber, pageCount)}
           onNavigate={(position) => {
