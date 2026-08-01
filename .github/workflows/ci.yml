@@ -66,6 +66,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+      - name: Validate shell scripts
+        run: sh -n scripts/*.sh
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - name: Build runtime image

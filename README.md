@@ -199,11 +199,14 @@ chown -R 99:100 /mnt/user/appdata/peufmreader/library \
 检查并启动：
 
 ```sh
+sh scripts/preflight.sh
 docker compose config
 docker compose up -d --build
 docker compose ps
 docker compose logs --tail 100 app
 ```
+
+`preflight.sh` 会以 Compose 中实际配置的 `PUID/PGID` 启动一次临时应用容器，验证托管书库、暂存、缓存和导入目录可写，并确认只读监控目录与 Calibre 目录可读；它不会导入、移动或修改电子书。
 
 PostgreSQL 数据必须放在 NAS 本机持久存储，不应放在另一台设备的 SMB/CIFS 网络共享上。数据库端口没有映射到主机，也不应手动向局域网或公网开放。
 
@@ -343,13 +346,19 @@ sh scripts/backup.sh
 sh scripts/backup.sh before-upgrade
 ```
 
+创建后可执行非破坏性校验；它会检查所有文件的 SHA-256、数据库 dump、压缩包完整性以及压缩包路径安全性，不会停止应用或恢复数据：
+
+```sh
+sh scripts/verify-backup.sh before-upgrade
+```
+
 恢复：
 
 ```sh
 sh scripts/restore.sh before-upgrade --yes
 ```
 
-备份包含 PostgreSQL 导出、托管书库、缓存和导入目录，并通过 SHA-256 校验。恢复是破坏性操作，会替换当前数据，请先额外保留一份现有目录副本。
+备份包含 PostgreSQL 导出、托管书库、缓存和导入目录，并通过 SHA-256 校验。恢复前会再次执行完整性和路径安全检查；恢复是破坏性操作，会替换当前数据，请先额外保留一份现有目录副本。
 
 ## 公网访问
 
