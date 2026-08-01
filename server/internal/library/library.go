@@ -3,6 +3,7 @@ package library
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,9 +12,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
+
+var coverThumbnailSlots = make(chan struct{}, 2)
 
 var (
 	ErrUnsupportedFormat = errors.New("unsupported ebook format")
@@ -245,6 +249,71 @@ func (m *Manager) storeCover(sha256Hex, extension string, content []byte, replac
 
 func (m *Manager) ResolveCover(relativePath string) (string, error) {
 	return SecureResolve(m.cacheRoot, filepath.FromSlash(relativePath))
+}
+
+func (m *Manager) ResolveCoverThumbnail(ctx context.Context, relativePath string, width int) (string, error) {
+	if width != 240 && width != 320 && width != 480 {
+		return "", fmt.Errorf("unsupported cover thumbnail width")
+	}
+	sourcePath, err := m.ResolveCover(relativePath)
+	if err != nil {
+		return "", err
+	}
+	base := strings.TrimSuffix(filepath.Base(relativePath), filepath.Ext(relativePath)) + ".webp"
+	thumbnailRelative := filepath.Join("cover-thumbnails", fmt.Sprintf("w%d", width), filepath.Dir(relativePath), base)
+	thumbnailPath, err := SecureResolve(m.cacheRoot, thumbnailRelative)
+	if err != nil {
+		return "", err
+	}
+	if coverThumbnailFresh(sourcePath, thumbnailPath) {
+		return thumbnailPath, nil
+	}
+
+	select {
+	case coverThumbnailSlots <- struct{}{}:
+		defer func() { <-coverThumbnailSlots }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	if coverThumbnailFresh(sourcePath, thumbnailPath) {
+		return thumbnailPath, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(thumbnailPath), 0o750); err != nil {
+		return "", fmt.Errorf("create cover thumbnail directory: %w", err)
+	}
+	temp, err := os.CreateTemp(filepath.Dir(thumbnailPath), ".cover-thumbnail-*.webp")
+	if err != nil {
+		return "", fmt.Errorf("create cover thumbnail: %w", err)
+	}
+	tempPath := temp.Name()
+	_ = temp.Close()
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.Remove(tempPath)
+		}
+	}()
+	if output, err := exec.CommandContext(ctx, "cwebp", "-quiet", "-q", "78", "-resize", fmt.Sprintf("%d", width), "0", sourcePath, "-o", tempPath).CombinedOutput(); err != nil {
+		return "", fmt.Errorf("generate WebP cover thumbnail: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	info, err := os.Stat(tempPath)
+	if err != nil || info.Size() == 0 || info.Size() > 4<<20 {
+		return "", fmt.Errorf("generated cover thumbnail is invalid")
+	}
+	if err := os.Chmod(tempPath, 0o640); err != nil {
+		return "", fmt.Errorf("set cover thumbnail permissions: %w", err)
+	}
+	if err := os.Rename(tempPath, thumbnailPath); err != nil {
+		return "", fmt.Errorf("commit cover thumbnail: %w", err)
+	}
+	committed = true
+	return thumbnailPath, nil
+}
+
+func coverThumbnailFresh(sourcePath, thumbnailPath string) bool {
+	source, sourceErr := os.Stat(sourcePath)
+	thumbnail, thumbnailErr := os.Stat(thumbnailPath)
+	return sourceErr == nil && thumbnailErr == nil && thumbnail.Size() > 0 && !thumbnail.ModTime().Before(source.ModTime())
 }
 
 func (m *Manager) StoreExtractedText(sha256Hex string, content []byte) (string, error) {

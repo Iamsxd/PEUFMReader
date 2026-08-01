@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { APIError, api } from '../api'
 import type { CatalogQuery, CategorySummary } from '../types'
+import { coverThumbnailURL } from '../utils'
 
 interface Props {
   onBrowse: (query: CatalogQuery) => void
@@ -35,7 +36,7 @@ export function CategoriesPage({ onBrowse }: Props) {
           {visibleCategories.map((category) => (
             <button key={category.id} className="category-directory-card" onClick={() => onBrowse({ category: category.slug, sort: 'title' })}>
               <span className="category-directory-covers" aria-hidden="true">
-                {category.coverUrls.slice(0, 3).map((url) => <img key={url} src={url} alt="" loading="lazy" />)}
+                {category.coverUrls.slice(0, 3).map((url) => <img key={url} src={coverThumbnailURL(url, 240)} alt="" loading="lazy" decoding="async" />)}
                 {category.coverUrls.length === 0 && <i>{category.name.slice(0, 1)}</i>}
               </span>
               <span><strong>{category.name}</strong><small>{category.bookCount > 0 ? `${category.bookCount} 本书` : '暂无书籍'}</small></span>

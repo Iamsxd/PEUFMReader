@@ -151,6 +151,7 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .catalog-search-field > span, .category-search > span { position: absolute; left: 13px; z-index: 1; color: #6f7f74; }
 .catalog-search-field input, .category-search input { padding-left: 36px; }
 .catalog-grid { transition: opacity .15s ease; }
+.catalog-grid .book-card, .review-summary-row, .job-list .job-row { content-visibility: auto; contain-intrinsic-size: auto 420px; }
 .catalog-grid.is-updating { opacity: .55; pointer-events: none; }
 .catalog-pagination { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 30px; }
 .catalog-pagination span { color: #66736b; font-size: .85rem; }
@@ -661,7 +662,10 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .reading-mark-edit button { padding: 6px 10px; border: 1px solid #cbd2cb; border-radius: 8px; background: #eef2ed; color: #35513f; font-weight: 700; }
 .reading-mark-edit button:last-child { border-color: #2d6041; background: #2d6041; color: white; }
 .pdf-error { position: absolute; z-index: 6; top: 130px; left: 50%; width: min(640px, calc(100% - 32px)); margin: 0; transform: translateX(-50%); box-shadow: 0 10px 35px #0005; }
-.pdf-loading { flex: 1; display: grid; place-items: center; color: #cbd5cd; }
+.pdf-loading { flex: 1; display: grid; place-items: center; align-content: center; gap: 12px; color: #cbd5cd; }
+.pdf-loading small { max-width: 360px; color: #91a097; text-align: center; }
+.reader-load-progress { width: min(320px, 70vw); height: 6px; overflow: hidden; border-radius: 99px; background: #ffffff20; }
+.reader-load-progress i { display: block; height: 100%; border-radius: inherit; background: #a8cbb4; transition: width .15s ease; }
 .pdf-reader-viewport { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-color: #6c786f #202923; }
 .pdf-pages { box-sizing: border-box; width: max-content; min-width: 100%; min-height: 100%; padding: 24px 24px 88px; }
 .pdf-pages.paged { display: flex; align-items: flex-start; justify-content: center; gap: 18px; }

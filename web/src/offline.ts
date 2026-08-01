@@ -1,5 +1,6 @@
 import { APIError, api } from './api'
 import type { BookFile, ReadingState, Session, User } from './types'
+import { coverThumbnailURL } from './utils'
 
 const OFFLINE_VERSION = 'v1'
 const IDENTITY_KEY = `peufmreader-offline-identity-${OFFLINE_VERSION}`
@@ -82,8 +83,25 @@ export async function saveBookForOffline(userID: number, book: BookFile): Promis
     },
   }))
 
+  let storedBook = book
+  if (book.coverUrl) {
+    try {
+      const coverResponse = await fetch(coverThumbnailURL(book.coverUrl, 320), { credentials: 'include' })
+      if (coverResponse.ok) {
+        const cover = await coverResponse.blob()
+        if (cover.size > 0) {
+          const coverKey = offlineCoverKey(userID, book.id)
+          await cache.put(coverKey, new Response(cover, { headers: { 'Content-Type': coverResponse.headers.get('Content-Type') || 'image/webp' } }))
+          storedBook = { ...book, coverUrl: coverKey }
+        }
+      }
+    } catch {
+      // A cover is helpful offline but must never block saving the book itself.
+    }
+  }
+
   const now = new Date().toISOString()
-  const record = { book, cachedAt: now, lastOpenedAt: now, contentBytes: blob.size }
+  const record = { book: storedBook, cachedAt: now, lastOpenedAt: now, contentBytes: blob.size }
   try {
     writeOfflineBooks(userID, [record, ...listOfflineBooks(userID).filter((item) => item.book.id !== book.id)])
   } catch (reason) {
@@ -110,6 +128,7 @@ export async function removeOfflineBook(userID: number, bookFileID: number): Pro
   if (typeof caches !== 'undefined') {
     const cache = await caches.open(offlineBookCacheName(userID))
     await cache.delete(offlineContentKey(userID, bookFileID))
+    await cache.delete(offlineCoverKey(userID, bookFileID))
   }
   removeOfflineProgress(userID, bookFileID)
 }
@@ -306,6 +325,10 @@ function writeOfflineBooks(userID: number, records: OfflineBookRecord[]): void {
 
 function offlineContentKey(userID: number, bookFileID: number): string {
   return new URL(`/__peufm-offline/user/${positiveUserID(userID)}/book/${positiveBookID(bookFileID)}`, window.location.origin).toString()
+}
+
+function offlineCoverKey(userID: number, bookFileID: number): string {
+  return new URL(`/__peufm-offline/user/${positiveUserID(userID)}/book/${positiveBookID(bookFileID)}/cover`, window.location.origin).toString()
 }
 
 function offlineBooksKey(userID: number): string {

@@ -124,7 +124,7 @@ export function parsePDFPreferences(value: string | null): PDFReaderPreferences 
   }
 }
 
-export async function fetchPDFBytes(url: string, signal?: AbortSignal): Promise<Uint8Array> {
+export async function fetchPDFBytes(url: string, signal?: AbortSignal, onProgress?: (loaded: number, total?: number) => void): Promise<Uint8Array> {
   const response = await fetch(url, {
     method: 'GET',
     credentials: 'include',
@@ -134,7 +134,30 @@ export async function fetchPDFBytes(url: string, signal?: AbortSignal): Promise<
   if (!response.ok) {
     throw new PDFContentError(`PDF 文件请求失败（HTTP ${response.status}）。`, response.status)
   }
-  const bytes = new Uint8Array(await response.arrayBuffer())
+  const totalHeader = Number(response.headers.get('Content-Length'))
+  const total = Number.isFinite(totalHeader) && totalHeader > 0 ? totalHeader : undefined
+  let bytes: Uint8Array
+  if (response.body) {
+    const reader = response.body.getReader()
+    const chunks: Uint8Array[] = []
+    let loaded = 0
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      chunks.push(value)
+      loaded += value.byteLength
+      onProgress?.(loaded, total)
+    }
+    bytes = new Uint8Array(loaded)
+    let offset = 0
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+  } else {
+    bytes = new Uint8Array(await response.arrayBuffer())
+    onProgress?.(bytes.length, total ?? bytes.length)
+  }
   if (bytes.length < 5 || String.fromCharCode(...bytes.subarray(0, 5)) !== '%PDF-') {
     throw new PDFContentError('服务器返回的内容不是有效 PDF。')
   }

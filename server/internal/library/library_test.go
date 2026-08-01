@@ -3,12 +3,24 @@ package library
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestCoverThumbnailRejectsUnsupportedWidth(t *testing.T) {
+	root := t.TempDir()
+	manager, err := NewManager(filepath.Join(root, "library"), filepath.Join(root, "staging"), filepath.Join(root, "cache"), 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ResolveCoverThumbnail(context.Background(), "covers/aa/cover.jpg", 1024); err == nil {
+		t.Fatal("unsupported cover thumbnail width was accepted")
+	}
+}
 
 func TestSecureResolve(t *testing.T) {
 	root := t.TempDir()

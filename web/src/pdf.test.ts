@@ -79,13 +79,15 @@ describe('fetchPDFBytes', () => {
     }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const result = await fetchPDFBytes('/api/v1/book-files/1/content')
+    const progress = vi.fn()
+    const result = await fetchPDFBytes('/api/v1/book-files/1/content', undefined, progress)
 
     expect(new TextDecoder().decode(result)).toContain('%PDF-1.7')
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/book-files/1/content', expect.objectContaining({
       credentials: 'include',
       headers: { Accept: 'application/pdf' },
     }))
+    expect(progress).toHaveBeenCalled()
   })
 
   it('reports authentication and server errors', async () => {

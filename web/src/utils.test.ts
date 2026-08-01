@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampProgress, formatBytes, formatDuration, formatRelativeTime } from './utils'
+import { clampProgress, coverThumbnailURL, formatBytes, formatDuration, formatRelativeTime } from './utils'
 
 describe('formatting helpers', () => {
   it('formats file sizes', () => {
@@ -22,5 +22,11 @@ describe('formatting helpers', () => {
     const now = new Date('2026-07-19T12:00:00Z')
     expect(formatRelativeTime('2026-07-19T11:55:00Z', now)).toBe('5 分钟前')
     expect(formatRelativeTime('2026-07-17T12:00:00Z', now)).toBe('2 天前')
+  })
+
+  it('builds responsive cover thumbnail URLs without changing offline covers', () => {
+    expect(coverThumbnailURL('/api/v1/book-files/12/cover', 320)).toBe('/api/v1/book-files/12/cover?width=320')
+    expect(coverThumbnailURL('/api/v1/book-files/12/cover?v=2', 480)).toBe('/api/v1/book-files/12/cover?v=2&width=480')
+    expect(coverThumbnailURL('/__peufm-offline/user/3/book/12/cover', 240)).toBe('/__peufm-offline/user/3/book/12/cover')
   })
 })

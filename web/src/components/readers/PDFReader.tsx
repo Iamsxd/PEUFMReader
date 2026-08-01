@@ -99,6 +99,8 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   const [isNarrow, setIsNarrow] = useState(window.innerWidth <= 720)
   const [preferences, setPreferences] = useState(readPreferences)
   const [error, setError] = useState('')
+  const [loadingStatus, setLoadingStatus] = useState('正在连接书库…')
+  const [loadingProgress, setLoadingProgress] = useState<number | null>(null)
   const [sidePanel, setSidePanel] = useState<PDFSidePanel>(null)
   const [outline, setOutline] = useState<PDFOutlineEntry[]>([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -134,6 +136,8 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     visiblePagesRef.current.clear()
     searchRunRef.current += 1
     setError('')
+    setLoadingStatus(contentData ? '正在读取设备副本…' : '正在下载 PDF…')
+    setLoadingProgress(contentData ? 100 : null)
     setPDFDocument(null)
     setOutline([])
     setSearchResults([])
@@ -141,9 +145,15 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     setSearchProgress('')
     setSearchError('')
 
-    const bytesPromise = contentData ? Promise.resolve(new Uint8Array(contentData)) : fetchPDFBytes(contentURL, controller.signal)
+    const bytesPromise = contentData ? Promise.resolve(new Uint8Array(contentData)) : fetchPDFBytes(contentURL, controller.signal, (loaded, total) => {
+      if (disposed) return
+      setLoadingStatus(total ? `正在下载 PDF · ${Math.round((loaded / total) * 100)}%` : `正在下载 PDF · ${(loaded / (1024 * 1024)).toFixed(1)} MB`)
+      setLoadingProgress(total ? Math.min(100, Math.round((loaded / total) * 100)) : null)
+    })
     void bytesPromise.then((bytes) => {
       if (disposed) return null
+      setLoadingStatus('下载完成，正在解析第一页…')
+      setLoadingProgress(100)
       const task = pdfjs.getDocument({
         data: bytes,
         ...getPDFJSAssetOptions(import.meta.env.BASE_URL),
@@ -158,6 +168,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
       setBasePageSize({ width: viewport.width, height: viewport.height })
       setPageNumber(clampPDFPage(initialPage, document.numPages))
       setPDFDocument(document)
+      setLoadingStatus('')
       void document.getOutline().then((nodes) => resolvePDFOutline(document, nodes)).then((entries) => {
         if (!disposed) setOutline(entries)
       }).catch((reason: unknown) => {
@@ -514,7 +525,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
       )}
 
       {error && <div className="notice error pdf-error">{error}</div>}
-      {!pdfDocument && !error && <div className="pdf-loading">正在加载 PDF…</div>}
+      {!pdfDocument && !error && <div className="pdf-loading"><span className="loading-spinner" /><strong>{loadingStatus}</strong>{loadingProgress !== null && <span className="reader-load-progress" aria-label={`PDF 加载进度 ${loadingProgress}%`}><i style={{ width: `${loadingProgress}%` }} /></span>}<small>大文件首次打开可能需要一些时间，后续页面会按可见区域渲染。</small></div>}
 
       <div ref={viewportRef} className="pdf-reader-viewport">
         {pdfDocument && (

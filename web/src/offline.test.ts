@@ -105,6 +105,18 @@ describe('offline book storage', () => {
     expect(listOfflineBooks(3)).toEqual([])
   })
 
+  it('keeps a responsive cover beside the offline book when available', async () => {
+    const coveredBook = { ...book, coverUrl: '/api/v1/book-files/12/cover' }
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).includes('/cover')
+      ? new Response('webp-cover', { status: 200, headers: { 'Content-Type': 'image/webp' } })
+      : new Response('%PDF-offline', { status: 200, headers: { 'Content-Type': 'application/pdf' } })))
+
+    const record = await saveBookForOffline(3, coveredBook)
+
+    expect(record.book.coverUrl).toBe('https://reader.test/__peufm-offline/user/3/book/12/cover')
+    expect(cache.values.has(record.book.coverUrl!)).toBe(true)
+  })
+
   it('cleans the least recently used copy and keeps cleanup configurable', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('%PDF-offline', { status: 200, headers: { 'Content-Type': 'application/pdf' } })))
     const older = await saveBookForOffline(3, book)

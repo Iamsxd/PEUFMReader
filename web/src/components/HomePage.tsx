@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { APIError, api } from '../api'
 import type { BookFile, CatalogQuery, CategorySummary, HomeBook, HomeDashboard } from '../types'
-import { formatDuration, formatRelativeTime } from '../utils'
+import { coverThumbnailURL, formatDuration, formatRelativeTime } from '../utils'
 import { BookCard } from './BookCard'
 
 interface Props {
@@ -117,7 +117,7 @@ function ContinueCard({ item, onOpen, onDetails }: { item: HomeBook; onOpen: (bo
   const progress = Math.round((item.overallProgress ?? 0) * 100)
   return (
     <article className="continue-card">
-      {item.book.coverUrl ? <img src={item.book.coverUrl} alt="" /> : <span className="continue-cover-placeholder">{item.book.title.slice(0, 1)}</span>}
+      {item.book.coverUrl ? <img src={coverThumbnailURL(item.book.coverUrl, 320)} alt="" decoding="async" /> : <span className="continue-cover-placeholder">{item.book.title.slice(0, 1)}</span>}
       <div>
         <span className={`format-badge ${item.book.format}`}>{item.book.format.toUpperCase()}</span>
         <h3>{item.book.title}</h3>
@@ -177,7 +177,7 @@ function CategoryTile({ category, onClick }: { category: CategorySummary; onClic
   return (
     <button className="category-tile" onClick={onClick}>
       <span className="category-cover-stack" aria-hidden="true">
-        {category.coverUrls.slice(0, 3).map((url) => <img key={url} src={url} alt="" loading="lazy" />)}
+        {category.coverUrls.slice(0, 3).map((url) => <img key={url} src={coverThumbnailURL(url, 240)} alt="" loading="lazy" decoding="async" />)}
         {category.coverUrls.length === 0 && <i>{category.name.slice(0, 1)}</i>}
       </span>
       <span><strong>{category.name}</strong><small>{category.bookCount} 本书</small></span>

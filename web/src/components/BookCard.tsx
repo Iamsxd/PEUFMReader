@@ -1,5 +1,5 @@
 import type { BookFile } from '../types'
-import { formatBytes, formatDuration, formatRelativeTime } from '../utils'
+import { coverThumbnailURL, formatBytes, formatDuration, formatRelativeTime } from '../utils'
 
 interface Props {
   book: BookFile
@@ -21,7 +21,7 @@ export function BookCard({ book, onOpen, onDetails, onEdit, onToggleFavorite, fa
   return (
     <article className={`book-card${compact ? ' compact' : ''}`}>
       <button className="book-open" onClick={() => (onDetails ?? onOpen)(book)} aria-label={`${onDetails ? '查看详情：' : '阅读：'}${book.title}`}>
-        {book.coverUrl ? <img className="book-cover" src={book.coverUrl} alt="" loading="lazy" /> : <span className="cover-placeholder">{book.title.slice(0, 1)}</span>}
+        {book.coverUrl ? <img className="book-cover" src={coverThumbnailURL(book.coverUrl, 320)} srcSet={`${coverThumbnailURL(book.coverUrl, 240)} 240w, ${coverThumbnailURL(book.coverUrl, 320)} 320w, ${coverThumbnailURL(book.coverUrl, 480)} 480w`} sizes="(max-width: 720px) 46vw, 220px" alt="" loading="lazy" decoding="async" /> : <span className="cover-placeholder">{book.title.slice(0, 1)}</span>}
         <span className="book-card-content">
           <span className="card-badges">
             <span className={`format-badge ${book.format}`}>{book.format.toUpperCase()}</span>

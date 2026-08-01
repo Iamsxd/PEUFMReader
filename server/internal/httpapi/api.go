@@ -901,6 +901,21 @@ func (a *API) bookCover(w http.ResponseWriter, r *http.Request) {
 		a.internalError(w, err)
 		return
 	}
+	if requestedWidth := strings.TrimSpace(r.URL.Query().Get("width")); requestedWidth != "" {
+		width, parseErr := strconv.Atoi(requestedWidth)
+		if parseErr != nil || (width != 240 && width != 320 && width != 480) {
+			writeError(w, http.StatusBadRequest, "invalid_cover_width", "cover width must be 240, 320 or 480")
+			return
+		}
+		thumbnailPath, thumbnailErr := a.library.ResolveCoverThumbnail(r.Context(), book.CoverPath, width)
+		if thumbnailErr != nil {
+			a.logger.Warn("cover thumbnail generation failed", "bookFileId", book.ID, "width", width, "error", thumbnailErr)
+		} else {
+			absolutePath = thumbnailPath
+			w.Header().Set("Content-Type", "image/webp")
+			w.Header().Set("Vary", "Accept")
+		}
+	}
 	file, err := os.Open(absolutePath)
 	if errors.Is(err, os.ErrNotExist) {
 		writeError(w, http.StatusGone, "cover_missing", "cached cover is missing")

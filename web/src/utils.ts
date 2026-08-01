@@ -10,6 +10,11 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[index]}`
 }
 
+export function coverThumbnailURL(url: string, width: 240 | 320 | 480): string {
+  if (!url || url.startsWith('/__peufm-offline/')) return url
+  return `${url}${url.includes('?') ? '&' : '?'}width=${width}`
+}
+
 export function formatDuration(totalSeconds: number): string {
   const seconds = Math.max(0, Math.floor(totalSeconds))
   const hours = Math.floor(seconds / 3600)
