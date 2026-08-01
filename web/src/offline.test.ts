@@ -7,12 +7,17 @@ import {
   getOfflineReadingState,
   listOfflineBooks,
   loadOfflineIdentity,
+  markOfflineBookOpened,
+  offlineAutoCleanupEnabled,
   offlineBookContent,
   offlineDefaultReadingState,
+  reconcileOfflineBooks,
   rememberOfflineIdentity,
   rememberOfflineReadingState,
   removeOfflineBook,
+  removeOldestOfflineBook,
   saveBookForOffline,
+  setOfflineAutoCleanupEnabled,
   syncOfflineReading,
 } from './offline'
 import type { BookFile, ReadingState, Session } from './types'
@@ -71,7 +76,7 @@ describe('offline book storage', () => {
     vi.stubGlobal('window', { localStorage, caches: cacheStorage, location: { origin: 'https://reader.test' } })
     vi.stubGlobal('localStorage', localStorage)
     vi.stubGlobal('caches', cacheStorage)
-    vi.stubGlobal('navigator', { storage: { estimate: vi.fn(async () => ({ usage: 100, quota: 100_000 })) } })
+    vi.stubGlobal('navigator', { storage: { estimate: vi.fn(async () => ({ usage: 100, quota: 100_000 })), persisted: vi.fn(async () => true), persist: vi.fn(async () => true) } })
   })
 
   afterEach(() => {
@@ -94,8 +99,36 @@ describe('offline book storage', () => {
     expect(listOfflineBooks(3)).toHaveLength(1)
     expect(findOfflineBook(4, book.id)).toBeUndefined()
     expect(new TextDecoder().decode(await offlineBookContent(3, book.id))).toBe('%PDF-offline')
+    expect(findOfflineBook(3, book.id)?.lastOpenedAt).toBeTruthy()
 
     await removeOfflineBook(3, book.id)
+    expect(listOfflineBooks(3)).toEqual([])
+  })
+
+  it('cleans the least recently used copy and keeps cleanup configurable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('%PDF-offline', { status: 200, headers: { 'Content-Type': 'application/pdf' } })))
+    const older = await saveBookForOffline(3, book)
+    markOfflineBookOpened(3, older.book.id, '2026-07-01T00:00:00Z')
+    const newerBook = { ...book, id: 13, title: '较新的离线书' }
+    await saveBookForOffline(3, newerBook)
+
+    expect(offlineAutoCleanupEnabled(3)).toBe(true)
+    setOfflineAutoCleanupEnabled(3, false)
+    expect(offlineAutoCleanupEnabled(3)).toBe(false)
+    const result = await removeOldestOfflineBook(3)
+
+    expect(result.removed.map((item) => item.book.id)).toEqual([book.id])
+    expect(listOfflineBooks(3).map((item) => item.book.id)).toEqual([newerBook.id])
+  })
+
+  it('reconciles stale metadata when the browser removed cached content', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('%PDF-offline', { status: 200, headers: { 'Content-Type': 'application/pdf' } })))
+    await saveBookForOffline(3, book)
+    cache.values.clear()
+
+    const result = await reconcileOfflineBooks(3)
+
+    expect(result.removed.map((item) => item.book.id)).toEqual([book.id])
     expect(listOfflineBooks(3)).toEqual([])
   })
 
