@@ -48,13 +48,13 @@ test('a saved PDF remains readable after the mobile browser goes offline', async
   const more = page.locator('details.navigation-menu')
   await more.locator('summary').click()
   await more.getByRole('button', { name: /离线书籍/ }).click()
-  await expect(page.getByRole('heading', { name: '离线书籍' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '离线书籍', exact: true })).toBeVisible()
   await expect(page.locator('.offline-book-record')).toContainText(book.title)
 
   await context.setOffline(true)
   try {
     await page.reload({ waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: '离线书籍' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '离线书籍', exact: true })).toBeVisible()
     await page.locator('.offline-book-record .book-open').click()
     await expect(page.getByRole('toolbar', { name: 'PDF 阅读工具' })).toBeVisible()
     await expect(page.locator('.pdf-page-shell.rendered').first()).toBeVisible()
