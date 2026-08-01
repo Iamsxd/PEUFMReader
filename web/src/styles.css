@@ -833,3 +833,66 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .pdf-pages.continuous { gap: 12px; }
   .pdf-navigation, .epub-navigation { bottom: 10px; }
 }
+
+/* Keep controls clear of phone notches and home indicators when viewport-fit=cover is active. */
+@supports (padding: max(0px)) {
+  .app-shell {
+    padding-top: max(18px, env(safe-area-inset-top));
+    padding-right: max(32px, env(safe-area-inset-right));
+    padding-bottom: max(56px, env(safe-area-inset-bottom));
+    padding-left: max(32px, env(safe-area-inset-left));
+  }
+
+  .immersive-reader-shell .reader-bar {
+    top: env(safe-area-inset-top);
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-left: max(20px, env(safe-area-inset-left));
+  }
+
+  .reader-toolbar {
+    top: calc(66px + env(safe-area-inset-top));
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-left: max(16px, env(safe-area-inset-left));
+  }
+
+  .reader-chrome-toggle {
+    top: calc(10px + env(safe-area-inset-top));
+    left: max(10px, env(safe-area-inset-left));
+  }
+
+  .reader-side-panel {
+    top: calc(130px + env(safe-area-inset-top));
+    bottom: max(16px, env(safe-area-inset-bottom));
+    left: max(16px, env(safe-area-inset-left));
+  }
+
+  .pdf-navigation, .epub-navigation {
+    bottom: max(18px, env(safe-area-inset-bottom));
+  }
+
+  @media (max-width: 720px) {
+    .app-shell {
+      padding-top: max(10px, env(safe-area-inset-top));
+      padding-right: max(12px, env(safe-area-inset-right));
+      padding-bottom: max(36px, env(safe-area-inset-bottom));
+      padding-left: max(12px, env(safe-area-inset-left));
+    }
+
+    .reader-toolbar {
+      padding-right: max(8px, env(safe-area-inset-right));
+      padding-left: max(8px, env(safe-area-inset-left));
+    }
+
+    .reader-side-panel {
+      top: calc(120px + env(safe-area-inset-top));
+      right: max(8px, env(safe-area-inset-right));
+      bottom: max(10px, env(safe-area-inset-bottom));
+      left: max(8px, env(safe-area-inset-left));
+      width: auto;
+    }
+
+    .pdf-navigation, .epub-navigation {
+      bottom: max(10px, env(safe-area-inset-bottom));
+    }
+  }
+}

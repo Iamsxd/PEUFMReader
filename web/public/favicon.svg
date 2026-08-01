@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="PEUFMReader">
+  <rect width="64" height="64" rx="16" fill="#24563a"/>
+  <path d="M10 46c11-7 20-9 29-7 6 1 11 4 15 8v7H10z" fill="#1c4931"/>
+  <text x="32" y="40" fill="#fbf8f0" font-family="Georgia, 'Times New Roman', serif" font-size="25" font-weight="700" text-anchor="middle">PR</text>
+</svg>

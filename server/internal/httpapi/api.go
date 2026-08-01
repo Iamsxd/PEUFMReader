@@ -2034,6 +2034,7 @@ func (a *API) serveFrontend(w http.ResponseWriter, r *http.Request) {
 	requested, err := library.SecureResolve(root, relative)
 	if err == nil {
 		if info, statErr := os.Stat(requested); statErr == nil && !info.IsDir() {
+			setFrontendCacheHeaders(w, relative)
 			http.ServeFile(w, r, requested)
 			return
 		}
@@ -2043,7 +2044,20 @@ func (a *API) serveFrontend(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "frontend_not_built", "frontend assets are not available")
 		return
 	}
+	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeFile(w, r, indexPath)
+}
+
+func setFrontendCacheHeaders(w http.ResponseWriter, relative string) {
+	clean := filepath.ToSlash(filepath.Clean(relative))
+	switch {
+	case clean == "index.html" || strings.HasSuffix(clean, ".webmanifest"):
+		w.Header().Set("Cache-Control", "no-cache")
+	case strings.HasPrefix(clean, "assets/"):
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	default:
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+	}
 }
 
 func (a *API) securityHeaders(next http.Handler) http.Handler {
@@ -2066,8 +2080,8 @@ func (a *API) securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; frame-src 'self' blob:; font-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
-		if strings.HasPrefix(r.URL.Path, "/api/v1/auth/") {
-			w.Header().Set("Cache-Control", "no-store")
+		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/opds") {
+			w.Header().Set("Cache-Control", "private, no-store")
 		}
 		next.ServeHTTP(w, r)
 	})

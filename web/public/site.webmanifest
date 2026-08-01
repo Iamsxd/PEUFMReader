@@ -1,0 +1,19 @@
+{
+  "name": "PEUFMReader",
+  "short_name": "PEUFMReader",
+  "description": "多用户电子书管理与阅读",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f3f0e8",
+  "theme_color": "#17211b",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
