@@ -180,6 +180,11 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .admin-section-navigation button b { min-width: 23px; padding: 4px 6px; border-radius: 999px; background: #d9e6da; color: #24563a; font-size: .65rem; text-align: center; }
 .admin-section-navigation button i { font-size: 1.15rem; font-style: normal; opacity: .55; }
 .admin-workspace-content { min-width: 0; padding: 4px 0 20px; }
+.admin-workspace-module { min-width: 0; display: grid; gap: 24px; padding-top: 24px; }
+.admin-workspace-module > .upload-drop-zone { margin: 0; }
+.admin-workspace-loading { min-height: 260px; display: grid; place-items: center; align-content: center; gap: 12px; color: #657169; }
+.loading-spinner { width: 28px; height: 28px; border: 3px solid #d6ded7; border-top-color: #2d6943; border-radius: 50%; animation: reader-spin .8s linear infinite; }
+@keyframes reader-spin { to { transform: rotate(360deg); } }
 .admin-section-heading { min-height: 86px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 6px 4px 19px; border-bottom: 1px solid #d9ded7; }
 .admin-section-heading h2 { margin: 2px 0 5px; font-family: Georgia, serif; font-size: 1.85rem; letter-spacing: -.025em; }
 .admin-section-heading p:last-child { margin: 0; }
