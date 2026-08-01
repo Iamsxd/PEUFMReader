@@ -123,6 +123,15 @@ docker compose up -d --build
 docker compose ps
 ```
 
+在 NAS 上不需要本地编译时，可直接拉取 GitHub Container Registry 发布的 `amd64/arm64` 镜像：
+
+```sh
+docker compose pull app
+docker compose up -d --no-build
+```
+
+`edge` 跟随 `master` 更新；正式版本发布后建议在 `.env` 中把 `PEUFM_IMAGE` 固定为对应版本标签，避免自动跨版本升级。
+
 浏览器打开：
 
 ```text
@@ -162,6 +171,7 @@ PUID=99
 PGID=100
 TZ=Asia/Shanghai
 APP_PORT=8080
+PEUFM_IMAGE=ghcr.io/iamsxd/peufmreader:edge
 
 PEUFM_DATA_ROOT=/mnt/user/appdata/peufmreader
 PEUFM_IMPORT_ROOT=/mnt/user/ebooks/peufmreader-import
@@ -222,6 +232,7 @@ docker compose up -d --build
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `APP_PORT` | `8080` | NAS 对外监听端口 |
+| `PEUFM_IMAGE` | `ghcr.io/iamsxd/peufmreader:edge` | 预构建的 amd64/arm64 应用镜像；可固定为版本标签 |
 | `PUID` / `PGID` | `99` / `100` | 应用容器读写文件使用的 UID/GID |
 | `PEUFM_DATA_ROOT` | `./data` | PostgreSQL、书库、暂存和缓存根目录 |
 | `PEUFM_IMPORT_ROOT` | `./data/import` | 自动导入、成功归档和失败隔离目录 |

@@ -21,6 +21,7 @@ services:
       - no-new-privileges:true
 
   app:
+    image: ${PEUFM_IMAGE:-ghcr.io/iamsxd/peufmreader:edge}
     build:
       context: .
     depends_on:
