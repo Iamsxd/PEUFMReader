@@ -9,6 +9,7 @@ import { HomePage } from './HomePage'
 import { RecommendationsPage } from './RecommendationsPage'
 import { DeviceSyncPage } from './DeviceSyncPage'
 import { OfflineBooksPage } from './OfflineBooksPage'
+import { InstallAppPrompt } from './InstallAppPrompt'
 
 interface Props {
   session: Session
@@ -103,6 +104,8 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
           <div className="account-popover"><div><strong>{session.user.username}</strong><small>{session.user.role === 'admin' ? '管理员账号' : '阅读者账号'}</small></div><button className="quiet" onClick={onLogout}>退出登录</button></div>
         </details>
       </header>
+
+      <InstallAppPrompt />
 
       <div className="app-content">
         {activeView === 'home' && (

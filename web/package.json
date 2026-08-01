@@ -11,6 +11,7 @@
     "test:e2e": "playwright test",
     "test:e2e:list": "playwright test --list",
     "test:reader-regression": "playwright test e2e/reader-corpus-regression.spec.ts",
+    "generate:pwa-icons": "node scripts/generate-pwa-icons.mjs",
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {

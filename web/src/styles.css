@@ -730,6 +730,11 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .offline-book-record footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 13px; border-top: 1px solid #e0e3dd; }
 .offline-book-record footer span { color: #6a756d; font-size: .72rem; }
 .offline-book-record footer button { flex: 0 0 auto; padding: 7px 9px; font-size: .72rem; }
+.install-app-prompt { position: fixed; z-index: 60; right: max(18px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: auto minmax(220px, 1fr) auto auto; align-items: center; gap: 12px; max-width: min(720px, calc(100vw - 36px)); padding: 14px; border: 1px solid #cfd9d0; border-radius: 18px; background: #fbfaf5f2; box-shadow: 0 18px 60px #17211b33; backdrop-filter: blur(18px); }
+.install-app-prompt img { border-radius: 12px; box-shadow: 0 5px 16px #17211b26; }
+.install-app-prompt > div { display: grid; gap: 3px; }
+.install-app-prompt > div span { color: #68746c; font-size: .78rem; }
+.standalone-app .app-shell { min-height: 100dvh; }
 
 @media (max-width: 1080px) {
   .app-header { gap: 12px; }
@@ -850,6 +855,8 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .offline-storage-controls { grid-template-columns: 1fr; align-items: stretch; }
   .offline-book-grid { grid-template-columns: 1fr; }
   .offline-book-record footer { align-items: flex-start; flex-direction: column; }
+  .install-app-prompt { left: max(10px, env(safe-area-inset-left)); right: max(10px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom)); grid-template-columns: auto 1fr; }
+  .install-app-prompt button { width: 100%; }
   .book-card { min-height: 260px; }
   .book-cover, .cover-placeholder { height: 145px; }
   .section-title, .review-card-heading, .review-actions { align-items: stretch; flex-direction: column; }

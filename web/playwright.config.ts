@@ -4,9 +4,10 @@ import { resolve } from 'node:path'
 
 const envPath = resolve(import.meta.dirname, '..', '.env')
 if (existsSync(envPath)) {
+  const explicitEnvironment = new Set(Object.keys(process.env))
   for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
     const match = line.match(/^([A-Z0-9_]+)=(.*)$/)
-    if (!match || process.env[match[1]]) continue
+    if (!match || explicitEnvironment.has(match[1])) continue
     process.env[match[1]] = match[2].replace(/^['"]|['"]$/g, '')
   }
 }
@@ -29,4 +30,3 @@ export default defineConfig({
     { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } },
   ],
 })
-
