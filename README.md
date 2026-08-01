@@ -96,7 +96,7 @@ flowchart LR
 - Docker Engine 或 Docker Desktop。
 - Docker Compose v2。
 - 至少 2 GB 可用内存；运行大量 PDF OCR 时建议 4 GB 以上。
-- GitHub Actions 会构建并发布 `linux/amd64` 与 `linux/arm64` 镜像，并附带 SBOM 和构建来源证明。
+- GitHub Actions 会构建并发布适用于主流 Unraid 主机的 `linux/amd64` 镜像，并附带 SBOM 和构建来源证明。
 
 克隆仓库：
 
@@ -125,7 +125,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-在 NAS 上不需要本地编译时，可直接拉取 GitHub Container Registry 发布的 `amd64/arm64` 镜像：
+在 NAS 上不需要本地编译时，可直接拉取 GitHub Container Registry 发布的 `amd64` 镜像：
 
 ```sh
 docker compose pull app
@@ -237,7 +237,7 @@ docker compose up -d --build
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `APP_PORT` | `8080` | NAS 对外监听端口 |
-| `PEUFM_IMAGE` | `ghcr.io/iamsxd/peufmreader:edge` | 预构建的 amd64/arm64 应用镜像；可固定为版本标签 |
+| `PEUFM_IMAGE` | `ghcr.io/iamsxd/peufmreader:edge` | 预构建的 amd64 应用镜像；可固定为版本标签 |
 | `PUID` / `PGID` | `99` / `100` | 应用容器读写文件使用的 UID/GID |
 | `PEUFM_DATA_ROOT` | `./data` | PostgreSQL、书库、暂存和缓存根目录 |
 | `PEUFM_IMPORT_ROOT` | `./data/import` | 自动导入、成功归档和失败隔离目录 |
