@@ -302,6 +302,37 @@ export interface ReviewItem {
   classifications: ClassificationDecision[]
 }
 
+export interface ReviewQueueQuery {
+  q?: string
+  format?: '' | BookFormat
+  reason?: '' | 'metadata' | 'classification'
+  sort?: 'oldest' | 'newest' | 'title'
+  page?: number
+  pageSize?: number
+}
+
+export interface ReviewQueueSummary {
+  editionId: number
+  workId: number
+  bookFileId: number
+  title: string
+  authors: string[]
+  format: BookFormat
+  originalFilename: string
+  metadataPending: boolean
+  candidateCount: number
+  suggestedClassificationCount: number
+  updatedAt: string
+}
+
+export interface ReviewQueuePage {
+  items: ReviewQueueSummary[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
 export interface ReviewInput {
   title: string
   authors: string[]

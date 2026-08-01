@@ -66,6 +66,62 @@ test('admin workspaces do not collapse into one oversized page', async ({ page }
   await capture(page, testInfo, 'admin-workspaces')
 })
 
+test('a 3336-book review queue stays paginated and loads one editor on demand', async ({ page }) => {
+  let pageRequests = 0
+  await page.route('**/api/v1/review-queue**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/count')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: 3336 }) })
+      return
+    }
+    pageRequests++
+    const items = Array.from({ length: 20 }, (_, index) => ({
+      editionId: 9001 + index,
+      workId: 8001 + index,
+      bookFileId: 7001 + index,
+      title: `待整理测试书 ${index + 1}`,
+      authors: ['测试作者'],
+      format: index % 2 ? 'epub' : 'pdf',
+      originalFilename: `review-${index + 1}.${index % 2 ? 'epub' : 'pdf'}`,
+      metadataPending: true,
+      candidateCount: 5,
+      suggestedClassificationCount: 1,
+      updatedAt: '2026-08-01T00:00:00Z',
+    }))
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items, total: 3336, page: 1, pageSize: 20, totalPages: 167 }) })
+  })
+  await page.route('**/api/v1/editions/9001/review', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        editionId: 9001, workId: 8001, bookFileId: 7001, title: '待整理测试书 1', authors: ['测试作者'],
+        language: 'zh-CN', description: '', sourceSubjects: [],
+        candidates: Array.from({ length: 5 }, (_, index) => ({ id: index + 1, fieldName: 'title', value: '测试', source: 'regression', confidence: 0.5, reason: 'test', status: 'suggested' })),
+        classifications: [],
+      }),
+    })
+  })
+
+  const more = page.locator('details.navigation-menu')
+  await more.locator('summary').click()
+  const admin = more.getByRole('button', { name: /管理后台/ })
+  test.skip(await admin.count() === 0, 'The configured E2E account is not an administrator.')
+  await admin.click()
+  const workspaces = page.getByRole('navigation', { name: '管理后台工作区' })
+  await workspaces.getByRole('button', { name: /书目与分类/ }).click()
+
+  await expect(page.getByRole('heading', { name: '3336 本需要确认' })).toBeVisible()
+  await expect(page.locator('.review-summary-row')).toHaveCount(20)
+  await expect(page.locator('.review-card')).toHaveCount(0)
+  expect(pageRequests).toBe(1)
+
+  await page.locator('.review-summary-row').first().click()
+  await expect(page.locator('.review-card')).toHaveCount(1)
+  await expect(page.locator('.review-card details.evidence summary')).toContainText('5 条当前元数据证据')
+  expect(pageRequests).toBe(1)
+})
+
 test('book detail and reader controls remain reachable', async ({ page }, testInfo) => {
   await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '全部书籍', exact: true }).click()
   await expect(page.getByRole('heading', { name: '全部书籍' })).toBeVisible()

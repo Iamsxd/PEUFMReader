@@ -201,6 +201,7 @@ func (a *API) routes() {
 	a.mux.Handle("PATCH /api/v1/admin/bibliography-sources/{id}", a.requireAuth(http.HandlerFunc(a.updateBibliographySource), "admin", true))
 	a.mux.Handle("POST /api/v1/admin/bibliography-sources/{id}/test", a.requireAuth(http.HandlerFunc(a.testBibliographySource), "admin", true))
 	a.mux.Handle("GET /api/v1/review-queue", a.requireAuth(http.HandlerFunc(a.listReviewQueue), "admin", false))
+	a.mux.Handle("GET /api/v1/review-queue/count", a.requireAuth(http.HandlerFunc(a.countReviewQueue), "admin", false))
 	a.mux.Handle("GET /api/v1/editions/{id}/review", a.requireAuth(http.HandlerFunc(a.getEditionReview), "admin", false))
 	a.mux.Handle("PUT /api/v1/editions/{id}/review", a.requireAuth(http.HandlerFunc(a.reviewEdition), "admin", true))
 	a.mux.Handle("POST /api/v1/editions/{id}/ai-classify", a.requireAuth(http.HandlerFunc(a.aiClassifyEdition), "admin", true))
@@ -673,6 +674,34 @@ func parsePagination(r *http.Request, defaultPageSize, maxPageSize int) (int, in
 		pageSize = parsed
 	}
 	return page, pageSize, nil
+}
+
+func parseReviewQueueQuery(r *http.Request) (store.ReviewQueueQuery, error) {
+	values := r.URL.Query()
+	page, pageSize, err := parsePagination(r, store.DefaultReviewQueuePageSize, store.MaxReviewQueuePageSize)
+	if err != nil {
+		return store.ReviewQueueQuery{}, err
+	}
+	query := store.ReviewQueueQuery{
+		Query: values.Get("q"), Format: values.Get("format"), Reason: values.Get("reason"),
+		Sort: values.Get("sort"), Page: page, PageSize: pageSize,
+	}
+	if len(query.Query) > 200 {
+		return store.ReviewQueueQuery{}, fmt.Errorf("search query is too long")
+	}
+	validFormats := map[string]bool{"": true, "pdf": true, "epub": true, "mobi": true, "azw3": true}
+	if !validFormats[strings.ToLower(strings.TrimSpace(query.Format))] {
+		return store.ReviewQueueQuery{}, fmt.Errorf("format must be pdf, epub, mobi, or azw3")
+	}
+	validReasons := map[string]bool{"": true, "metadata": true, "classification": true}
+	if !validReasons[strings.ToLower(strings.TrimSpace(query.Reason))] {
+		return store.ReviewQueueQuery{}, fmt.Errorf("reason must be metadata or classification")
+	}
+	validSorts := map[string]bool{"": true, "oldest": true, "newest": true, "title": true}
+	if !validSorts[strings.ToLower(strings.TrimSpace(query.Sort))] {
+		return store.ReviewQueueQuery{}, fmt.Errorf("sort must be oldest, newest, or title")
+	}
+	return query, nil
 }
 
 func parseCatalogQuery(r *http.Request) (store.CatalogQuery, error) {
@@ -1279,12 +1308,26 @@ func bibliographySourceConfig(source store.BibliographySource) bibliography.Sour
 }
 
 func (a *API) listReviewQueue(w http.ResponseWriter, r *http.Request) {
-	items, err := a.store.ListReviewQueue(r.Context())
+	query, err := parseReviewQueueQuery(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_review_query", err.Error())
+		return
+	}
+	page, err := a.store.SearchReviewQueue(r.Context(), query)
 	if err != nil {
 		a.internalError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, page)
+}
+
+func (a *API) countReviewQueue(w http.ResponseWriter, r *http.Request) {
+	total, err := a.store.CountReviewQueue(r.Context(), store.ReviewQueueQuery{})
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"total": total})
 }
 
 func (a *API) getEditionReview(w http.ResponseWriter, r *http.Request) {

@@ -1,6 +1,6 @@
-import { type ChangeEvent, type DragEvent, type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, type DragEvent, type FormEvent, useEffect, useState } from 'react'
 import { APIError, api } from '../api'
-import type { AuditEvent, BackgroundJob, BibliographySource, BibliographySourceInput, CalibrePreview, Category, ImportJob, ImportSource, ReviewItem, StorageAuditReport } from '../types'
+import type { AuditEvent, BackgroundJob, BibliographySource, BibliographySourceInput, CalibrePreview, Category, ImportJob, ImportSource, StorageAuditReport } from '../types'
 import { formatBytes, formatRelativeTime } from '../utils'
 import { ReviewQueue } from './ReviewQueue'
 import { UserManagement } from './UserManagement'
@@ -33,8 +33,7 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
   const [activeSection, setActiveSection] = useState<AdminSection>(initialEditionID ? 'catalog' : 'imports')
   const [categories, setCategories] = useState<Category[]>([])
   const [adminCategories, setAdminCategories] = useState<Category[]>([])
-  const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
-  const [manualReviewItem, setManualReviewItem] = useState<ReviewItem | null>(null)
+  const [reviewTotal, setReviewTotal] = useState(0)
   const [importJobs, setImportJobs] = useState<ImportJob[]>([])
   const [importSources, setImportSources] = useState<ImportSource[]>([])
   const [backgroundJobs, setBackgroundJobs] = useState<BackgroundJob[]>([])
@@ -54,12 +53,12 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
 
   async function refreshAdmin() {
     try {
-      const [categoryItems, managedCategories, queueItems, jobs, asyncJobs, audits, sources, configuredImportSources] = await Promise.all([
-        api.listCategories(), api.listAdminCategories(), api.listReviewQueue(), api.listImportJobs(), api.listBackgroundJobs(), api.listAuditEvents(), api.listBibliographySources(), api.listImportSources(),
+      const [categoryItems, managedCategories, queueTotal, jobs, asyncJobs, audits, sources, configuredImportSources] = await Promise.all([
+        api.listCategories(), api.listAdminCategories(), api.getReviewQueueCount(), api.listImportJobs(), api.listBackgroundJobs(), api.listAuditEvents(), api.listBibliographySources(), api.listImportSources(),
       ])
       setCategories(categoryItems)
       setAdminCategories(managedCategories)
-      setReviewItems(queueItems)
+      setReviewTotal(queueTotal)
       setImportJobs(jobs)
       setBackgroundJobs(asyncJobs)
       setAuditEvents(audits)
@@ -73,12 +72,7 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
   useEffect(() => { void refreshAdmin() }, [])
 
   useEffect(() => {
-    if (!initialEditionID) return
-    setActiveSection('catalog')
-    void api.getEditionReview(initialEditionID).then((item) => {
-      setManualReviewItem(item)
-      window.setTimeout(() => document.querySelector('.review-panel')?.scrollIntoView({ behavior: 'smooth' }), 0)
-    }).catch((reason) => setError(reason instanceof APIError ? reason.message : '无法打开整理表单。'))
+    if (initialEditionID) setActiveSection('catalog')
   }, [initialEditionID])
 
   useEffect(() => {
@@ -86,19 +80,14 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
       void api.listBackgroundJobs().then(async (jobs) => {
         setBackgroundJobs(jobs)
         if (jobs.some((job) => job.state === 'queued' || job.state === 'running')) {
-          const [queueItems, imports] = await Promise.all([api.listReviewQueue(), api.listImportJobs()])
-          setReviewItems(queueItems)
+          const [queueTotal, imports] = await Promise.all([api.getReviewQueueCount(), api.listImportJobs()])
+          setReviewTotal(queueTotal)
           setImportJobs(imports)
         }
       }).catch(() => undefined)
-    }, 2000)
+    }, 5000)
     return () => window.clearInterval(timer)
   }, [])
-
-  const visibleReviewItems = useMemo(() => {
-    if (!manualReviewItem || reviewItems.some((item) => item.editionId === manualReviewItem.editionId)) return reviewItems
-    return [manualReviewItem, ...reviewItems]
-  }, [manualReviewItem, reviewItems])
 
   function changeUpload(id: string, update: Partial<Omit<UploadItem, 'id' | 'file'>>) {
     setUploads((current) => current.map((item) => item.id === id ? { ...item, ...update } : item))
@@ -235,11 +224,6 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
     }
   }
 
-  async function reviewChanged() {
-    setManualReviewItem(null)
-    await refreshAdmin()
-  }
-
   const activeDefinition = ADMIN_SECTIONS.find((section) => section.id === activeSection) ?? ADMIN_SECTIONS[0]
   const activeJobCount = backgroundJobs.filter((job) => job.state === 'queued' || job.state === 'running').length
 
@@ -255,7 +239,7 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
       <div className="admin-workspace">
         <nav className="admin-section-navigation" aria-label="管理后台工作区">
           {ADMIN_SECTIONS.map((section) => {
-            const count = section.id === 'catalog' ? visibleReviewItems.length : section.id === 'operations' ? activeJobCount : section.id === 'imports' && uploading ? uploads.length : 0
+            const count = section.id === 'catalog' ? reviewTotal : section.id === 'operations' ? activeJobCount : section.id === 'imports' && uploading ? uploads.length : 0
             return (
               <button key={section.id} className={activeSection === section.id ? 'active' : ''} type="button" onClick={() => setActiveSection(section.id)} aria-current={activeSection === section.id ? 'page' : undefined}>
                 <span><small>{section.eyebrow}</small><strong>{section.label}</strong></span>
@@ -301,7 +285,7 @@ export function AdminPage({ initialEditionID, currentUserID }: Props) {
           </>}
 
           {activeSection === 'catalog' && <>
-            <ReviewQueue categories={categories} items={visibleReviewItems} onChanged={reviewChanged} />
+            <ReviewQueue categories={categories} initialEditionID={initialEditionID} onTotalChange={setReviewTotal} />
             <CategoryManager categories={adminCategories} onError={setError} onChanged={async () => { const [active, all] = await Promise.all([api.listCategories(), api.listAdminCategories()]); setCategories(active); setAdminCategories(all) }} />
             <CatalogMaintenance categories={categories} onError={setError} onNotice={setNotice} />
             <BibliographySourceManager sources={bibliographySources} onError={setError} onNotice={setNotice} onChanged={async () => setBibliographySources(await api.listBibliographySources())} />

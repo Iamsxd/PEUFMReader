@@ -423,26 +423,6 @@ func (s *Store) UpdateCategory(ctx context.Context, id int64, name string, paren
 	return item, nil
 }
 
-func (s *Store) ListReviewQueue(ctx context.Context) ([]ReviewItem, error) {
-	rows, err := s.pool.Query(ctx, reviewItemSelect+`
-		WHERE w.review_status='pending' OR EXISTS(
-			SELECT 1 FROM classification_decisions pending_cd WHERE pending_cd.edition_id=e.id AND pending_cd.status='suggested')
-		ORDER BY w.updated_at,e.id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := make([]ReviewItem, 0)
-	for rows.Next() {
-		item, err := scanReviewItem(rows)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	return items, rows.Err()
-}
-
 const reviewItemSelect = `
 	SELECT e.id,w.id,(SELECT bf.id FROM book_files bf WHERE bf.edition_id=e.id ORDER BY bf.id LIMIT 1),
 		w.title,COALESCE(w.description,''),e.published_year,COALESCE(e.language,''),COALESCE(e.isbn,''),COALESCE(e.publisher,''),e.source_subjects,

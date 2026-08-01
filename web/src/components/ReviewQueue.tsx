@@ -1,24 +1,88 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { APIError, api } from '../api'
-import type { BibliographyMatch, Category, ReviewInput, ReviewItem } from '../types'
+import type { BibliographyMatch, Category, ReviewInput, ReviewItem, ReviewQueuePage, ReviewQueueQuery } from '../types'
 
 interface Props {
   categories: Category[]
-  items: ReviewItem[]
-  onChanged: () => Promise<void>
+  initialEditionID?: number
+  onTotalChange: (total: number) => void
 }
 
-export function ReviewQueue({ categories, items, onChanged }: Props) {
-  if (items.length === 0) {
-    return (
-      <section className="review-panel complete-panel">
-        <div>
-          <p className="eyebrow">待整理</p>
-          <h2>分类队列已清空</h2>
-          <p className="muted">高置信度内容已自动采用，其余建议会出现在这里。</p>
-        </div>
-      </section>
-    )
+const emptyPage: ReviewQueuePage = { items: [], total: 0, page: 1, pageSize: 20, totalPages: 0 }
+
+export function ReviewQueue({ categories, initialEditionID, onTotalChange }: Props) {
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [format, setFormat] = useState<ReviewQueueQuery['format']>('')
+  const [reason, setReason] = useState<ReviewQueueQuery['reason']>('')
+  const [sort, setSort] = useState<ReviewQueueQuery['sort']>('oldest')
+  const [page, setPage] = useState(1)
+  const [result, setResult] = useState<ReviewQueuePage>(emptyPage)
+  const [activeItem, setActiveItem] = useState<ReviewItem | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadingDetail, setLoadingDetail] = useState(false)
+  const [error, setError] = useState('')
+  const [refreshVersion, setRefreshVersion] = useState(0)
+  const pageRequestID = useRef(0)
+  const detailRequestID = useRef(0)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim())
+      setPage(1)
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [search])
+
+  useEffect(() => {
+    const requestID = ++pageRequestID.current
+    setLoading(true)
+    setError('')
+    void api.listReviewQueue({ q: debouncedSearch, format, reason, sort, page, pageSize: 20 }).then((next) => {
+      if (requestID !== pageRequestID.current) return
+      setResult(next)
+      if (!debouncedSearch && !format && !reason) onTotalChange(next.total)
+      if (next.totalPages > 0 && page > next.totalPages) setPage(next.totalPages)
+    }).catch((requestError) => {
+      if (requestID !== pageRequestID.current) return
+      setError(requestError instanceof APIError ? requestError.message : '无法加载待整理书目。')
+    }).finally(() => {
+      if (requestID === pageRequestID.current) setLoading(false)
+    })
+  }, [debouncedSearch, format, onTotalChange, page, reason, refreshVersion, sort])
+
+  useEffect(() => {
+    if (!initialEditionID) return
+    void openReview(initialEditionID)
+  }, [initialEditionID])
+
+  async function openReview(editionID: number) {
+    const requestID = ++detailRequestID.current
+    setLoadingDetail(true)
+    setError('')
+    try {
+      const item = await api.getEditionReview(editionID)
+      if (requestID === detailRequestID.current) setActiveItem(item)
+    } catch (requestError) {
+      if (requestID === detailRequestID.current) setError(requestError instanceof APIError ? requestError.message : '无法打开整理表单。')
+    } finally {
+      if (requestID === detailRequestID.current) setLoadingDetail(false)
+    }
+  }
+
+  async function saved() {
+    setActiveItem(null)
+    setRefreshVersion((value) => value + 1)
+  }
+
+  async function updated(item: ReviewItem) {
+    setActiveItem(item)
+    setRefreshVersion((value) => value + 1)
+  }
+
+  function resetPageAnd(action: () => void) {
+    setPage(1)
+    action()
   }
 
   return (
@@ -26,20 +90,40 @@ export function ReviewQueue({ categories, items, onChanged }: Props) {
       <div className="section-title">
         <div>
           <p className="eyebrow">待整理</p>
-          <h2>{items.length} 本需要确认</h2>
+          <h2>{result.total} 本需要确认</h2>
         </div>
-        <p className="muted">AI 与规则只提供建议，保存前不会覆盖人工选择。</p>
+        <button className="secondary" type="button" disabled={loading} onClick={() => setRefreshVersion((value) => value + 1)}>刷新队列</button>
       </div>
-      <div className="review-list">
-        {items.map((item) => (
-          <ReviewCard key={item.editionId} item={item} categories={categories} onChanged={onChanged} />
-        ))}
+
+      <div className="review-queue-filters" aria-label="待整理书目筛选">
+        <label className="review-search-field">搜索<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="书名、作者或文件名" /></label>
+        <label>格式<select value={format} onChange={(event) => resetPageAnd(() => setFormat(event.target.value as ReviewQueueQuery['format']))}><option value="">全部格式</option><option value="pdf">PDF</option><option value="epub">EPUB</option><option value="mobi">MOBI</option><option value="azw3">AZW3</option></select></label>
+        <label>原因<select value={reason} onChange={(event) => resetPageAnd(() => setReason(event.target.value as ReviewQueueQuery['reason']))}><option value="">全部原因</option><option value="metadata">元数据待确认</option><option value="classification">分类建议待确认</option></select></label>
+        <label>排序<select value={sort} onChange={(event) => resetPageAnd(() => setSort(event.target.value as ReviewQueueQuery['sort']))}><option value="oldest">最早待整理</option><option value="newest">最近更新</option><option value="title">书名</option></select></label>
+      </div>
+
+      {error && <div className="notice error" role="alert">{error}</div>}
+      <div className="review-queue-workspace">
+        <div className={`review-summary-panel${loading ? ' is-updating' : ''}`}>
+          {loading && result.items.length === 0 ? <div className="review-queue-empty">正在加载待整理书目…</div> : result.items.length === 0 ? <div className="review-queue-empty">{result.total === 0 && !debouncedSearch && !format && !reason ? '分类队列已清空。' : '没有符合筛选条件的书籍。'}</div> : result.items.map((item) => (
+            <button className={`review-summary-row${activeItem?.editionId === item.editionId ? ' active' : ''}`} type="button" key={item.editionId} onClick={() => void openReview(item.editionId)}>
+              <span className={`format-badge ${item.format}`}>{item.format.toUpperCase()}</span>
+              <span><strong>{item.title}</strong><small>{item.authors.join('、') || '未知作者'} · Edition {item.editionId}</small><small title={item.originalFilename}>{item.originalFilename}</small></span>
+              <span className="review-summary-reasons">{item.metadataPending && <small>元数据 · {item.candidateCount}</small>}{item.suggestedClassificationCount > 0 && <small>分类建议 · {item.suggestedClassificationCount}</small>}</span>
+            </button>
+          ))}
+          {result.totalPages > 1 && <nav className="catalog-pagination" aria-label="待整理书目分页"><button className="secondary" disabled={page <= 1 || loading} onClick={() => setPage((value) => Math.max(1, value - 1))}>上一页</button><span>第 <strong>{result.page}</strong> / {result.totalPages} 页 · 每页 {result.pageSize} 本</span><button className="secondary" disabled={page >= result.totalPages || loading} onClick={() => setPage((value) => value + 1)}>下一页</button></nav>}
+        </div>
+
+        <div className="review-editor-panel">
+          {loadingDetail ? <div className="review-queue-empty">正在加载书目证据…</div> : activeItem ? <ReviewCard key={`${activeItem.editionId}-${activeItem.candidates.length}-${activeItem.classifications.length}`} item={activeItem} categories={categories} onSaved={saved} onUpdated={updated} /> : <div className="review-queue-empty"><strong>选择一本书开始整理</strong><span>列表只加载摘要；完整元数据、分类建议和证据会在选中后按需读取。</span></div>}
+        </div>
       </div>
     </section>
   )
 }
 
-function ReviewCard({ item, categories, onChanged }: { item: ReviewItem; categories: Category[]; onChanged: () => Promise<void> }) {
+function ReviewCard({ item, categories, onSaved, onUpdated }: { item: ReviewItem; categories: Category[]; onSaved: () => Promise<void>; onUpdated: (item: ReviewItem) => Promise<void> }) {
   const [form, setForm] = useState<ReviewInput>(() => toForm(item))
   const [saving, setSaving] = useState(false)
   const [askingAI, setAskingAI] = useState(false)
@@ -47,6 +131,12 @@ function ReviewCard({ item, categories, onChanged }: { item: ReviewItem; categor
   const [bibliographyMatches, setBibliographyMatches] = useState<BibliographyMatch[]>([])
   const [bibliographyWarnings, setBibliographyWarnings] = useState<string[]>([])
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    setForm(toForm(item))
+    setBibliographyMatches([])
+    setBibliographyWarnings([])
+  }, [item])
 
   function update<K extends keyof ReviewInput>(key: K, value: ReviewInput[K]) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -64,7 +154,7 @@ function ReviewCard({ item, categories, onChanged }: { item: ReviewItem; categor
     setError('')
     try {
       await api.reviewEdition(item.editionId, form)
-      await onChanged()
+      await onSaved()
     } catch (reason) {
       setError(reason instanceof APIError ? reason.message : '保存审核结果失败。')
     } finally {
@@ -76,8 +166,8 @@ function ReviewCard({ item, categories, onChanged }: { item: ReviewItem; categor
     setAskingAI(true)
     setError('')
     try {
-      await api.aiClassifyEdition(item.editionId)
-      await onChanged()
+      const updatedItem = await api.aiClassifyEdition(item.editionId)
+      await onUpdated(updatedItem)
     } catch (reason) {
       setError(reason instanceof APIError ? reason.message : 'AI 分类失败。')
     } finally {

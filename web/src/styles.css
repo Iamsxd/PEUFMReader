@@ -500,6 +500,22 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .complete-panel { padding: 28px; border: 1px solid #cbd7ca; border-radius: 18px; background: #edf2e9; }
 .section-title, .review-card-heading, .review-actions { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .review-list { display: grid; gap: 20px; }
+.review-queue-filters { display: grid; grid-template-columns: minmax(240px, 1.5fr) repeat(3, minmax(130px, .6fr)); gap: 12px; margin: 18px 0; }
+.review-queue-filters label { display: grid; gap: 6px; color: #5f6c63; font-size: .72rem; font-weight: 750; }
+.review-queue-filters input, .review-queue-filters select { min-width: 0; }
+.review-queue-workspace { display: grid; grid-template-columns: minmax(310px, .75fr) minmax(0, 1.5fr); gap: 20px; align-items: start; }
+.review-summary-panel { min-width: 0; transition: opacity .16s ease; }
+.review-summary-panel.is-updating { opacity: .62; }
+.review-summary-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 11px; align-items: start; width: 100%; padding: 13px; border: 0; border-bottom: 1px solid #dce2da; border-radius: 0; background: #fbf9f3; color: #26362c; text-align: left; }
+.review-summary-row:first-child { border-radius: 14px 14px 0 0; }
+.review-summary-row:hover, .review-summary-row.active { background: #e8f0e6; }
+.review-summary-row > span:nth-child(2) { display: grid; gap: 4px; min-width: 0; }
+.review-summary-row strong, .review-summary-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-summary-row small { color: #6b776f; font-size: .7rem; }
+.review-summary-reasons { display: grid; gap: 5px; justify-items: end; }
+.review-summary-reasons small { padding: 3px 7px; border-radius: 999px; background: #eee8d5; color: #725d22; }
+.review-editor-panel { min-width: 0; }
+.review-queue-empty { display: grid; gap: 8px; place-content: center; min-height: 180px; padding: 24px; border: 1px dashed #c9d3c8; border-radius: 16px; background: #f5f6f0; color: #6b776f; text-align: center; }
 .review-card { gap: 20px; padding: 24px; border: 1px solid #d1d5ce; border-radius: 18px; background: #fbf9f3; box-shadow: 0 10px 30px #4d5d4e0b; }
 .review-card-heading h3 { margin: 8px 0 0; font-family: Georgia, serif; font-size: 1.35rem; }
 .review-provider-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 8px; }
@@ -832,6 +848,11 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .book-card { min-height: 260px; }
   .book-cover, .cover-placeholder { height: 145px; }
   .section-title, .review-card-heading, .review-actions { align-items: stretch; flex-direction: column; }
+  .review-queue-filters { grid-template-columns: 1fr 1fr; }
+  .review-search-field { grid-column: 1 / -1; }
+  .review-queue-workspace { grid-template-columns: 1fr; }
+  .review-summary-row { grid-template-columns: auto minmax(0, 1fr); }
+  .review-summary-reasons { grid-column: 1 / -1; grid-template-columns: repeat(2, max-content); justify-items: start; }
   .integration-actions { align-items: stretch; flex-direction: column; }
   .calibre-row { grid-template-columns: auto 1fr; }
   .calibre-row > :last-child { grid-column: 1 / -1; }

@@ -1,4 +1,4 @@
-import type { AuditEvent, AuthProviders, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, BookPermission, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, ClassificationRule, DeviceToken, DuplicateCatalogGroup, FavoritePage, FavoriteState, GroupLibraryPermission, HomeDashboard, ImportJob, ImportSource, LibraryGroup, ManagedUser, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState, RecommendationFeedback, RecommendationFeedbackValue, RecommendationPage, ReviewInput, ReviewItem, Role, Session, StorageAuditReport, User, UserAccessInfo, UserGroup } from './types'
+import type { AuditEvent, AuthProviders, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookDetail, BookFile, BookPermission, CalibreImportResult, CalibrePreview, CatalogPage, CatalogQuery, Category, ClassificationRule, DeviceToken, DuplicateCatalogGroup, FavoritePage, FavoriteState, GroupLibraryPermission, HomeDashboard, ImportJob, ImportSource, LibraryGroup, ManagedUser, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState, RecommendationFeedback, RecommendationFeedbackValue, RecommendationPage, ReviewInput, ReviewItem, ReviewQueuePage, ReviewQueueQuery, Role, Session, StorageAuditReport, User, UserAccessInfo, UserGroup } from './types'
 
 interface ErrorBody {
   error?: { code?: string; message?: string }
@@ -200,9 +200,18 @@ class APIClient {
     })
   }
 
-  async listReviewQueue(): Promise<ReviewItem[]> {
-    const result = await this.request<{ items: ReviewItem[] }>('/api/v1/review-queue')
-    return result.items
+  listReviewQueue(query: ReviewQueueQuery = {}): Promise<ReviewQueuePage> {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    }
+    const suffix = params.size > 0 ? `?${params.toString()}` : ''
+    return this.request(`/api/v1/review-queue${suffix}`)
+  }
+
+  async getReviewQueueCount(): Promise<number> {
+    const result = await this.request<{ total: number }>('/api/v1/review-queue/count')
+    return result.total
   }
 
   getEditionReview(editionID: number): Promise<ReviewItem> {
