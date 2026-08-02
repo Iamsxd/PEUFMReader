@@ -1,4 +1,4 @@
-import type { BackgroundJob, BookDetail, BookFile, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeDashboard, RecommendationFeedback, RecommendationFeedbackValue, RecommendationPage } from '../types'
+import type { BackgroundJob, BookDetail, BookFile, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeBookSection, HomeCategorySection, HomeDashboard, HomeSummary, RecommendationFeedback, RecommendationFeedbackValue, RecommendationPage } from '../types'
 import { APIError, querySuffix, transport } from './core'
 
 interface ErrorBody { error?: { code?: string; message?: string } }
@@ -7,6 +7,18 @@ export interface UploadBookResult { bookFile: BookFile; duplicate: boolean; impo
 export const catalogAPI = {
   getHomeDashboard(): Promise<HomeDashboard> {
     return transport.request('/api/v1/home')
+  },
+
+  getHomeSummary(): Promise<HomeSummary> {
+    return transport.request('/api/v1/home/summary')
+  },
+
+  getHomeCategories(): Promise<HomeCategorySection> {
+    return transport.request('/api/v1/home/categories')
+  },
+
+  getHomeHotBooks(): Promise<HomeBookSection> {
+    return transport.request('/api/v1/home/hot')
   },
 
   listBooks(query: CatalogQuery = {}): Promise<CatalogPage> {

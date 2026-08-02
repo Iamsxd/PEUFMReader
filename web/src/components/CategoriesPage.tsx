@@ -14,7 +14,7 @@ export function CategoriesPage({ onBrowse }: Props) {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    void api.getHomeDashboard().then((dashboard) => setCategories(dashboard.categories)).catch((reason) => {
+    void api.getHomeCategories().then((section) => setCategories(section.items)).catch((reason) => {
       setError(reason instanceof APIError ? reason.message : '无法加载分类。')
     }).finally(() => setLoading(false))
   }, [])

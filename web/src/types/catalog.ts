@@ -79,6 +79,15 @@ export interface HomeDashboard {
   stats: PersonalStats
 }
 
+export interface HomeSummary {
+  continueReading: HomeBook[]
+  recentlyAdded: BookFile[]
+  stats: PersonalStats
+}
+
+export interface HomeBookSection { items: HomeBook[] }
+export interface HomeCategorySection { items: CategorySummary[] }
+
 export interface BookDetail {
   book: BookFile
   description: string

@@ -316,6 +316,13 @@ func (s *Store) loadTasteProfile(ctx context.Context, userID int64) (tasteProfil
 
 func (s *Store) listRecommendationMetrics(ctx context.Context, userID int64, profile tasteProfile, limit int) ([]recommendationMetric, error) {
 	rows, err := s.pool.Query(ctx, `
+		WITH recent_heat AS MATERIALIZED (
+			SELECT rs.book_file_id,
+				(COALESCE(SUM(rs.active_seconds),0)+COUNT(*)*30+COUNT(DISTINCT rs.user_id)*300)::double precision AS score
+			FROM reading_sessions rs
+			WHERE rs.started_at >= now()-INTERVAL '30 days'
+			GROUP BY rs.book_file_id
+		)
 		SELECT bf.id,COALESCE(category_match.name,''),COALESCE(category_match.score,0),
 			COALESCE(creator_match.name,''),COALESCE(creator_match.score,0),COALESCE(hot.score,0),
 			COALESCE(feedback.feedback,''),(bf.created_at >= now()-INTERVAL '30 days'),
@@ -325,6 +332,7 @@ func (s *Store) listRecommendationMetrics(ctx context.Context, userID int64, pro
 				 + CASE WHEN feedback.feedback='interested' THEN 25.0 ELSE 0 END)::double precision AS score
 		FROM book_files bf
 		JOIN editions e ON e.id=bf.edition_id
+		JOIN accessible_book_ids($1) accessible ON accessible.book_file_id=bf.id
 		LEFT JOIN recommendation_feedback feedback ON feedback.user_id=$1 AND feedback.book_file_id=bf.id
 		LEFT JOIN LATERAL (
 			SELECT pref.name,pref.score
@@ -340,12 +348,8 @@ func (s *Store) listRecommendationMetrics(ctx context.Context, userID int64, pro
 				WHERE ec.edition_id=e.id AND ec.role='author' AND ec.creator_id=pref.id)
 			ORDER BY pref.score DESC,pref.id LIMIT 1
 		) creator_match ON true
-		LEFT JOIN LATERAL (
-			SELECT (COALESCE(SUM(rs.active_seconds),0)+COUNT(*)*30+COUNT(DISTINCT rs.user_id)*300)::double precision AS score
-			FROM reading_sessions rs WHERE rs.book_file_id=bf.id AND rs.started_at >= now()-INTERVAL '30 days'
-		) hot ON true
-		WHERE can_user_read_book($1,bf.id)
-			AND COALESCE(feedback.feedback,'') <> 'not_interested'
+		LEFT JOIN recent_heat hot ON hot.book_file_id=bf.id
+		WHERE COALESCE(feedback.feedback,'') <> 'not_interested'
 			AND NOT EXISTS (SELECT 1 FROM user_favorites uf WHERE uf.user_id=$1 AND uf.book_file_id=bf.id)
 			AND NOT EXISTS (SELECT 1 FROM reading_states state WHERE state.user_id=$1 AND state.book_file_id=bf.id
 				AND state.status IN ('reading','paused','finished','abandoned'))

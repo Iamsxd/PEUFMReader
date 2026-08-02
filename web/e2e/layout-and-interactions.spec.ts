@@ -35,6 +35,59 @@ test('primary navigation stays usable and ordered', async ({ page }, testInfo) =
   await capture(page, testInfo, 'primary-navigation')
 })
 
+test('home shell renders before summary and defers expensive sections', async ({ page }) => {
+  const liveSummary = await page.request.get('/api/v1/home/summary')
+  expect(liveSummary.ok()).toBeTruthy()
+  expect(liveSummary.headers()['server-timing']).toMatch(/home_summary;dur=/)
+  const fixtureResponse = await page.request.get('/api/v1/home')
+  expect(fixtureResponse.ok()).toBeTruthy()
+  const fixture = await fixtureResponse.json() as {
+    continueReading: unknown[]
+    recentlyAdded: unknown[]
+    stats: Record<string, number>
+    categories: unknown[]
+    hotBooks: unknown[]
+    recommendations: unknown[]
+  }
+  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '全部书籍', exact: true }).click()
+
+  let releaseSummary = () => {}
+  const summaryGate = new Promise<void>((resolve) => { releaseSummary = resolve })
+  let secondaryRequests = 0
+  await page.route('**/api/v1/home/summary', async (route) => {
+    await summaryGate
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      continueReading: fixture.continueReading,
+      recentlyAdded: fixture.recentlyAdded,
+      stats: fixture.stats,
+    }) })
+  })
+  await page.route('**/api/v1/home/categories', async (route) => {
+    secondaryRequests++
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: fixture.categories }) })
+  })
+  await page.route('**/api/v1/home/hot', async (route) => {
+    secondaryRequests++
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: fixture.hotBooks }) })
+  })
+  await page.route('**/api/v1/recommendations**', async (route) => {
+    secondaryRequests++
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: fixture.recommendations, personalized: false }) })
+  })
+
+  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '首页', exact: true }).click()
+  try {
+    await expect(page.getByRole('heading', { name: '今天想读点什么？' })).toBeVisible()
+    await expect(page.getByRole('status').filter({ hasText: '正在汇总阅读数据' })).toBeVisible()
+    expect(secondaryRequests).toBe(0)
+  } finally {
+    releaseSummary()
+  }
+
+  await expect(page.getByRole('status').filter({ hasText: '正在汇总阅读数据' })).toHaveCount(0)
+  await expect.poll(() => secondaryRequests).toBe(3)
+})
+
 test('recommendation feedback is interactive and responsive', async ({ page }, testInfo) => {
   await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '推荐', exact: true }).click()
   await expect(page.getByRole('heading', { name: '为你推荐' })).toBeVisible()

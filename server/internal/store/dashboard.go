@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -46,6 +47,20 @@ type HomeDashboard struct {
 	Stats           PersonalStats     `json:"stats"`
 }
 
+type HomeSummary struct {
+	ContinueReading []HomeBook    `json:"continueReading"`
+	RecentlyAdded   []BookFile    `json:"recentlyAdded"`
+	Stats           PersonalStats `json:"stats"`
+}
+
+type HomeBookSection struct {
+	Items []HomeBook `json:"items"`
+}
+
+type HomeCategorySection struct {
+	Items []CategorySummary `json:"items"`
+}
+
 type continueMetric struct {
 	BookFileID      int64
 	OverallProgress float64
@@ -63,23 +78,15 @@ type hotMetric struct {
 }
 
 func (s *Store) GetHomeDashboard(ctx context.Context, userID int64) (HomeDashboard, error) {
-	continueMetrics, err := s.listContinueMetrics(ctx, userID, 6)
+	summary, err := s.GetHomeSummary(ctx, userID)
 	if err != nil {
 		return HomeDashboard{}, err
 	}
-	hotMetrics, err := s.listHotMetrics(ctx, userID, 8)
+	hot, err := s.GetHomeHotBooks(ctx, userID, 8)
 	if err != nil {
 		return HomeDashboard{}, err
 	}
-	recentIDs, err := s.listRecentlyAddedIDs(ctx, userID, 8)
-	if err != nil {
-		return HomeDashboard{}, err
-	}
-	categories, err := s.listCategorySummaries(ctx, userID)
-	if err != nil {
-		return HomeDashboard{}, err
-	}
-	stats, err := s.getPersonalStats(ctx, userID)
+	categories, err := s.GetHomeCategories(ctx, userID)
 	if err != nil {
 		return HomeDashboard{}, err
 	}
@@ -87,8 +94,51 @@ func (s *Store) GetHomeDashboard(ctx context.Context, userID int64) (HomeDashboa
 	if err != nil {
 		return HomeDashboard{}, err
 	}
+	return HomeDashboard{
+		ContinueReading: summary.ContinueReading,
+		HotBooks:        hot.Items,
+		Recommendations: recommendations.Items,
+		RecentlyAdded:   summary.RecentlyAdded,
+		Categories:      categories.Items,
+		Stats:           summary.Stats,
+	}, nil
+}
 
-	bookIDs := make([]int64, 0, len(continueMetrics)+len(hotMetrics)+len(recentIDs))
+func (s *Store) GetHomeSummary(ctx context.Context, userID int64) (HomeSummary, error) {
+	var (
+		continueMetrics []continueMetric
+		recentIDs       []int64
+		stats           PersonalStats
+		continueErr     error
+		recentErr       error
+		statsErr        error
+		wait            sync.WaitGroup
+	)
+	wait.Add(3)
+	go func() {
+		defer wait.Done()
+		continueMetrics, continueErr = s.listContinueMetrics(ctx, userID, 6)
+	}()
+	go func() {
+		defer wait.Done()
+		recentIDs, recentErr = s.listRecentlyAddedIDs(ctx, userID, 8)
+	}()
+	go func() {
+		defer wait.Done()
+		stats, statsErr = s.getPersonalStats(ctx, userID)
+	}()
+	wait.Wait()
+	if continueErr != nil {
+		return HomeSummary{}, continueErr
+	}
+	if recentErr != nil {
+		return HomeSummary{}, recentErr
+	}
+	if statsErr != nil {
+		return HomeSummary{}, statsErr
+	}
+
+	bookIDs := make([]int64, 0, len(continueMetrics)+len(recentIDs))
 	seen := make(map[int64]bool)
 	appendID := func(id int64) {
 		if !seen[id] {
@@ -99,49 +149,18 @@ func (s *Store) GetHomeDashboard(ctx context.Context, userID int64) (HomeDashboa
 	for _, metric := range continueMetrics {
 		appendID(metric.BookFileID)
 	}
-	for _, metric := range hotMetrics {
-		appendID(metric.BookFileID)
-	}
 	for _, id := range recentIDs {
 		appendID(id)
 	}
-	for _, category := range categories {
-		for _, id := range category.CoverBookIDs {
-			appendID(id)
-		}
-	}
-	allowedIDs, err := s.FilterAccessibleBookIDs(ctx, userID, bookIDs)
-	if err != nil {
-		return HomeDashboard{}, err
-	}
-	filteredBookIDs := bookIDs[:0]
-	for _, id := range bookIDs {
-		if allowedIDs[id] {
-			filteredBookIDs = append(filteredBookIDs, id)
-		}
-	}
-	bookIDs = filteredBookIDs
 	books, err := s.catalogBooksByID(ctx, bookIDs)
 	if err != nil {
-		return HomeDashboard{}, err
+		return HomeSummary{}, err
 	}
 
-	dashboard := HomeDashboard{
+	summary := HomeSummary{
 		ContinueReading: make([]HomeBook, 0, len(continueMetrics)),
-		HotBooks:        make([]HomeBook, 0, len(hotMetrics)),
-		Recommendations: recommendations.Items,
 		RecentlyAdded:   make([]BookFile, 0, len(recentIDs)),
-		Categories:      categories,
 		Stats:           stats,
-	}
-	for index := range dashboard.Categories {
-		coverIDs := dashboard.Categories[index].CoverBookIDs[:0]
-		for _, id := range dashboard.Categories[index].CoverBookIDs {
-			if allowedIDs[id] {
-				coverIDs = append(coverIDs, id)
-			}
-		}
-		dashboard.Categories[index].CoverBookIDs = coverIDs
 	}
 	for _, metric := range continueMetrics {
 		book, ok := books[metric.BookFileID]
@@ -149,35 +168,60 @@ func (s *Store) GetHomeDashboard(ctx context.Context, userID int64) (HomeDashboa
 			continue
 		}
 		lastReadAt := metric.UpdatedAt
-		dashboard.ContinueReading = append(dashboard.ContinueReading, HomeBook{
+		summary.ContinueReading = append(summary.ContinueReading, HomeBook{
 			Book: book, OverallProgress: metric.OverallProgress, Status: metric.Status,
 			TotalActiveSeconds: metric.ActiveSeconds, LastReadAt: &lastReadAt,
 		})
 	}
+	for _, id := range recentIDs {
+		if book, ok := books[id]; ok {
+			summary.RecentlyAdded = append(summary.RecentlyAdded, book)
+		}
+	}
+	return summary, nil
+}
+
+func (s *Store) GetHomeHotBooks(ctx context.Context, userID int64, limit int) (HomeBookSection, error) {
+	hotMetrics, err := s.listHotMetrics(ctx, userID, limit)
+	if err != nil {
+		return HomeBookSection{}, err
+	}
+	bookIDs := make([]int64, 0, len(hotMetrics))
+	for _, metric := range hotMetrics {
+		bookIDs = append(bookIDs, metric.BookFileID)
+	}
+	books, err := s.catalogBooksByID(ctx, bookIDs)
+	if err != nil {
+		return HomeBookSection{}, err
+	}
+	result := HomeBookSection{Items: make([]HomeBook, 0, len(hotMetrics))}
 	for _, metric := range hotMetrics {
 		book, ok := books[metric.BookFileID]
 		if !ok {
 			continue
 		}
-		dashboard.HotBooks = append(dashboard.HotBooks, HomeBook{
+		result.Items = append(result.Items, HomeBook{
 			Book: book, ReaderCount: metric.ReaderCount, SessionCount: metric.SessionCount,
 			TotalActiveSeconds: metric.ActiveSeconds, HeatScore: metric.HeatScore,
 		})
 	}
-	for _, id := range recentIDs {
-		if book, ok := books[id]; ok {
-			dashboard.RecentlyAdded = append(dashboard.RecentlyAdded, book)
-		}
+	return result, nil
+}
+
+func (s *Store) GetHomeCategories(ctx context.Context, userID int64) (HomeCategorySection, error) {
+	items, err := s.listCategorySummaries(ctx, userID)
+	if err != nil {
+		return HomeCategorySection{}, err
 	}
-	return dashboard, nil
+	return HomeCategorySection{Items: items}, nil
 }
 
 func (s *Store) listContinueMetrics(ctx context.Context, userID int64, limit int) ([]continueMetric, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT rs.book_file_id,rs.overall_progress,rs.status,rs.total_active_seconds,rs.updated_at
 		FROM reading_states rs
+		JOIN accessible_book_ids($1) accessible ON accessible.book_file_id=rs.book_file_id
 		WHERE rs.user_id=$1 AND rs.status IN ('reading','paused') AND rs.overall_progress < 0.999
-			AND can_user_read_book($1,rs.book_file_id)
 		ORDER BY rs.updated_at DESC LIMIT $2`, userID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list continue reading: %w", err)
@@ -200,8 +244,8 @@ func (s *Store) listHotMetrics(ctx context.Context, userID int64, limit int) ([]
 			COALESCE(SUM(rs.active_seconds * CASE WHEN rs.started_at >= now()-INTERVAL '7 days' THEN 1.0 ELSE 0.45 END)
 				+ COUNT(*) * 30 + COUNT(DISTINCT rs.user_id) * 300,0)::double precision AS heat_score
 		FROM reading_sessions rs
+		JOIN accessible_book_ids($1) accessible ON accessible.book_file_id=rs.book_file_id
 		WHERE rs.started_at >= now()-INTERVAL '30 days' AND rs.active_seconds > 0
-			AND can_user_read_book($1,rs.book_file_id)
 		GROUP BY rs.book_file_id
 		ORDER BY heat_score DESC,MAX(rs.started_at) DESC
 		LIMIT $2`, userID, limit)
@@ -222,7 +266,7 @@ func (s *Store) listHotMetrics(ctx context.Context, userID int64, limit int) ([]
 
 func (s *Store) listRecentlyAddedIDs(ctx context.Context, userID int64, limit int) ([]int64, error) {
 	rows, err := s.pool.Query(ctx, `SELECT bf.id FROM book_files bf
-		WHERE can_user_read_book($1,bf.id)
+		JOIN accessible_book_ids($1) accessible ON accessible.book_file_id=bf.id
 		ORDER BY bf.created_at DESC,bf.id DESC LIMIT $2`, userID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list recently added books: %w", err)
@@ -241,34 +285,36 @@ func (s *Store) listRecentlyAddedIDs(ctx context.Context, userID int64, limit in
 
 func (s *Store) listCategorySummaries(ctx context.Context, userID int64) ([]CategorySummary, error) {
 	rows, err := s.pool.Query(ctx, `
+		WITH RECURSIVE category_tree(ancestor_id,descendant_id) AS (
+			SELECT id,id FROM categories
+			UNION ALL
+			SELECT tree.ancestor_id,child.id
+			FROM category_tree tree JOIN categories child ON child.parent_id=tree.descendant_id
+		), accessible_books AS MATERIALIZED (
+			SELECT bf.id,bf.edition_id,bf.created_at,bf.cover_path
+			FROM book_files bf JOIN accessible_book_ids($1) accessible ON accessible.book_file_id=bf.id
+		), accepted_books AS MATERIALIZED (
+			SELECT DISTINCT tree.ancestor_id AS category_id,bf.id,bf.created_at,bf.cover_path
+			FROM category_tree tree
+			JOIN classification_decisions cd ON cd.category_id=tree.descendant_id AND cd.status='accepted'
+			JOIN accessible_books bf ON bf.edition_id=cd.edition_id
+		), category_counts AS (
+			SELECT category_id,COUNT(*)::int AS book_count FROM accepted_books GROUP BY category_id
+		), ranked_covers AS (
+			SELECT category_id,id,created_at,
+				ROW_NUMBER() OVER (PARTITION BY category_id ORDER BY created_at DESC,id DESC) AS position
+			FROM accepted_books WHERE cover_path IS NOT NULL
+		), category_covers AS (
+			SELECT category_id,array_agg(id ORDER BY created_at DESC,id DESC) AS cover_ids
+			FROM ranked_covers WHERE position <= 4 GROUP BY category_id
+		)
 		SELECT cat.id,cat.slug,cat.name,cat.parent_id,COALESCE(parent.name,''),
-			(SELECT COUNT(DISTINCT bf.id)
-			 FROM classification_decisions cd
-			 JOIN editions e ON e.id=cd.edition_id
-			 JOIN book_files bf ON bf.edition_id=e.id
-			 WHERE cd.category_id IN (
-				WITH RECURSIVE category_tree AS (
-					SELECT id FROM categories WHERE id=cat.id
-					UNION ALL SELECT child.id FROM categories child JOIN category_tree tree ON child.parent_id=tree.id
-				) SELECT id FROM category_tree
-			 ) AND cd.status='accepted' AND can_user_read_book($1,bf.id))::int,
-			COALESCE((SELECT array_agg(recent.id) FROM (
-				SELECT DISTINCT bf.id,bf.created_at
-				FROM classification_decisions cd
-				JOIN editions e ON e.id=cd.edition_id
-				JOIN book_files bf ON bf.edition_id=e.id
-				WHERE cd.category_id IN (
-					WITH RECURSIVE category_tree AS (
-						SELECT id FROM categories WHERE id=cat.id
-						UNION ALL SELECT child.id FROM categories child JOIN category_tree tree ON child.parent_id=tree.id
-					) SELECT id FROM category_tree
-				) AND cd.status='accepted' AND bf.cover_path IS NOT NULL
-					AND can_user_read_book($1,bf.id)
-				ORDER BY bf.created_at DESC LIMIT 4
-			) recent),'{}'::bigint[])
+			COALESCE(counts.book_count,0),COALESCE(covers.cover_ids,'{}'::bigint[])
 		FROM categories cat LEFT JOIN categories parent ON parent.id=cat.parent_id
+		LEFT JOIN category_counts counts ON counts.category_id=cat.id
+		LEFT JOIN category_covers covers ON covers.category_id=cat.id
 		WHERE cat.active=true
-		ORDER BY 6 DESC,COALESCE(parent.name,cat.name),cat.parent_id NULLS FIRST,cat.name`, userID)
+		ORDER BY COALESCE(counts.book_count,0) DESC,COALESCE(parent.name,cat.name),cat.parent_id NULLS FIRST,cat.name`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list category summaries: %w", err)
 	}
@@ -288,8 +334,8 @@ func (s *Store) listCategorySummaries(ctx context.Context, userID int64) ([]Cate
 func (s *Store) getPersonalStats(ctx context.Context, userID int64) (PersonalStats, error) {
 	var stats PersonalStats
 	err := s.pool.QueryRow(ctx, `
-		WITH accessible_books AS (
-			SELECT bf.id FROM book_files bf WHERE can_user_read_book($1,bf.id)
+		WITH accessible_books AS MATERIALIZED (
+			SELECT book_file_id AS id FROM accessible_book_ids($1)
 		)
 		SELECT
 			(SELECT COUNT(*) FROM accessible_books)::int,

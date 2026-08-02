@@ -115,6 +115,15 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .reading-stats-panel button.reading-stat { border: 0; color: inherit; text-align: left; }
 .reading-stats-panel button.reading-stat:hover { background: #e0e9df; box-shadow: inset 0 0 0 1px #b6c7b8; }
 .dashboard-section { min-width: 0; }
+.dashboard-section-error { margin: -18px 0 0; }
+.home-section-loading { min-height: 170px; display: flex; align-items: center; justify-content: center; gap: 12px; border: 1px dashed #c8d0c7; border-radius: 17px; background: linear-gradient(110deg, #f2f3ed 30%, #faf9f3 45%, #f2f3ed 60%); background-size: 240% 100%; color: #657169; animation: home-section-shimmer 1.8s ease-in-out infinite; }
+.home-section-loading.compact { min-height: 220px; }
+.continue-panel .home-section-loading { min-height: 300px; }
+.reading-stats-panel .home-section-loading { grid-column: 1 / -1; min-height: 280px; }
+.home-section-failure { min-height: 100px; display: grid; place-items: center; padding: 20px; border: 1px dashed #d9b8b2; border-radius: 17px; background: #fff5f1; color: #8c4940; text-align: center; }
+.continue-panel .home-section-failure { min-height: 300px; }
+.reading-stats-panel .home-section-failure { grid-column: 1 / -1; min-height: 280px; }
+@keyframes home-section-shimmer { 0%, 100% { background-position: 100% 0; } 50% { background-position: 0 0; } }
 .recommendation-section { padding: 26px; border-radius: 24px; background: linear-gradient(135deg, #e1ebe0, #f1ede2); }
 .book-shelf { display: grid; grid-auto-columns: minmax(180px, 220px); grid-auto-flow: column; gap: 16px; padding: 3px 3px 18px; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-color: #aeb9af transparent; scroll-snap-type: x proximity; }
 .book-shelf .book-card { scroll-snap-align: start; }

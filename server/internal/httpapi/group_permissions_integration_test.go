@@ -92,7 +92,7 @@ func assertFavoriteTotal(t *testing.T, baseURL string, session testSession, want
 
 func assertRecentlyAddedCount(t *testing.T, baseURL string, session testSession, want int) {
 	t.Helper()
-	result := requestJSON(t, baseURL, session, http.MethodGet, "/api/v1/home", nil, http.StatusOK)
+	result := requestJSON(t, baseURL, session, http.MethodGet, "/api/v1/home/summary", nil, http.StatusOK)
 	if len(result["recentlyAdded"].([]any)) != want {
 		t.Fatalf("recently added count=%d, want %d", len(result["recentlyAdded"].([]any)), want)
 	}

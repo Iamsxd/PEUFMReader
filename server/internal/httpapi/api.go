@@ -165,6 +165,9 @@ func (a *API) routes() {
 	a.mux.Handle("PUT /api/v1/admin/user-groups/{id}/library-permissions/{libraryGroupId}", a.requireAuth(http.HandlerFunc(a.setGroupLibraryPermission), "admin", true))
 	a.mux.Handle("DELETE /api/v1/admin/user-groups/{id}/library-permissions/{libraryGroupId}", a.requireAuth(http.HandlerFunc(a.deleteGroupLibraryPermission), "admin", true))
 	a.mux.Handle("GET /api/v1/home", a.requireAuth(http.HandlerFunc(a.homeDashboard), "", false))
+	a.mux.Handle("GET /api/v1/home/summary", a.requireAuth(http.HandlerFunc(a.homeSummary), "", false))
+	a.mux.Handle("GET /api/v1/home/categories", a.requireAuth(http.HandlerFunc(a.homeCategories), "", false))
+	a.mux.Handle("GET /api/v1/home/hot", a.requireAuth(http.HandlerFunc(a.homeHotBooks), "", false))
 	a.mux.Handle("GET /api/v1/favorites", a.requireAuth(http.HandlerFunc(a.listFavorites), "", false))
 	a.mux.Handle("GET /api/v1/recommendations", a.requireAuth(http.HandlerFunc(a.listRecommendations), "", false))
 	a.mux.Handle("PUT /api/v1/book-files/{id}/recommendation-feedback", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.setRecommendationFeedback)), "", true))
@@ -517,6 +520,7 @@ func (a *API) listBookFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) homeDashboard(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
 	userSession := sessionFromContext(r.Context())
 	dashboard, err := a.store.GetHomeDashboard(r.Context(), userSession.User.ID)
 	if err != nil {
@@ -536,12 +540,71 @@ func (a *API) homeDashboard(w http.ResponseWriter, r *http.Request) {
 		a.decorateBook(&dashboard.RecentlyAdded[index])
 	}
 	for index := range dashboard.Categories {
-		dashboard.Categories[index].CoverURLs = make([]string, 0, len(dashboard.Categories[index].CoverBookIDs))
-		for _, bookFileID := range dashboard.Categories[index].CoverBookIDs {
-			dashboard.Categories[index].CoverURLs = append(dashboard.Categories[index].CoverURLs, fmt.Sprintf("/api/v1/book-files/%d/cover", bookFileID))
-		}
+		a.decorateCategorySummary(&dashboard.Categories[index])
 	}
+	a.recordHomeSection(w, "legacy", started)
 	writeJSON(w, http.StatusOK, dashboard)
+}
+
+func (a *API) homeSummary(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	userSession := sessionFromContext(r.Context())
+	summary, err := a.store.GetHomeSummary(r.Context(), userSession.User.ID)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	for index := range summary.ContinueReading {
+		a.decorateBook(&summary.ContinueReading[index].Book)
+	}
+	for index := range summary.RecentlyAdded {
+		a.decorateBook(&summary.RecentlyAdded[index])
+	}
+	a.recordHomeSection(w, "summary", started)
+	writeJSON(w, http.StatusOK, summary)
+}
+
+func (a *API) homeCategories(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	userSession := sessionFromContext(r.Context())
+	section, err := a.store.GetHomeCategories(r.Context(), userSession.User.ID)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	for index := range section.Items {
+		a.decorateCategorySummary(&section.Items[index])
+	}
+	a.recordHomeSection(w, "categories", started)
+	writeJSON(w, http.StatusOK, section)
+}
+
+func (a *API) homeHotBooks(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	userSession := sessionFromContext(r.Context())
+	section, err := a.store.GetHomeHotBooks(r.Context(), userSession.User.ID, 8)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	for index := range section.Items {
+		a.decorateBook(&section.Items[index].Book)
+	}
+	a.recordHomeSection(w, "hot", started)
+	writeJSON(w, http.StatusOK, section)
+}
+
+func (a *API) decorateCategorySummary(summary *store.CategorySummary) {
+	summary.CoverURLs = make([]string, 0, len(summary.CoverBookIDs))
+	for _, bookFileID := range summary.CoverBookIDs {
+		summary.CoverURLs = append(summary.CoverURLs, fmt.Sprintf("/api/v1/book-files/%d/cover", bookFileID))
+	}
+}
+
+func (a *API) recordHomeSection(w http.ResponseWriter, section string, started time.Time) {
+	duration := time.Since(started)
+	w.Header().Set("Server-Timing", fmt.Sprintf("home_%s;dur=%.1f", section, float64(duration.Microseconds())/1000))
+	a.logger.Info("home section loaded", "section", section, "duration", duration)
 }
 
 func (a *API) bookDetail(w http.ResponseWriter, r *http.Request) {
@@ -611,6 +674,7 @@ func (a *API) setFavorite(w http.ResponseWriter, r *http.Request, favorite bool)
 }
 
 func (a *API) listRecommendations(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
 	limit := 12
 	if value := r.URL.Query().Get("limit"); value != "" {
 		parsed, err := strconv.Atoi(value)
@@ -629,6 +693,7 @@ func (a *API) listRecommendations(w http.ResponseWriter, r *http.Request) {
 	for index := range result.Items {
 		a.decorateBook(&result.Items[index].Book)
 	}
+	a.recordHomeSection(w, "recommendations", started)
 	writeJSON(w, http.StatusOK, result)
 }
 

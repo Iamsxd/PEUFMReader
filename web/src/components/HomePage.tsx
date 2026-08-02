@@ -1,6 +1,6 @@
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { APIError, api } from '../api'
-import type { BookFile, CatalogQuery, CategorySummary, HomeBook, HomeDashboard } from '../types'
+import type { BookFile, CatalogQuery, CategorySummary, HomeBook, HomeSummary, PersonalStats, Recommendation } from '../types'
 import { coverThumbnailURL, formatDuration, formatRelativeTime } from '../utils'
 import { BookCard } from './BookCard'
 
@@ -15,14 +15,38 @@ interface Props {
 }
 
 export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategories, onFavorites, onRecommendations }: Props) {
-  const [dashboard, setDashboard] = useState<HomeDashboard | null>(null)
+  const [summary, setSummary] = useState<HomeSummary | null>(null)
+  const [categories, setCategories] = useState<CategorySummary[] | null>(null)
+  const [hotBooks, setHotBooks] = useState<HomeBook[] | null>(null)
+  const [recommendations, setRecommendations] = useState<Recommendation[] | null>(null)
   const [query, setQuery] = useState('')
-  const [error, setError] = useState('')
+  const [summaryError, setSummaryError] = useState('')
+  const [categoriesError, setCategoriesError] = useState('')
+  const [hotError, setHotError] = useState('')
+  const [recommendationsError, setRecommendationsError] = useState('')
 
   useEffect(() => {
-    void api.getHomeDashboard().then(setDashboard).catch((reason) => {
-      setError(reason instanceof APIError ? reason.message : '无法加载首页。')
+    let disposed = false
+    const message = (reason: unknown, fallback: string) => reason instanceof APIError ? reason.message : fallback
+    const loadSecondarySections = () => {
+      void api.getHomeCategories().then((section) => { if (!disposed) setCategories(section.items) }).catch((reason) => {
+        if (!disposed) setCategoriesError(message(reason, '暂时无法统计分类。'))
+      })
+      void api.getHomeHotBooks().then((section) => { if (!disposed) setHotBooks(section.items) }).catch((reason) => {
+        if (!disposed) setHotError(message(reason, '暂时无法加载热门书籍。'))
+      })
+      void api.getRecommendations(8).then((section) => { if (!disposed) setRecommendations(section.items) }).catch((reason) => {
+        if (!disposed) setRecommendationsError(message(reason, '暂时无法生成推荐。'))
+      })
+    }
+    void api.getHomeSummary().then((result) => {
+      if (!disposed) setSummary(result)
+    }).catch((reason) => {
+      if (!disposed) setSummaryError(message(reason, '暂时无法加载阅读概况。'))
+    }).finally(() => {
+      if (!disposed) loadSecondarySections()
     })
+    return () => { disposed = true }
   }, [])
 
   function search(event: FormEvent) {
@@ -30,9 +54,7 @@ export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategor
     onBrowse({ q: query.trim(), sort: query.trim() ? 'relevance' : 'title' })
   }
 
-  if (error) return <div className="notice error" role="alert">{error}</div>
-  if (!dashboard) return <section className="dashboard-loading">正在整理你的书架…</section>
-  if (dashboard.stats.totalBooks === 0) {
+  if (summary?.stats.totalBooks === 0) {
     return (
       <section className="empty-state dashboard-empty">
         <span className="empty-icon">书</span>
@@ -42,9 +64,9 @@ export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategor
     )
   }
 
-  const primaryReading = dashboard.continueReading[0]
-  const otherReading = dashboard.continueReading.slice(1)
-  const visibleCategories = dashboard.categories.filter((category) => category.bookCount > 0).slice(0, 8)
+  const primaryReading = summary?.continueReading[0]
+  const otherReading = summary?.continueReading.slice(1) ?? []
+  const visibleCategories = categories?.filter((category) => category.bookCount > 0).slice(0, 8) ?? []
 
   return (
     <div className="dashboard-page">
@@ -61,10 +83,12 @@ export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategor
         </form>
       </section>
 
+      {summaryError && <div className="notice error dashboard-section-error" role="alert">{summaryError} 其他书库内容仍会继续加载。</div>}
+
       <div className="dashboard-lead-grid">
         <section className="continue-panel">
           <SectionHeading eyebrow="个人书架" title="继续阅读" actionLabel="查看全部" onAction={() => onBrowse({ status: 'reading', sort: 'newest' })} />
-          {primaryReading ? (
+          {!summary ? summaryError ? <SectionFailure message={summaryError} /> : <SectionLoading label="正在加载最近阅读…" compact /> : primaryReading ? (
             <ContinueCard item={primaryReading} onOpen={onOpenBook} onDetails={onViewBook} />
           ) : (
             <div className="continue-empty">
@@ -74,40 +98,44 @@ export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategor
             </div>
           )}
         </section>
-        <ReadingStats dashboard={dashboard} onFavorites={onFavorites} />
+        <ReadingStats stats={summary?.stats} error={summaryError} onFavorites={onFavorites} />
       </div>
 
       {otherReading.length > 0 && (
         <BookShelf title="最近阅读" eyebrow="继续你的节奏" items={otherReading} onOpen={onOpenBook} onDetails={onViewBook} />
       )}
 
-      {dashboard.recommendations.length > 0 && (
+      {recommendations === null && !recommendationsError && <LoadingBookSection eyebrow="你的阅读偏好" title="为你推荐" label="正在准备个性化推荐…" />}
+      {recommendationsError && <FailedSection eyebrow="你的阅读偏好" title="为你推荐" message={recommendationsError} />}
+      {recommendations && recommendations.length > 0 && (
         <section className="dashboard-section recommendation-section">
           <SectionHeading eyebrow="你的阅读偏好" title="为你推荐" actionLabel="查看全部" onAction={onRecommendations} />
           <div className="book-shelf">
-            {dashboard.recommendations.map((item) => <BookCard key={item.book.id} book={item.book} onOpen={onOpenBook} onDetails={onViewBook} recommendationReason={item.reason} compact />)}
+            {recommendations.map((item) => <BookCard key={item.book.id} book={item.book} onOpen={onOpenBook} onDetails={onViewBook} recommendationReason={item.reason} compact />)}
           </div>
         </section>
       )}
 
       <section className="dashboard-section">
         <SectionHeading eyebrow="固定题材" title="按分类浏览" actionLabel="全部分类" onAction={onCategories} />
-        {visibleCategories.length > 0 ? (
+        {categories === null && !categoriesError ? <SectionLoading label="正在统计书籍分类…" /> : categoriesError ? <SectionFailure message={categoriesError} /> : visibleCategories.length > 0 ? (
           <div className="category-summary-grid">
             {visibleCategories.map((category) => <CategoryTile key={category.id} category={category} onClick={() => onBrowse({ category: category.slug, sort: 'title' })} />)}
           </div>
         ) : <p className="muted">分类仍在整理中，可以先浏览全部书籍。</p>}
       </section>
 
-      {dashboard.hotBooks.length > 0 && (
-        <BookShelf title="近 30 天热门" eyebrow="大家最近在读" items={dashboard.hotBooks} onOpen={onOpenBook} onDetails={onViewBook} hot />
+      {hotBooks === null && !hotError && <LoadingBookSection eyebrow="大家最近在读" title="近 30 天热门" label="正在计算近期热度…" />}
+      {hotError && <FailedSection eyebrow="大家最近在读" title="近 30 天热门" message={hotError} />}
+      {hotBooks && hotBooks.length > 0 && (
+        <BookShelf title="近 30 天热门" eyebrow="大家最近在读" items={hotBooks} onOpen={onOpenBook} onDetails={onViewBook} hot />
       )}
 
       <section className="dashboard-section">
         <SectionHeading eyebrow="书库动态" title="最近加入" actionLabel="查看全部" onAction={() => onBrowse({ sort: 'newest' })} />
-        <div className="book-shelf">
-          {dashboard.recentlyAdded.map((book) => <BookCard key={book.id} book={book} onOpen={onOpenBook} onDetails={onViewBook} compact />)}
-        </div>
+        {!summary ? summaryError ? <SectionFailure message={summaryError} /> : <SectionLoading label="正在加载最近加入…" /> : <div className="book-shelf">
+          {summary.recentlyAdded.map((book) => <BookCard key={book.id} book={book} onOpen={onOpenBook} onDetails={onViewBook} compact />)}
+        </div>}
       </section>
     </div>
   )
@@ -130,19 +158,36 @@ function ContinueCard({ item, onOpen, onDetails }: { item: HomeBook; onOpen: (bo
   )
 }
 
-function ReadingStats({ dashboard, onFavorites }: { dashboard: HomeDashboard; onFavorites: () => void }) {
-  const stats = dashboard.stats
+function ReadingStats({ stats, error, onFavorites }: { stats?: PersonalStats; error: string; onFavorites: () => void }) {
   return (
     <section className="reading-stats-panel">
       <div><p className="eyebrow">我的阅读</p><h2>阅读概况</h2></div>
+      {!stats ? error ? <SectionFailure message={error} /> : <SectionLoading label="正在汇总阅读数据…" compact /> : <>
       <div className="reading-stat primary-stat"><strong>{formatDuration(stats.weekActiveSeconds)}</strong><span>最近 7 天</span></div>
       <div className="reading-stat"><strong>{stats.readingBooks}</strong><span>正在阅读</span></div>
       <div className="reading-stat"><strong>{stats.finishedBooks}</strong><span>已经读完</span></div>
       <button className="reading-stat" onClick={onFavorites}><strong>{stats.favoriteBooks}</strong><span>我的收藏 →</span></button>
       <div className="reading-stat"><strong>{formatDuration(stats.totalActiveSeconds)}</strong><span>累计时长</span></div>
       <div className="reading-stat"><strong>{stats.totalBooks}</strong><span>书库藏书</span></div>
+      </>}
     </section>
   )
+}
+
+function LoadingBookSection({ eyebrow, title, label }: { eyebrow: string; title: string; label: string }) {
+  return <section className="dashboard-section"><SectionHeading eyebrow={eyebrow} title={title} /><SectionLoading label={label} /></section>
+}
+
+function FailedSection({ eyebrow, title, message }: { eyebrow: string; title: string; message: string }) {
+  return <section className="dashboard-section"><SectionHeading eyebrow={eyebrow} title={title} /><SectionFailure message={message} /></section>
+}
+
+function SectionLoading({ label, compact = false }: { label: string; compact?: boolean }) {
+  return <div className={`home-section-loading${compact ? ' compact' : ''}`} role="status"><span className="loading-spinner" /><span>{label}</span></div>
+}
+
+function SectionFailure({ message }: { message: string }) {
+  return <p className="home-section-failure">{message} 稍后重新进入首页即可重试。</p>
 }
 
 function BookShelf({ title, eyebrow, items, onOpen, onDetails, hot = false }: { title: string; eyebrow: string; items: HomeBook[]; onOpen: (book: BookFile) => void; onDetails: (book: BookFile) => void; hot?: boolean }) {

@@ -19,7 +19,11 @@ const cookie = login.headers.get('set-cookie')?.split(';', 1)[0]
 if (!cookie) throw new Error('Login response did not include a session cookie')
 
 const endpoints = [
-  ['/api/v1/home', 'home'],
+  ['/api/v1/home/summary', 'home-summary'],
+  ['/api/v1/home/categories', 'home-categories'],
+  ['/api/v1/home/hot', 'home-hot'],
+  ['/api/v1/recommendations?limit=8', 'home-recommendations'],
+  ['/api/v1/home', 'home-legacy'],
   ['/api/v1/book-files?page=1&pageSize=24&sort=newest', 'catalog-newest'],
   ['/api/v1/book-files?q=Performance%20Book%202999&page=1&pageSize=24&sort=relevance', 'catalog-search'],
   ['/api/v1/book-files?category=technology&page=1&pageSize=24&sort=title', 'catalog-category'],
@@ -74,4 +78,3 @@ function percentile(values, fraction) {
 function round(value) {
   return Math.round(value * 10) / 10
 }
-
