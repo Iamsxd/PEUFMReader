@@ -7,6 +7,7 @@ import { CategoriesPage } from './CategoriesPage'
 import { FavoritesPage } from './FavoritesPage'
 import { HomePage } from './HomePage'
 import { RecommendationsPage } from './RecommendationsPage'
+import { ReadingStatisticsPage } from './ReadingStatisticsPage'
 import { DeviceSyncPage } from './DeviceSyncPage'
 import { OfflineBooksPage } from './OfflineBooksPage'
 import { InstallAppPrompt } from './InstallAppPrompt'
@@ -18,7 +19,7 @@ interface Props {
   onLogout: () => void
 }
 
-type LibraryView = 'home' | 'books' | 'categories' | 'favorites' | 'recommendations' | 'offline' | 'devices' | 'book' | 'admin'
+type LibraryView = 'home' | 'books' | 'categories' | 'favorites' | 'recommendations' | 'statistics' | 'offline' | 'devices' | 'book' | 'admin'
 type NavigationView = Exclude<LibraryView, 'book'>
 
 interface LibraryRoute {
@@ -66,8 +67,8 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
 
   const requestedView = route.view === 'admin' && !isAdmin ? 'home' : route.view
   const activeView = offlineMode ? 'offline' : requestedView
-  const secondaryLabel = activeView === 'offline' ? '离线书籍' : activeView === 'devices' ? '设备同步' : activeView === 'admin' ? '管理后台' : '更多'
-  const secondaryActive = activeView === 'offline' || activeView === 'devices' || activeView === 'admin'
+  const secondaryLabel = activeView === 'statistics' ? '阅读统计' : activeView === 'offline' ? '离线书籍' : activeView === 'devices' ? '设备同步' : activeView === 'admin' ? '管理后台' : '更多'
+  const secondaryActive = activeView === 'statistics' || activeView === 'offline' || activeView === 'devices' || activeView === 'admin'
 
   function navigateFromMenu(event: MouseEvent<HTMLButtonElement>, view: NavigationView) {
     event.currentTarget.closest('details')?.removeAttribute('open')
@@ -92,6 +93,7 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
             <summary>{secondaryLabel}<span aria-hidden="true">⌄</span></summary>
             <div className="navigation-popover">
               <p>本机阅读</p>
+              <button className={activeView === 'statistics' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'statistics')}><span>阅读统计</span><small>时长、连续阅读、题材与格式分布</small></button>
               <button className={activeView === 'offline' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'offline')}><span>离线书籍</span><small>保存在当前浏览器的设备副本</small></button>
               <p>阅读设备</p>
               <button className={activeView === 'devices' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'devices')}><span>设备同步</span><small>OPDS、KOReader 与 Kobo</small></button>
@@ -134,6 +136,7 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
         {activeView === 'categories' && <CategoriesPage onBrowse={(query) => navigate('books', query)} />}
         {activeView === 'favorites' && <FavoritesPage onOpenBook={onOpenBook} onViewBook={viewBook} onBrowse={() => navigate('books')} />}
         {activeView === 'recommendations' && <RecommendationsPage onOpenBook={onOpenBook} onViewBook={viewBook} onBrowse={() => navigate('books')} />}
+        {activeView === 'statistics' && <ReadingStatisticsPage onOpenBook={onOpenBook} onViewBook={viewBook} />}
         {activeView === 'offline' && <OfflineBooksPage userID={session.user.id} offlineMode={offlineMode} onOpenBook={onOpenBook} onBrowse={() => navigate('books')} />}
         {activeView === 'devices' && <DeviceSyncPage user={session.user} />}
         {activeView === 'book' && route.bookID && (
@@ -164,7 +167,7 @@ function readRoute(): LibraryRoute {
     if (bookID) return { view: 'book', bookID, params: new URLSearchParams(search), key: raw }
   }
   const candidate = parts[0]
-  const view: LibraryView = candidate === 'books' || candidate === 'categories' || candidate === 'favorites' || candidate === 'recommendations' || candidate === 'offline' || candidate === 'devices' || candidate === 'admin' ? candidate : 'home'
+  const view: LibraryView = candidate === 'books' || candidate === 'categories' || candidate === 'favorites' || candidate === 'recommendations' || candidate === 'statistics' || candidate === 'offline' || candidate === 'devices' || candidate === 'admin' ? candidate : 'home'
   return { view, params: new URLSearchParams(search), key: raw }
 }
 

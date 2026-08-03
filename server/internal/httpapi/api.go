@@ -172,6 +172,7 @@ func (a *API) routes() {
 	a.mux.Handle("GET /api/v1/home/summary", a.requireAuth(http.HandlerFunc(a.homeSummary), "", false))
 	a.mux.Handle("GET /api/v1/home/categories", a.requireAuth(http.HandlerFunc(a.homeCategories), "", false))
 	a.mux.Handle("GET /api/v1/home/hot", a.requireAuth(http.HandlerFunc(a.homeHotBooks), "", false))
+	a.mux.Handle("GET /api/v1/reading-statistics", a.requireAuth(http.HandlerFunc(a.readingStatistics), "", false))
 	a.mux.Handle("GET /api/v1/favorites", a.requireAuth(http.HandlerFunc(a.listFavorites), "", false))
 	a.mux.Handle("GET /api/v1/recommendations", a.requireAuth(http.HandlerFunc(a.listRecommendations), "", false))
 	a.mux.Handle("PUT /api/v1/book-files/{id}/recommendation-feedback", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.setRecommendationFeedback)), "", true))
@@ -597,6 +598,19 @@ func (a *API) homeHotBooks(w http.ResponseWriter, r *http.Request) {
 	}
 	a.recordHomeSection(w, "hot", started)
 	writeJSON(w, http.StatusOK, section)
+}
+
+func (a *API) readingStatistics(w http.ResponseWriter, r *http.Request) {
+	userSession := sessionFromContext(r.Context())
+	statistics, err := a.store.GetReadingStatistics(r.Context(), userSession.User.ID)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	for index := range statistics.RecentlyFinished {
+		a.decorateBook(&statistics.RecentlyFinished[index].Book)
+	}
+	writeJSON(w, http.StatusOK, statistics)
 }
 
 func (a *API) decorateCategorySummary(summary *store.CategorySummary) {

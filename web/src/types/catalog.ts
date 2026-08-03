@@ -70,6 +70,29 @@ export interface PersonalStats {
   weekActiveSeconds: number
 }
 
+export interface DailyReadingActivity { date: string; activeSeconds: number }
+export interface ReadingFormatBreakdown { format: BookFormat; bookCount: number; activeSeconds: number }
+export interface ReadingCategoryBreakdown { id: number; slug: string; name: string; bookCount: number; activeSeconds: number }
+export interface FinishedReadingBook { book: BookFile; finishedAt: string; totalActiveSeconds: number }
+export interface ReadingStatistics {
+  generatedAt: string
+  windowDays: number
+  todayActiveSeconds: number
+  weekActiveSeconds: number
+  monthActiveSeconds: number
+  totalActiveSeconds: number
+  trackedBooks: number
+  readingBooks: number
+  finishedBooks: number
+  completedLast30Days: number
+  currentStreakDays: number
+  longestStreakDays: number
+  dailyActivity: DailyReadingActivity[]
+  formats: ReadingFormatBreakdown[]
+  categories: ReadingCategoryBreakdown[]
+  recentlyFinished: FinishedReadingBook[]
+}
+
 export interface HomeDashboard {
   continueReading: HomeBook[]
   hotBooks: HomeBook[]

@@ -1,4 +1,4 @@
-import type { BackgroundJob, BookDetail, BookFile, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeBookSection, HomeCategorySection, HomeDashboard, HomeSummary, RecommendationFeedback, RecommendationFeedbackValue, RecommendationPage } from '../types'
+import type { BackgroundJob, BookDetail, BookFile, CatalogPage, CatalogQuery, Category, FavoritePage, FavoriteState, HomeBookSection, HomeCategorySection, HomeDashboard, HomeSummary, ReadingStatistics, RecommendationFeedback, RecommendationFeedbackValue, RecommendationPage } from '../types'
 import { APIError, querySuffix, transport } from './core'
 
 interface ErrorBody { error?: { code?: string; message?: string } }
@@ -19,6 +19,10 @@ export const catalogAPI = {
 
   getHomeHotBooks(): Promise<HomeBookSection> {
     return transport.request('/api/v1/home/hot')
+  },
+
+  getReadingStatistics(): Promise<ReadingStatistics> {
+    return transport.request('/api/v1/reading-statistics')
   },
 
   listBooks(query: CatalogQuery = {}): Promise<CatalogPage> {
