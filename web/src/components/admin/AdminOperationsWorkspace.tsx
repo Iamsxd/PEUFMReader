@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { APIError, api } from '../../api'
-import type { AuditEvent, BackgroundJob, StorageAuditReport } from '../../types'
-import { formatBytes, formatRelativeTime } from '../../utils'
+import type { AuditEvent, BackgroundJob, OperationsOverview, StorageAuditReport } from '../../types'
+import { formatBytes, formatDuration, formatRelativeTime } from '../../utils'
 
 interface Props {
   onError: (message: string) => void
@@ -13,12 +13,14 @@ export default function AdminOperationsWorkspace({ onError, onDataChanged, onAct
   const [backgroundJobs, setBackgroundJobs] = useState<BackgroundJob[]>([])
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
   const [storageReport, setStorageReport] = useState<StorageAuditReport | null>(null)
+  const [overview, setOverview] = useState<OperationsOverview | null>(null)
   const [checkingStorage, setCheckingStorage] = useState(false)
 
   async function refreshOperations() {
-    const [jobs, audits] = await Promise.all([api.listBackgroundJobs(), api.listAuditEvents()])
+    const [jobs, audits, nextOverview] = await Promise.all([api.listBackgroundJobs(), api.listAuditEvents(), api.getOperationsOverview()])
     setBackgroundJobs(jobs)
     setAuditEvents(audits)
+    setOverview(nextOverview)
     onActiveJobCountChange(jobs.filter((job) => job.state === 'queued' || job.state === 'running').length)
   }
 
@@ -52,6 +54,22 @@ export default function AdminOperationsWorkspace({ onError, onDataChanged, onAct
   }
 
   return <div className="admin-workspace-module">
+    <section className="integration-panel operations-overview-panel">
+      <div className="section-title"><div><p className="eyebrow">运行概览</p><h2>服务状态</h2><p className="muted">仅保留本次服务启动后的聚合请求指标；不记录书名、正文或个人阅读内容。</p></div><button className="secondary" type="button" onClick={() => void refreshOperations().catch((reason) => onError(reason instanceof APIError ? reason.message : '无法刷新运行状态。'))}>刷新</button></div>
+      {overview ? <><div className="operations-metric-grid">
+        <Metric label="服务已运行" value={formatDuration(overview.uptimeSeconds)} />
+        <Metric label="活跃读者（24 小时）" value={String(overview.snapshot.activeUsers24Hours)} />
+        <Metric label="当前阅读会话" value={String(overview.snapshot.activeReadingSessions)} />
+        <Metric label="数据库连接" value={String(overview.snapshot.databaseConnections)} />
+        <Metric label="等待 / 运行任务" value={`${overview.snapshot.queuedJobs} / ${overview.snapshot.runningJobs}`} />
+        <Metric label="失败任务" value={String(overview.snapshot.failedJobs)} attention={overview.snapshot.failedJobs > 0} />
+        <Metric label="可重试任务" value={String(overview.snapshot.retryingJobs)} attention={overview.snapshot.retryingJobs > 0} />
+        <Metric label="最长等待" value={formatDuration(overview.snapshot.oldestQueuedSeconds)} attention={overview.snapshot.oldestQueuedSeconds >= 300} />
+        <Metric label="应用堆内存" value={formatBytes(overview.heapAllocBytes)} />
+        <Metric label="Go 协程" value={String(overview.goRoutines)} />
+      </div>
+      <div className="operations-request-list"><div><strong>近期请求（服务启动后，单接口保留最近 200 次）</strong><small>请求 / 错误 / P95</small></div>{overview.requests.slice(0, 8).map((metric) => <p key={metric.route}><code>{metric.route}</code><span>{metric.requests} / {metric.errors} / {metric.p95DurationMs} ms</span></p>)}</div></> : <div className="job-empty">正在汇总运行状态…</div>}
+    </section>
     <section className="jobs-panel compact-admin-panel">
       <div className="section-title"><div><p className="eyebrow">可恢复后台任务</p><h2>处理队列</h2></div><span className="muted">服务重启后自动接续；失败任务可人工重试</span></div>
       <div className="job-list">{backgroundJobs.length === 0 && <div className="job-empty">暂无后台任务</div>}{backgroundJobs.slice(0, 20).map((job) => <div className="job-row background-job-row" key={job.id}><span className={`job-state ${job.state}`}>{jobStateLabel(job.state)}</span><span><strong>{jobKindLabel(job.kind)}</strong><small>{jobSourceLabel(job)}</small></span><span className="job-progress"><span>{job.lastError || job.progressMessage || `尝试 ${job.attempts} / ${job.maxAttempts}`}</span><i><b style={{ width: `${job.progress}%` }} /></i><small>{job.progress}%</small></span>{job.state === 'failed' && <button className="secondary" type="button" onClick={() => void retryJob(job.id)}>重试</button>}</div>)}</div>
@@ -65,6 +83,10 @@ export default function AdminOperationsWorkspace({ onError, onDataChanged, onAct
 
     <section className="jobs-panel audit-panel"><div className="section-title"><div><p className="eyebrow">安全审计</p><h2>最近操作</h2></div><span className="muted">登录事件与管理员写操作</span></div><div className="job-list">{auditEvents.length === 0 && <div className="job-empty">暂无审计事件</div>}{auditEvents.slice(0, 20).map((event) => <div className="job-row audit-row" key={event.id}><span className={`job-state ${event.statusCode >= 400 ? 'failed' : 'completed'}`}>{event.statusCode}</span><span><strong>{auditActionLabel(event.action)}</strong><small>{event.actorName || '未知账号'} · {event.clientIp || '未知地址'}</small></span><span>{formatRelativeTime(event.createdAt)}</span></div>)}</div></section>
   </div>
+}
+
+function Metric({ label, value, attention = false }: { label: string; value: string; attention?: boolean }) {
+  return <div className={attention ? 'has-issue' : ''}><strong>{value}</strong><span>{label}</span></div>
 }
 
 function jobStateLabel(state: BackgroundJob['state']): string {

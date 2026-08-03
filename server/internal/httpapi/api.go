@@ -60,6 +60,8 @@ type API struct {
 	publicAccess   bool
 	allowedHosts   map[string]struct{}
 	mux            *http.ServeMux
+	metrics        *requestMetrics
+	startedAt      time.Time
 }
 
 type ImportSource struct {
@@ -99,13 +101,15 @@ func New(store *store.Store, libraryManager *library.Manager, converter *mobicon
 		loginLimiter:   newLoginLimiter(),
 		trustedProxy:   trustedProxy,
 		mux:            http.NewServeMux(),
+		metrics:        newRequestMetrics(),
+		startedAt:      time.Now(),
 	}
 	api.routes()
 	return api
 }
 
 func (a *API) Handler() http.Handler {
-	return a.securityHeaders(a.requestLog(a.mux))
+	return a.securityHeaders(a.requestMetrics(a.requestLog(a.mux)))
 }
 
 func (a *API) ConfigurePublicSecurity(publicAccess bool, allowedHosts []string) {
@@ -214,6 +218,7 @@ func (a *API) routes() {
 	a.mux.Handle("GET /api/v1/background-jobs", a.requireAuth(http.HandlerFunc(a.listBackgroundJobs), "admin", false))
 	a.mux.Handle("GET /api/v1/audit-events", a.requireAuth(http.HandlerFunc(a.listAuditEvents), "admin", false))
 	a.mux.Handle("GET /api/v1/system/storage", a.requireAuth(http.HandlerFunc(a.storageAudit), "admin", false))
+	a.mux.Handle("GET /api/v1/admin/operations/overview", a.requireAuth(http.HandlerFunc(a.operationsOverview), "admin", false))
 	a.mux.Handle("POST /api/v1/background-jobs/{id}/retry", a.requireAuth(http.HandlerFunc(a.retryBackgroundJob), "admin", true))
 	a.mux.Handle("GET /api/v1/calibre/preview", a.requireAuth(http.HandlerFunc(a.previewCalibre), "admin", false))
 	a.mux.Handle("POST /api/v1/calibre/import", a.requireAuth(http.HandlerFunc(a.importCalibre), "admin", true))

@@ -94,6 +94,9 @@ export interface BackgroundJob {
 export interface AuditEvent { id: number; actorId?: number; actorName: string; action: string; clientIp: string; statusCode: number; details: Record<string, unknown>; createdAt: string }
 export interface StorageIssue { bookFileId?: number; path: string; issue: 'missing' | 'size_mismatch' | 'checksum_mismatch' | 'unsafe_path' | 'orphaned' | string }
 export interface StorageAuditReport { checkedAt: string; deep: boolean; databaseFileCount: number; diskFileCount: number; expectedBytes: number; actualBytes: number; missingCount: number; mismatchCount: number; orphanCount: number; issues: StorageIssue[] }
+export interface OperationsRequestMetric { route: string; requests: number; errors: number; lastDurationMs: number; p95DurationMs: number; lastStatus: number }
+export interface OperationsSnapshot { queuedJobs: number; runningJobs: number; failedJobs: number; retryingJobs: number; failedJobsLast24Hours: number; completedLast24Hours: number; oldestQueuedSeconds: number; activeReadingSessions: number; activeUsers24Hours: number; databaseConnections: number }
+export interface OperationsOverview { generatedAt: string; uptimeSeconds: number; goRoutines: number; heapAllocBytes: number; heapSystemBytes: number; lastGcAt?: string; requests: OperationsRequestMetric[]; snapshot: OperationsSnapshot }
 
 export interface CalibreRecord { sourcePath: string; metadataPath: string; coverPath?: string; title: string; authors: string[]; publishedYear?: number; language?: string; isbn?: string; publisher?: string; description?: string; subjects: string[]; format: BookFormat }
 export interface CalibrePreview { configured: boolean; rootLabel: string; books: CalibreRecord[]; total: number; pdfCount: number; epubCount: number; mobiCount: number; azw3Count: number; errors: string[] }

@@ -1,4 +1,4 @@
-import type { AuditEvent, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookPermission, CalibreImportResult, CalibrePreview, Category, ClassificationRule, DuplicateCatalogGroup, GroupLibraryPermission, ImportJob, ImportSource, LibraryGroup, ManagedUser, ReviewInput, ReviewItem, ReviewQueuePage, ReviewQueueQuery, Role, StorageAuditReport, User, UserAccessInfo, UserGroup } from '../types'
+import type { AuditEvent, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookPermission, CalibreImportResult, CalibrePreview, Category, ClassificationRule, DuplicateCatalogGroup, GroupLibraryPermission, ImportJob, ImportSource, LibraryGroup, ManagedUser, OperationsOverview, ReviewInput, ReviewItem, ReviewQueuePage, ReviewQueueQuery, Role, StorageAuditReport, User, UserAccessInfo, UserGroup } from '../types'
 import { querySuffix, transport } from './core'
 
 export const adminAPI = {
@@ -82,6 +82,9 @@ export const adminAPI = {
   },
   auditStorage(deep = false): Promise<StorageAuditReport> {
     return transport.request(`/api/v1/system/storage${deep ? '?deep=true' : ''}`)
+  },
+  getOperationsOverview(): Promise<OperationsOverview> {
+    return transport.request('/api/v1/admin/operations/overview')
   },
   retryBackgroundJob(jobID: number): Promise<BackgroundJob> {
     return transport.request(`/api/v1/background-jobs/${jobID}/retry`, { method: 'POST' })
