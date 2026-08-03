@@ -22,6 +22,9 @@ func TestBuildCatalogWhereUsesBoundParameters(t *testing.T) {
 	if len(args) != 6 || searchPlaceholder != "$2" {
 		t.Fatalf("unexpected arguments: placeholder=%q args=%#v", searchPlaceholder, args)
 	}
+	if args[0] != int64(42) || strings.Contains(where, "can_user_read_book") {
+		t.Fatalf("catalog access set was not prepared correctly: args=%#v where=%s", args, where)
+	}
 	if strings.Contains(where, "100%_Go") || !strings.Contains(where, "filter_rs.user_id=$5") || !strings.Contains(where, "filter_rs.status=$6") {
 		t.Fatalf("query values were not safely bound: %s", where)
 	}

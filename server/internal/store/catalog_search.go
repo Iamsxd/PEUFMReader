@@ -52,7 +52,7 @@ func (s *Store) SearchCatalogBooks(ctx context.Context, userID int64, input Cata
 	where, args, searchPlaceholder := buildCatalogWhere(userID, query)
 
 	var total int
-	if err := s.pool.QueryRow(ctx, "SELECT COUNT(*)"+catalogBookFrom+where, args...).Scan(&total); err != nil {
+	if err := s.pool.QueryRow(ctx, "SELECT COUNT(*)"+catalogAccessibleBookFrom+where, args...).Scan(&total); err != nil {
 		return CatalogPage{}, fmt.Errorf("count catalog books: %w", err)
 	}
 
@@ -60,7 +60,7 @@ func (s *Store) SearchCatalogBooks(ctx context.Context, userID int64, input Cata
 	limitPlaceholder := fmt.Sprintf("$%d", len(args)+1)
 	offsetPlaceholder := fmt.Sprintf("$%d", len(args)+2)
 	pageArgs := append(append([]any{}, args...), query.PageSize, (query.Page-1)*query.PageSize)
-	rows, err := s.pool.Query(ctx, catalogBookSelect+where+orderBy+" LIMIT "+limitPlaceholder+" OFFSET "+offsetPlaceholder, pageArgs...)
+	rows, err := s.pool.Query(ctx, catalogAccessibleBookSelect+where+orderBy+" LIMIT "+limitPlaceholder+" OFFSET "+offsetPlaceholder, pageArgs...)
 	if err != nil {
 		return CatalogPage{}, fmt.Errorf("search catalog books: %w", err)
 	}
@@ -86,25 +86,25 @@ func (s *Store) SearchCatalogBooks(ctx context.Context, userID int64, input Cata
 
 func buildCatalogWhere(userID int64, query CatalogQuery) (string, []any, string) {
 	conditions := make([]string, 0, 5)
-	args := make([]any, 0, 6)
+	// The first argument belongs to catalogAccessibleBookFrom. Keeping it in the
+	// shared argument list means count and page queries use the same access set.
+	args := []any{userID}
 	addArgument := func(value any) string {
 		args = append(args, value)
 		return fmt.Sprintf("$%d", len(args))
 	}
-	accessUserPlaceholder := addArgument(userID)
-	conditions = append(conditions, `can_user_read_book(`+accessUserPlaceholder+`,bf.id)`)
 	searchPlaceholder := ""
 	if query.Query != "" {
 		searchPlaceholder = addArgument(escapeLikePattern(query.Query))
-		match := "'%' || " + searchPlaceholder + " || '%' ESCAPE E'\\\\'"
+		match := "lower('%' || " + searchPlaceholder + " || '%') ESCAPE E'\\\\'"
 		conditions = append(conditions, `(
-			w.title ILIKE `+match+` OR bf.original_filename ILIKE `+match+` OR
-			COALESCE(e.isbn,'') ILIKE `+match+` OR COALESCE(e.publisher,'') ILIKE `+match+` OR
-			COALESCE(e.published_year::text,'') ILIKE `+match+` OR
+			lower(w.title) LIKE `+match+` OR lower(bf.original_filename) LIKE `+match+` OR
+			lower(COALESCE(e.isbn,'')) LIKE `+match+` OR lower(COALESCE(e.publisher,'')) LIKE `+match+` OR
+			lower(COALESCE(e.published_year::text,'')) LIKE `+match+` OR
 			EXISTS (SELECT 1 FROM edition_creators search_ec JOIN creators search_c ON search_c.id=search_ec.creator_id
-				WHERE search_ec.edition_id=e.id AND search_ec.role='author' AND search_c.name ILIKE `+match+`) OR
+				WHERE search_ec.edition_id=e.id AND search_ec.role='author' AND lower(search_c.name) LIKE `+match+`) OR
 			EXISTS (SELECT 1 FROM classification_decisions search_cd JOIN categories search_cat ON search_cat.id=search_cd.category_id
-				WHERE search_cd.edition_id=e.id AND search_cd.status='accepted' AND search_cat.name ILIKE `+match+`)
+				WHERE search_cd.edition_id=e.id AND search_cd.status='accepted' AND lower(search_cat.name) LIKE `+match+`)
 		)`)
 	}
 	if query.CategorySlug != "" {
@@ -128,6 +128,9 @@ func buildCatalogWhere(userID int64, query CatalogQuery) (string, []any, string)
 		statusPlaceholder := addArgument(query.Status)
 		conditions = append(conditions, "EXISTS (SELECT 1 FROM reading_states filter_rs WHERE filter_rs.user_id="+userPlaceholder+" AND filter_rs.book_file_id=bf.id AND filter_rs.status="+statusPlaceholder+")")
 	}
+	if len(conditions) == 0 {
+		return "", args, searchPlaceholder
+	}
 	return " WHERE " + strings.Join(conditions, " AND "), args, searchPlaceholder
 }
 
@@ -144,7 +147,7 @@ func catalogOrderBy(sort string, searchPlaceholder string) string {
 		),0) DESC,w.sort_title,bf.id`
 	case "relevance":
 		if searchPlaceholder != "" {
-			return " ORDER BY CASE WHEN lower(w.title)=lower(" + searchPlaceholder + ") THEN 0 WHEN w.title ILIKE " + searchPlaceholder + " || '%' ESCAPE E'\\\\' THEN 1 ELSE 2 END,w.sort_title,bf.id"
+			return " ORDER BY CASE WHEN lower(w.title)=lower(" + searchPlaceholder + ") THEN 0 WHEN lower(w.title) LIKE lower(" + searchPlaceholder + " || '%') ESCAPE E'\\\\' THEN 1 ELSE 2 END,w.sort_title,bf.id"
 		}
 	}
 	return " ORDER BY w.sort_title,bf.id"

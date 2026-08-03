@@ -82,8 +82,7 @@ func (s *Store) FilterAccessibleBookIDs(ctx context.Context, userID int64, bookF
 	rows, err := s.pool.Query(ctx, `
 		SELECT requested.book_file_id
 		FROM unnest($2::bigint[]) WITH ORDINALITY requested(book_file_id,position)
-		JOIN book_files bf ON bf.id=requested.book_file_id
-		WHERE can_user_read_book($1,bf.id)
+		JOIN accessible_book_ids($1) accessible ON accessible.book_file_id=requested.book_file_id
 		ORDER BY requested.position`, userID, bookFileIDs)
 	if err != nil {
 		return nil, fmt.Errorf("filter accessible books: %w", err)

@@ -105,6 +105,26 @@ const catalogBookFrom = `
 	JOIN editions e ON e.id=bf.edition_id
 	JOIN works w ON w.id=e.work_id`
 
+// catalogAccessibleBookSelect keeps the relatively expensive access decision set-based.
+// Calling can_user_read_book once per catalog row becomes particularly costly when a
+// reader belongs to one or more library groups.
+const catalogAccessibleBookSelect = `
+	SELECT bf.id,w.id,e.id,w.title,bf.original_filename,bf.storage_path,bf.storage_mode,COALESCE(bf.reference_path,''),bf.sha256,bf.format,bf.mime_type,bf.size_bytes,bf.created_at,
+		e.published_year,COALESCE(e.language,''),COALESCE(e.isbn,''),COALESCE(e.publisher,''),COALESCE(bf.cover_path,''),
+		COALESCE(bf.extracted_text_path,''),COALESCE(bf.text_extraction_method,''),bf.page_count,
+		COALESCE((SELECT jsonb_agg(c.name ORDER BY ec.position,c.id)
+			FROM edition_creators ec JOIN creators c ON c.id=ec.creator_id
+			WHERE ec.edition_id=e.id AND ec.role='author'),'[]'::jsonb),
+		COALESCE((SELECT jsonb_agg(jsonb_build_object('id',cat.id,'slug',cat.slug,'name',cat.name) ORDER BY cat.name)
+			FROM classification_decisions cd JOIN categories cat ON cat.id=cd.category_id
+			WHERE cd.edition_id=e.id AND cd.status='accepted'),'[]'::jsonb),
+		(w.review_status='pending' OR EXISTS(
+			SELECT 1 FROM classification_decisions pending_cd WHERE pending_cd.edition_id=e.id AND pending_cd.status='suggested'))
+	` + catalogAccessibleBookFrom
+
+const catalogAccessibleBookFrom = catalogBookFrom + `
+	JOIN accessible_book_ids($1) accessible ON accessible.book_file_id=bf.id`
+
 type scanner interface {
 	Scan(dest ...any) error
 }

@@ -132,12 +132,14 @@ func (s *Store) ListFavoriteBooks(ctx context.Context, userID int64, page, pageS
 	}
 	var total int
 	if err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM user_favorites uf
-		WHERE uf.user_id=$1 AND can_user_read_book($1,uf.book_file_id)`, userID).Scan(&total); err != nil {
+		JOIN accessible_book_ids($1) accessible ON accessible.book_file_id=uf.book_file_id
+		WHERE uf.user_id=$1`, userID).Scan(&total); err != nil {
 		return FavoritePage{}, fmt.Errorf("count favorites: %w", err)
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT uf.book_file_id,uf.created_at FROM user_favorites uf
-		WHERE uf.user_id=$1 AND can_user_read_book($1,uf.book_file_id)
+		JOIN accessible_book_ids($1) accessible ON accessible.book_file_id=uf.book_file_id
+		WHERE uf.user_id=$1
 		ORDER BY uf.created_at DESC,uf.book_file_id DESC LIMIT $2 OFFSET $3`,
 		userID, pageSize, (page-1)*pageSize)
 	if err != nil {
