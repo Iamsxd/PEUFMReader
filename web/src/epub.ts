@@ -39,6 +39,13 @@ export function clampEPUBFontSize(value: number): number {
   return Math.min(EPUB_MAX_FONT_SIZE, Math.max(EPUB_MIN_FONT_SIZE, Math.round(value)))
 }
 
+// epub.js treats an explicit `openAs: 'epub'` value as a URL, even when the
+// input is an ArrayBuffer from the offline cache. Keep cached archives on its
+// binary path so it does not request "/[object ArrayBuffer]".
+export function resolveEPUBOpenAs(contentData?: ArrayBuffer): 'binary' | 'epub' {
+  return contentData === undefined ? 'epub' : 'binary'
+}
+
 export function parseEPUBPreferences(value: string | null): EPUBReaderPreferences {
   if (!value) return { ...defaultPreferences }
   try {

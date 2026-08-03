@@ -6,6 +6,7 @@ import {
   getEPUBRestoreTargets,
   normalizeEPUBWheelDelta,
   parseEPUBPreferences,
+  resolveEPUBOpenAs,
   resolveEPUBProgress,
 } from './epub'
 
@@ -20,6 +21,11 @@ describe('EPUB reading preferences', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(request).toHaveBeenCalledWith('/api/v1/book-files/2/content', 'binary', true, undefined)
     book.destroy()
+  })
+
+  it('opens a cached EPUB archive as binary instead of a URL', () => {
+    expect(resolveEPUBOpenAs()).toBe('epub')
+    expect(resolveEPUBOpenAs(new ArrayBuffer(1))).toBe('binary')
   })
 
   it('uses safe defaults for missing or malformed preferences', () => {

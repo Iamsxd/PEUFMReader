@@ -8,6 +8,7 @@ import {
   getEPUBRestoreTargets,
   normalizeEPUBWheelDelta,
   parseEPUBPreferences,
+  resolveEPUBOpenAs,
   resolveEPUBProgress,
 } from '../../epub'
 import type { EPUBPageFlow, EPUBPageLayout, EPUBReaderPreferences, EPUBTheme, EPUBTOCEntry } from '../../epub'
@@ -238,7 +239,7 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
     setSearchError('')
     setAtStart(initialState.overallProgress <= 0)
     setAtEnd(initialState.overallProgress >= 0.999)
-    const epub = ePub(contentData ?? contentURL, { requestCredentials: !contentData, openAs: 'epub' })
+    const epub = ePub(contentData ?? contentURL, { requestCredentials: !contentData, openAs: resolveEPUBOpenAs(contentData) })
     const initialPreferences = preferencesRef.current
     const rendition = epub.renderTo(host, {
       width: '100%',
