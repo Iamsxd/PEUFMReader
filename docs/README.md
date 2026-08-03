@@ -2,6 +2,8 @@
 
 产品方向已确认为 NAS 上的多用户 Web 应用。当前已完成 M0～M2 技术闭环及 P1 用户体验优化；P2 增强仍按路线图推进，不代表已经达到无需运维验证的公网发布状态。
 
+跨机器、跨账号将项目交给另一台 Codex 时，先阅读 [Codex 交接包](./handoff/CODEX_HANDOFF.md) 和 [新机器启动提示](./handoff/NEW_MACHINE_PROMPT.md)。
+
 - [后续开发计划与当前完成状态](./product/development-roadmap.md)
 - [GitHub 同类项目调研](./discovery/github-project-comparison.md)
 - [NAS 多用户 Web 实现方案](./product/nas-web-implementation-proposal.md)
