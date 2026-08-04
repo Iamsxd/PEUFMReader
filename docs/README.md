@@ -12,6 +12,7 @@
 - [M2 阅读、导入与运维闭环验证](./validation/m2-reader-import-operations-validation.md)
 - [阅读器真实语料与自动化回归](./validation/reader-corpus-regression.md)
 - [桌面与移动浏览器系统测试](./validation/browser-system-test.md)
+- [依赖安全与发布加固验证](./validation/security-release-hardening.md)
 - [早期桌面方案（已废弃）](./product/implementation-proposal.md)
 - [领域术语表](./domain/glossary.md)
 - [ADR-0001：local-first 桌面模块化单体](./adr/0001-local-first-desktop.md) — Rejected
