@@ -41,27 +41,28 @@ const sessionCookieName = "peufm_session"
 var categorySlugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 type API struct {
-	store          *store.Store
-	library        *library.Manager
-	converter      *mobiconvert.Converter
-	webRoot        string
-	cookieSecure   bool
-	sessionTTL     time.Duration
-	maxUploadBytes int64
-	advisor        *classification.Advisor
-	importer       *importing.Service
-	calibre        *calibre.Scanner
-	bibliography   *bibliography.Service
-	importSources  []ImportSource
-	logger         *slog.Logger
-	loginLimiter   *loginLimiter
-	trustedProxy   *net.IPNet
-	externalAuth   *externalauth.Service
-	publicAccess   bool
-	allowedHosts   map[string]struct{}
-	mux            *http.ServeMux
-	metrics        *requestMetrics
-	startedAt      time.Time
+	store            *store.Store
+	library          *library.Manager
+	converter        *mobiconvert.Converter
+	webRoot          string
+	cookieSecure     bool
+	sessionTTL       time.Duration
+	maxUploadBytes   int64
+	advisor          *classification.Advisor
+	importer         *importing.Service
+	calibre          *calibre.Scanner
+	bibliography     *bibliography.Service
+	importSources    []ImportSource
+	logger           *slog.Logger
+	loginLimiter     *loginLimiter
+	trustedProxy     *net.IPNet
+	externalAuth     *externalauth.Service
+	publicAccess     bool
+	allowedHosts     map[string]struct{}
+	mux              *http.ServeMux
+	metrics          *requestMetrics
+	startedAt        time.Time
+	operationsConfig OperationsConfig
 }
 
 type ImportSource struct {
@@ -103,6 +104,11 @@ func New(store *store.Store, libraryManager *library.Manager, converter *mobicon
 		mux:            http.NewServeMux(),
 		metrics:        newRequestMetrics(),
 		startedAt:      time.Now(),
+		operationsConfig: OperationsConfig{Thresholds: OperationsThresholds{
+			DiskWarningPercent: 85, DiskCriticalPercent: 95,
+			QueueWarningSeconds: 300, QueueCriticalSeconds: 1800,
+			FailedJobsWarning: 1, FailedJobsCritical: 5,
+		}},
 	}
 	api.routes()
 	return api
@@ -122,8 +128,14 @@ func (a *API) ConfigurePublicSecurity(publicAccess bool, allowedHosts []string) 
 	}
 }
 
+func (a *API) ConfigureOperations(config OperationsConfig) {
+	config.DiskRoots = append([]OperationsDiskRoot(nil), config.DiskRoots...)
+	a.operationsConfig = config
+}
+
 func (a *API) routes() {
 	a.mux.HandleFunc("GET /healthz", a.health)
+	a.mux.HandleFunc("GET /metrics", a.prometheusMetrics)
 	a.mux.HandleFunc("GET /api/v1/auth/providers", a.authProviders)
 	a.mux.HandleFunc("GET /api/v1/auth/oidc/start", a.startOIDC)
 	a.mux.HandleFunc("GET /api/v1/auth/oidc/callback", a.oidcCallback)

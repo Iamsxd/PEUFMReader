@@ -96,7 +96,12 @@ export interface StorageIssue { bookFileId?: number; path: string; issue: 'missi
 export interface StorageAuditReport { checkedAt: string; deep: boolean; databaseFileCount: number; diskFileCount: number; expectedBytes: number; actualBytes: number; missingCount: number; mismatchCount: number; orphanCount: number; issues: StorageIssue[] }
 export interface OperationsRequestMetric { route: string; requests: number; errors: number; lastDurationMs: number; p95DurationMs: number; lastStatus: number }
 export interface OperationsSnapshot { queuedJobs: number; runningJobs: number; failedJobs: number; retryingJobs: number; failedJobsLast24Hours: number; completedLast24Hours: number; oldestQueuedSeconds: number; activeReadingSessions: number; activeUsers24Hours: number; databaseConnections: number }
-export interface OperationsOverview { generatedAt: string; uptimeSeconds: number; goRoutines: number; heapAllocBytes: number; heapSystemBytes: number; lastGcAt?: string; requests: OperationsRequestMetric[]; snapshot: OperationsSnapshot }
+export interface OperationsJobKindMetric { kind: string; completedLast24Hours: number; failedLast24Hours: number; averageDurationSeconds: number; p95DurationSeconds: number }
+export interface OperationsDisk { label: string; totalBytes: number; availableBytes: number; usedPercent: number; available: boolean }
+export interface OperationsThresholds { diskWarningPercent: number; diskCriticalPercent: number; queueWarningSeconds: number; queueCriticalSeconds: number; failedJobsWarning: number; failedJobsCritical: number }
+export interface OperationsHealthIssue { code: 'disk_unavailable' | 'disk_usage' | 'queue_wait' | 'failed_jobs' | string; severity: 'warning' | 'critical'; resource: string; value: number; threshold: number }
+export interface OperationsHealth { status: 'healthy' | 'warning' | 'critical'; issues: OperationsHealthIssue[]; thresholds: OperationsThresholds }
+export interface OperationsOverview { generatedAt: string; uptimeSeconds: number; goRoutines: number; heapAllocBytes: number; heapSystemBytes: number; lastGcAt?: string; requests: OperationsRequestMetric[]; snapshot: OperationsSnapshot; jobKinds: OperationsJobKindMetric[]; disks: OperationsDisk[]; health: OperationsHealth }
 
 export interface CalibreRecord { sourcePath: string; metadataPath: string; coverPath?: string; title: string; authors: string[]; publishedYear?: number; language?: string; isbn?: string; publisher?: string; description?: string; subjects: string[]; format: BookFormat }
 export interface CalibrePreview { configured: boolean; rootLabel: string; books: CalibreRecord[]; total: number; pdfCount: number; epubCount: number; mobiCount: number; azw3Count: number; errors: string[] }

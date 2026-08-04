@@ -203,6 +203,23 @@ func main() {
 	}
 	api.ConfigureExternalAuth(externalAuth)
 	api.ConfigurePublicSecurity(cfg.PublicAccess, cfg.AllowedHosts)
+	api.ConfigureOperations(httpapi.OperationsConfig{
+		DiskRoots: []httpapi.OperationsDiskRoot{
+			{Label: "library", Path: cfg.LibraryRoot},
+			{Label: "staging", Path: cfg.StagingRoot},
+			{Label: "cache", Path: cfg.CacheRoot},
+		},
+		Thresholds: httpapi.OperationsThresholds{
+			DiskWarningPercent:   cfg.HealthDiskWarningPercent,
+			DiskCriticalPercent:  cfg.HealthDiskCriticalPercent,
+			QueueWarningSeconds:  int64(cfg.HealthQueueWarning.Seconds()),
+			QueueCriticalSeconds: int64(cfg.HealthQueueCritical.Seconds()),
+			FailedJobsWarning:    cfg.HealthFailedJobsWarning,
+			FailedJobsCritical:   cfg.HealthFailedJobsCritical,
+		},
+		PrometheusEnabled:     cfg.PrometheusEnabled,
+		PrometheusBearerToken: cfg.PrometheusBearerToken,
+	})
 	server := &http.Server{
 		Addr:              cfg.Address,
 		Handler:           api.Handler(),

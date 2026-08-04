@@ -76,7 +76,8 @@ PEUFMReader 是一个面向 NAS 的多用户电子书管理与 Web 阅读应用�
 - 管理员可查看登录记录、活跃会话、最近访问、阅读统计并下线设备。
 - HttpOnly 会话 Cookie、CSRF 防护、登录限流和操作审计。
 - PostgreSQL 持久后台任务、任务租约、失败重试和重启恢复。
-- 管理后台“运维”显示任务队列、失败/重试、最老等待时间、数据库连接、活跃阅读会话、应用内存/协程和按接口聚合的请求 P95；指标仅保留当前服务运行周期且不含阅读内容。
+- 管理后台“运维”显示任务队列、按类型的 24 小时完成/失败与端到端平均/P95 耗时、磁盘容量、可配置健康阈值、数据库连接、活跃阅读会话、应用内存/协程和按接口聚合的请求 P95；指标不含书名、正文、文件路径或个人阅读内容。
+- Prometheus 导出默认关闭；启用 `PROMETHEUS_ENABLED=true` 时必须配置至少 24 字符的独立 `PROMETHEUS_BEARER_TOKEN`，采集地址为 `GET /metrics`。不要复用管理员密码，也不要把 Token 提交到仓库。
 - 书库一致性检查、数据库导出、文件快照和校验恢复。
 
 ## 技术架构
@@ -479,4 +480,5 @@ docker compose ps
 - [M0 技术验证](docs/validation/m0-technical-validation.md)
 - [M1 导入分类验证](docs/validation/m1-import-classification-validation.md)
 - [M2 阅读与运维验证](docs/validation/m2-reader-import-operations-validation.md)
+- [运维监控增强验证](docs/validation/operations-monitoring-enhancements.md)
 - [桌面与移动浏览器系统测试](docs/validation/browser-system-test.md)

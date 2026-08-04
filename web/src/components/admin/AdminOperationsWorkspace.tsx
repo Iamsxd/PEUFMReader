@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { APIError, api } from '../../api'
-import type { AuditEvent, BackgroundJob, OperationsOverview, StorageAuditReport } from '../../types'
+import type { AuditEvent, BackgroundJob, OperationsHealthIssue, OperationsOverview, StorageAuditReport } from '../../types'
 import { formatBytes, formatDuration, formatRelativeTime } from '../../utils'
 
 interface Props {
@@ -55,18 +55,28 @@ export default function AdminOperationsWorkspace({ onError, onDataChanged, onAct
 
   return <div className="admin-workspace-module">
     <section className="integration-panel operations-overview-panel">
-      <div className="section-title"><div><p className="eyebrow">运行概览</p><h2>服务状态</h2><p className="muted">仅保留本次服务启动后的聚合请求指标；不记录书名、正文或个人阅读内容。</p></div><button className="secondary" type="button" onClick={() => void refreshOperations().catch((reason) => onError(reason instanceof APIError ? reason.message : '无法刷新运行状态。'))}>刷新</button></div>
+      <div className="section-title"><div><p className="eyebrow">运行概览</p><h2>服务状态</h2><p className="muted">仅展示聚合运维数据；不记录书名、正文、路径或个人阅读内容。</p></div><button className="secondary" type="button" onClick={() => void refreshOperations().catch((reason) => onError(reason instanceof APIError ? reason.message : '无法刷新运行状态。'))}>刷新</button></div>
       {overview ? <><div className="operations-metric-grid">
+        <Metric label="综合健康" value={healthStatusLabel(overview.health.status)} attention={overview.health.status !== 'healthy'} />
         <Metric label="服务已运行" value={formatDuration(overview.uptimeSeconds)} />
         <Metric label="活跃读者（24 小时）" value={String(overview.snapshot.activeUsers24Hours)} />
         <Metric label="当前阅读会话" value={String(overview.snapshot.activeReadingSessions)} />
         <Metric label="数据库连接" value={String(overview.snapshot.databaseConnections)} />
         <Metric label="等待 / 运行任务" value={`${overview.snapshot.queuedJobs} / ${overview.snapshot.runningJobs}`} />
-        <Metric label="失败任务" value={String(overview.snapshot.failedJobs)} attention={overview.snapshot.failedJobs > 0} />
+        <Metric label="24 小时失败" value={String(overview.snapshot.failedJobsLast24Hours)} attention={overview.snapshot.failedJobsLast24Hours >= overview.health.thresholds.failedJobsWarning} />
         <Metric label="可重试任务" value={String(overview.snapshot.retryingJobs)} attention={overview.snapshot.retryingJobs > 0} />
-        <Metric label="最长等待" value={formatDuration(overview.snapshot.oldestQueuedSeconds)} attention={overview.snapshot.oldestQueuedSeconds >= 300} />
+        <Metric label="最长等待" value={formatDuration(overview.snapshot.oldestQueuedSeconds)} attention={overview.snapshot.oldestQueuedSeconds >= overview.health.thresholds.queueWarningSeconds} />
         <Metric label="应用堆内存" value={formatBytes(overview.heapAllocBytes)} />
         <Metric label="Go 协程" value={String(overview.goRoutines)} />
+      </div>
+      <div className={`operations-health-summary ${overview.health.status}`}>
+        <strong>{overview.health.issues.length === 0 ? '所有健康阈值均正常' : `${overview.health.issues.length} 项需要关注`}</strong>
+        <span>磁盘 {overview.health.thresholds.diskWarningPercent}% / {overview.health.thresholds.diskCriticalPercent}% · 队列 {formatDuration(overview.health.thresholds.queueWarningSeconds)} / {formatDuration(overview.health.thresholds.queueCriticalSeconds)} · 失败任务 {overview.health.thresholds.failedJobsWarning} / {overview.health.thresholds.failedJobsCritical}（预警 / 严重）</span>
+        {overview.health.issues.map((issue) => <small key={`${issue.code}-${issue.resource}`}>{healthIssueLabel(issue)}</small>)}
+      </div>
+      <div className="operations-detail-grid">
+        <div className="operations-request-list"><div><strong>磁盘空间</strong><small>可用 / 总量 / 已用</small></div>{overview.disks.map((disk) => <p key={disk.label}><span>{diskLabel(disk.label)}</span><span>{disk.available ? `${formatBytes(disk.availableBytes)} / ${formatBytes(disk.totalBytes)} / ${disk.usedPercent.toFixed(1)}%` : '无法读取'}</span></p>)}</div>
+        <div className="operations-request-list"><div><strong>任务分类耗时（24 小时）</strong><small>完成 / 失败 / 平均 / P95</small></div>{overview.jobKinds.length === 0 ? <p><span>暂无已结束任务</span><span>—</span></p> : overview.jobKinds.map((metric) => <p key={metric.kind}><span>{jobKindLabel(metric.kind)}</span><span>{metric.completedLast24Hours} / {metric.failedLast24Hours} / {formatDuration(metric.averageDurationSeconds)} / {formatDuration(metric.p95DurationSeconds)}</span></p>)}</div>
       </div>
       <div className="operations-request-list"><div><strong>近期请求（服务启动后，单接口保留最近 200 次）</strong><small>请求 / 错误 / P95</small></div>{overview.requests.slice(0, 8).map((metric) => <p key={metric.route}><code>{metric.route}</code><span>{metric.requests} / {metric.errors} / {metric.p95DurationMs} ms</span></p>)}</div></> : <div className="job-empty">正在汇总运行状态…</div>}
     </section>
@@ -87,6 +97,22 @@ export default function AdminOperationsWorkspace({ onError, onDataChanged, onAct
 
 function Metric({ label, value, attention = false }: { label: string; value: string; attention?: boolean }) {
   return <div className={attention ? 'has-issue' : ''}><strong>{value}</strong><span>{label}</span></div>
+}
+
+function healthStatusLabel(status: OperationsOverview['health']['status']): string {
+  return { healthy: '正常', warning: '预警', critical: '严重' }[status]
+}
+
+function healthIssueLabel(issue: OperationsHealthIssue): string {
+  if (issue.code === 'disk_unavailable') return `${diskLabel(issue.resource)}空间无法读取`
+  if (issue.code === 'disk_usage') return `${diskLabel(issue.resource)}已用 ${issue.value.toFixed(1)}%，达到${issue.severity === 'critical' ? '严重' : '预警'}阈值 ${issue.threshold}%`
+  if (issue.code === 'queue_wait') return `最长排队 ${formatDuration(issue.value)}，达到阈值 ${formatDuration(issue.threshold)}`
+  if (issue.code === 'failed_jobs') return `24 小时失败任务 ${issue.value}，达到阈值 ${issue.threshold}`
+  return `${issue.resource} 达到${issue.severity === 'critical' ? '严重' : '预警'}阈值`
+}
+
+function diskLabel(label: string): string {
+  return { library: '书库', staging: '暂存区', cache: '缓存' }[label] ?? label
 }
 
 function jobStateLabel(state: BackgroundJob['state']): string {
