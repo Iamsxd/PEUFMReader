@@ -1,5 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { login } from './support/auth'
+import { minimalPDF } from './support/pdf'
 
 async function expectNoPageOverflow(page: Page) {
   const overflow = await page.evaluate(() => ({
@@ -18,7 +19,7 @@ test.beforeEach(async ({ page }) => login(page))
 
 test('primary navigation stays usable and ordered', async ({ page }, testInfo) => {
   const navigation = page.getByRole('navigation', { name: '主导航' })
-  const names = ['首页', '推荐', '收藏', '全部书籍', '分类']
+  const names = ['首页', '推荐', '收藏', '全部书籍', '分类', '阅读统计']
   for (const name of names) await expect(navigation.getByRole('button', { name, exact: true })).toBeVisible()
   const visibleOrder = await navigation.locator('.app-navigation-primary > button').allTextContents()
   expect(visibleOrder).toEqual(names)
@@ -31,6 +32,11 @@ test('primary navigation stays usable and ordered', async ({ page }, testInfo) =
   await expect(page.getByRole('heading', { name: '全部书籍' })).toBeVisible()
   await navigation.getByRole('button', { name: '分类', exact: true }).click()
   await expect(page.getByRole('heading', { name: '书籍分类' })).toBeVisible()
+  await navigation.getByRole('button', { name: '阅读统计', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '阅读统计', exact: true })).toBeVisible()
+  const more = navigation.locator('details.navigation-menu > summary')
+  await expect(more).toHaveText('更多')
+  await expect(more.locator('[aria-hidden="true"]')).toHaveCount(0)
   await expectNoPageOverflow(page)
   await capture(page, testInfo, 'primary-navigation')
 })
@@ -176,16 +182,62 @@ test('a 3336-book review queue stays paginated and loads one editor on demand', 
 })
 
 test('book detail and reader controls remain reachable', async ({ page }, testInfo) => {
-  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '全部书籍', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '全部书籍' })).toBeVisible()
-  const firstBook = page.locator('.book-card .book-open').first()
-  test.skip(await firstBook.count() === 0, 'The current library has no books to open.')
-  await firstBook.click()
+  const book = {
+    id: 909001,
+    workId: 909002,
+    editionId: 909003,
+    title: '阅读器界面回归样本',
+    authors: ['自动化测试'],
+    categories: [],
+    reviewRequired: false,
+    textAvailable: true,
+    textExtractionMethod: 'embedded',
+    pageCount: 1,
+    originalFilename: 'reader-controls.pdf',
+    storageMode: 'managed',
+    format: 'pdf',
+    mimeType: 'application/pdf',
+    sizeBytes: minimalPDF().byteLength,
+    createdAt: '2026-08-04T00:00:00Z',
+  } as const
+  const readingState = {
+    bookFileId: book.id,
+    position: { pageIndex: 0 },
+    overallProgress: 0,
+    status: 'unread',
+    totalActiveSeconds: 0,
+    updatedAt: '2026-08-04T00:00:00Z',
+  } as const
+
+  await page.route(`**/api/v1/book-files/${book.id}`, (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ book, description: '用于验证阅读工具显隐的合成 PDF。', readingState, favorite: false, readerCount: 1, favoriteCount: 0, totalActiveSeconds: 0 }),
+  }))
+  await page.route('**/api/v1/recommendations?limit=8', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], personalized: false }) }))
+  await page.route(`**/api/v1/book-files/${book.id}/content`, (route) => route.fulfill({ status: 200, contentType: 'application/pdf', body: minimalPDF() }))
+  await page.route(`**/api/v1/book-files/${book.id}/marks`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) }))
+  await page.route(`**/api/v1/book-files/${book.id}/progress`, async (route) => {
+    const input = route.request().method() === 'PUT' ? await route.request().postDataJSON() as Record<string, unknown> : {}
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...readingState, ...input }) })
+  })
+  await page.route(`**/api/v1/book-files/${book.id}/reading-sessions`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 909004, bookFileId: book.id, startedAt: '2026-08-04T00:00:00Z', lastHeartbeatAt: '2026-08-04T00:00:00Z', activeSeconds: 0 }) }))
+  await page.route('**/api/v1/reading-sessions/909004', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 909004, bookFileId: book.id, startedAt: '2026-08-04T00:00:00Z', lastHeartbeatAt: '2026-08-04T00:00:00Z', activeSeconds: 0 }) }))
+
+  await page.goto(`/#/book/${book.id}`)
   await expect(page.locator('.book-detail-page h1')).toBeVisible()
-  await expect(page.getByRole('button', { name: /保存到此设备|已保存到设备/ })).toBeVisible()
   await page.getByRole('button', { name: /开始阅读|继续阅读|重新阅读/ }).click()
-  const readerToolbar = page.getByRole('toolbar', { name: /PDF 阅读工具|EPUB 阅读工具/ })
+  const readerToolbar = page.locator('[role="toolbar"][aria-label$="阅读工具"]')
+  if (!await readerToolbar.isVisible()) await page.getByRole('button', { name: /显示 (PDF|EPUB) 阅读工具/ }).click()
   await expect(readerToolbar).toBeVisible()
   await expect(readerToolbar.getByRole('button', { name: /书签\/高亮/ })).toBeVisible()
+  expect(await readerToolbar.evaluate((element) => getComputedStyle(element).scrollbarColor)).not.toBe('auto')
+  const readerNavigation = page.locator('.pdf-navigation, .epub-navigation')
+  await expect(readerNavigation).toBeVisible()
+  await readerToolbar.getByRole('button', { name: '收起阅读工具' }).click()
+  await expect(readerToolbar).toHaveAttribute('aria-hidden', 'true')
+  await expect(readerNavigation).toHaveClass(/is-hidden/)
+  await page.getByRole('button', { name: /显示 (PDF|EPUB) 阅读工具/ }).click()
+  await expect(readerNavigation).not.toHaveClass(/is-hidden/)
   await capture(page, testInfo, 'reader-controls')
 })
