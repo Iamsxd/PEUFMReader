@@ -6,6 +6,7 @@ import {
   fetchPDFBytes,
   getPDFJSAssetOptions,
   getPDFViewPages,
+  isPDFRenderingCancellation,
   movePDFPage,
   normalizePDFWheelDelta,
   parsePDFPreferences,
@@ -50,6 +51,17 @@ describe('PDF reading model', () => {
     expect(normalizePDFWheelDelta(3, 1, 900)).toBe(48)
     expect(normalizePDFWheelDelta(-1, 2, 900)).toBe(-900)
     expect(normalizePDFWheelDelta(Number.NaN, 0, 900)).toBe(0)
+  })
+
+  it('recognizes expected PDF rendering cancellations', () => {
+    const renderCancellation = new Error('cancelled')
+    renderCancellation.name = 'RenderingCancelledException'
+    const textCancellation = new Error('aborted')
+    textCancellation.name = 'AbortException'
+
+    expect(isPDFRenderingCancellation(renderCancellation)).toBe(true)
+    expect(isPDFRenderingCancellation(textCancellation)).toBe(true)
+    expect(isPDFRenderingCancellation(new TypeError('render failed'))).toBe(false)
   })
 
   it('sanitizes persisted reader preferences', () => {

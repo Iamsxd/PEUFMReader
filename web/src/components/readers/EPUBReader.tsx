@@ -17,6 +17,9 @@ import { clampProgress } from '../../utils'
 import { createEPUBReadingMarkLocation, getReadingMarkNavigationTarget, upsertReadingMark, type ReadingMarkLocation } from '../../readingMarks'
 import { ReadingMarksPanel } from './ReadingMarksPanel'
 import { HighlightComposer, type PendingHighlight } from './HighlightComposer'
+import { SpeechPanel } from './SpeechPanel'
+import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis'
+import { extractReadableDocumentText } from '../../speech'
 
 interface Props {
   book: BookFile
@@ -44,7 +47,7 @@ interface EPUBSearchResult {
   sectionLabel: string
 }
 
-type EPUBSidePanel = 'toc' | 'search' | 'marks' | null
+type EPUBSidePanel = 'toc' | 'search' | 'marks' | 'speech' | null
 
 const EPUB_THEMES: Record<EPUBTheme, Record<string, Record<string, string>>> = {
   paper: {
@@ -92,6 +95,10 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
   const preferencesRef = useRef(preferences)
   const [isNarrow, setIsNarrow] = useState(window.innerWidth <= 780)
   const [progress, setProgress] = useState(clampProgress(initialState.overallProgress))
+  const [currentChapter, setCurrentChapter] = useState({
+    href: typeof initialState.position.href === 'string' ? initialState.position.href : '',
+    index: typeof initialState.position.chapterIndex === 'number' ? initialState.position.chapterIndex : -1,
+  })
   const [markLocation, setMarkLocation] = useState<ReadingMarkLocation>({
     position: initialState.position,
     overallProgress: clampProgress(initialState.overallProgress),
@@ -115,12 +122,55 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
   highlightsRef.current = highlights
 
   const effectiveLayout: EPUBPageLayout = preferences.flow === 'continuous' || isNarrow ? 'single' : preferences.layout
+  const loadSpeechSource = useCallback(async () => {
+    const rendition = renditionRef.current
+    if (!rendition) return { text: '', label: '当前 EPUB 章节' }
+    const contents = rendition.getContents()
+    const matchingContents = currentChapter.index >= 0
+      ? contents.filter((content) => content.sectionIndex === currentChapter.index)
+      : contents
+    const activeContents = matchingContents.length > 0 ? matchingContents : contents
+    const text = activeContents.map((content) => extractReadableDocumentText(content.document)).filter(Boolean).join('\n\n')
+    const normalizedHref = currentChapter.href.split('#')[0]
+    const chapterLabel = toc.find((entry) => entry.href.split('#')[0] === normalizedHref)?.label
+      ?? (currentChapter.index >= 0 ? `第 ${currentChapter.index + 1} 章` : '当前章节')
+    const language = activeContents[0]?.document.documentElement.lang || undefined
+    return { text, label: chapterLabel, language, cursor: activeContents[0]?.sectionIndex ?? currentChapter.index }
+  }, [currentChapter, toc])
+  const loadNextSpeechSource = useCallback(async (source: { cursor?: number }) => {
+    const epub = bookRef.current
+    const rendition = renditionRef.current
+    if (!epub || !rendition) return null
+    const currentIndex = source.cursor ?? currentChapter.index
+    const section = epub.spine.spineItems.find((candidate) => candidate.linear !== false && candidate.index > currentIndex)
+    if (!section) return null
+    await section.load(epub.load.bind(epub))
+    try {
+      const text = extractReadableDocumentText(section.document)
+      const normalizedHref = section.href.split('#')[0]
+      const chapterLabel = toc.find((entry) => entry.href.split('#')[0] === normalizedHref)?.label ?? `第 ${section.index + 1} 章`
+      const language = section.document.documentElement.lang || undefined
+      return {
+        source: { text, label: chapterLabel, language, cursor: section.index },
+        sourceKey: `${book.id}:${section.index}`,
+        activate: async () => { await rendition.display(section.href) },
+      }
+    } finally {
+      section.unload()
+    }
+  }, [book.id, currentChapter.index, toc])
+  const speech = useSpeechSynthesis({
+    loadSource: loadSpeechSource,
+    loadNextSource: loadNextSpeechSource,
+    sourceKey: `${book.id}:${currentChapter.index}`,
+  })
 
   const turnPage = useCallback((direction: -1 | 1) => {
     const rendition = renditionRef.current
     if (!rendition) return
+    speech.stop()
     void (direction < 0 ? rendition.prev() : rendition.next()).catch(() => setError('EPUB 翻页失败。'))
-  }, [])
+  }, [speech.stop])
 
   const updateFontSize = useCallback((delta: number) => {
     setPreferences((current) => ({ ...current, fontSize: clampEPUBFontSize(current.fontSize + delta) }))
@@ -224,6 +274,10 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
     setError('')
     setLoading(true)
     setProgress(clampProgress(initialState.overallProgress))
+    setCurrentChapter({
+      href: typeof initialState.position.href === 'string' ? initialState.position.href : '',
+      index: typeof initialState.position.chapterIndex === 'number' ? initialState.position.chapterIndex : -1,
+    })
     setMarkLocation({
       position: initialState.position,
       overallProgress: clampProgress(initialState.overallProgress),
@@ -340,6 +394,7 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
         chapterIndex: location.start.index,
         progression: nextProgress,
       }))
+      setCurrentChapter({ href: location.start.href ?? '', index: location.start.index ?? -1 })
       setAtStart(Boolean(location.atStart) || nextProgress <= 0)
       setAtEnd(Boolean(location.atEnd) || nextProgress >= 0.999)
       if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
@@ -468,6 +523,7 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
   }
 
   function displayLocation(target: string | number) {
+    speech.stop()
     void renditionRef.current?.display(target).then(() => setSidePanel(null)).catch(() => setSearchError('无法定位到该内容。'))
   }
 
@@ -546,6 +602,7 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
           <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={() => toggleSidePanel('toc')}>目录</button>
           <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={() => toggleSidePanel('search')}>书内搜索</button>
           <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} disabled={offlineMode} title={offlineMode ? '离线状态下书签与高亮只读' : undefined} onClick={() => toggleSidePanel('marks')}>书签/高亮</button>
+          <button className={sidePanel === 'speech' || speech.status === 'speaking' || speech.status === 'paused' ? 'active' : ''} aria-pressed={sidePanel === 'speech'} onClick={() => toggleSidePanel('speech')}>朗读</button>
         </div>
         <span className="reader-toolbar-divider" />
         <div className="reader-tool-group" aria-label="阅读方式">
@@ -585,7 +642,14 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
         <span className="reader-shortcuts">{preferences.flow === 'paged' ? '滚轮 / ← → 翻页 · + − 字号' : '滚轮连续阅读 · + − 字号'}</span>
       </div>
 
-      {sidePanel === 'marks' ? (
+      {sidePanel === 'speech' ? (
+        <SpeechPanel
+          controls={speech}
+          sourceDescription={currentChapter.index >= 0 ? `当前第 ${currentChapter.index + 1} 章` : '当前 EPUB 章节'}
+          onClose={() => setSidePanel(null)}
+          onChromeActivity={onChromeActivity}
+        />
+      ) : sidePanel === 'marks' ? (
         !offlineMode && <ReadingMarksPanel
           bookFileID={book.id}
           current={markLocation}

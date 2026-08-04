@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { ReadingMark } from '../../types'
+import { isPDFRenderingCancellation } from '../../pdf'
 
 interface Props {
   document: pdfjs.PDFDocumentProxy
@@ -11,6 +12,7 @@ interface Props {
   fallbackSize: { width: number; height: number }
   onVisibilityChange: (pageNumber: number, ratio: number) => void
   onRenderError: (message: string) => void
+  onTextLayerError: (pageNumber: number, message: string) => void
   highlights: ReadingMark[]
   onTextSelection: (pageNumber: number, pageBounds: DOMRect, selectionRects: DOMRect[], quote: string) => void
 }
@@ -24,6 +26,7 @@ export function PDFPageCanvas({
   fallbackSize,
   onVisibilityChange,
   onRenderError,
+  onTextLayerError,
   highlights,
   onTextSelection,
 }: Props) {
@@ -104,21 +107,35 @@ export function PDFPageCanvas({
         transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0],
       })
       renderTaskRef.current = task
-      const textContent = textLayerHost ? await page.getTextContent() : null
-      if (disposed) return
-      if (textLayerHost && textContent) {
+      let textLayerPromise: Promise<unknown> = Promise.resolve()
+      if (textLayerHost) {
         textLayerHost.replaceChildren()
         textLayerTaskRef.current?.cancel()
-        const textLayer = new pdfjs.TextLayer({ textContentSource: textContent, container: textLayerHost, viewport })
-        textLayerTaskRef.current = textLayer
-        await Promise.all([task.promise, textLayer.render()])
-      } else {
-        await task.promise
+        try {
+          const textLayer = new pdfjs.TextLayer({
+            textContentSource: page.streamTextContent({ includeMarkedContent: true, disableNormalization: true }),
+            container: textLayerHost,
+            viewport,
+          })
+          textLayerTaskRef.current = textLayer
+          textLayerPromise = textLayer.render().catch((reason: unknown) => {
+            if (disposed || isPDFRenderingCancellation(reason)) return
+            textLayerHost.replaceChildren()
+            onTextLayerError(pageNumber, reason instanceof Error ? reason.message : String(reason))
+          })
+        } catch (reason) {
+          if (!isPDFRenderingCancellation(reason)) {
+            textLayerHost.replaceChildren()
+            onTextLayerError(pageNumber, reason instanceof Error ? reason.message : String(reason))
+          }
+        }
       }
-    }).then(() => {
+
+      await task.promise
       if (!disposed) setRendered(true)
+      await textLayerPromise
     }).catch((reason: unknown) => {
-      if (reason instanceof Error && reason.name === 'RenderingCancelledException') return
+      if (isPDFRenderingCancellation(reason)) return
       onRenderError(reason instanceof Error ? reason.message : String(reason))
     })
 
@@ -129,7 +146,7 @@ export function PDFPageCanvas({
       textLayerTaskRef.current?.cancel()
       textLayerTaskRef.current = null
     }
-  }, [document, isNearViewport, onRenderError, pageNumber, scale])
+  }, [document, isNearViewport, onRenderError, onTextLayerError, pageNumber, scale])
 
   const width = pageSize.width * scale
   const height = pageSize.height * scale

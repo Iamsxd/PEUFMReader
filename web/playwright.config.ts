@@ -12,6 +12,9 @@ if (existsSync(envPath)) {
   }
 }
 
+const browserChannel = process.env.E2E_BROWSER_CHANNEL
+const channelOverride = browserChannel ? { channel: browserChannel } : {}
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 45_000,
@@ -23,10 +26,10 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL ?? `http://127.0.0.1:${process.env.APP_PORT ?? '8080'}`,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: process.env.E2E_DISABLE_VIDEO === '1' ? 'off' : 'retain-on-failure',
   },
   projects: [
-    { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
-    { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } },
+    { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'], ...channelOverride, viewport: { width: 1440, height: 900 } } },
+    { name: 'mobile-chromium', use: { ...devices['Pixel 7'], ...channelOverride } },
   ],
 })

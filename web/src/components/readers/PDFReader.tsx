@@ -23,6 +23,8 @@ import { createPDFHighlightLocation, createPDFReadingMarkLocation, getReadingMar
 import { PDFPageCanvas } from './PDFPageCanvas'
 import { ReadingMarksPanel } from './ReadingMarksPanel'
 import { HighlightComposer, type PendingHighlight } from './HighlightComposer'
+import { SpeechPanel } from './SpeechPanel'
+import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerURL
 
@@ -54,7 +56,7 @@ interface PDFSearchResult {
   excerpt: string
 }
 
-type PDFSidePanel = 'toc' | 'search' | 'marks' | null
+type PDFSidePanel = 'toc' | 'search' | 'marks' | 'speech' | null
 
 async function resolvePDFOutline(document: pdfjs.PDFDocumentProxy, nodes: PDFOutlineNode[], depth = 0): Promise<PDFOutlineEntry[]> {
   const entries: PDFOutlineEntry[] = []
@@ -99,6 +101,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   const [isNarrow, setIsNarrow] = useState(window.innerWidth <= 720)
   const [preferences, setPreferences] = useState(readPreferences)
   const [error, setError] = useState('')
+  const [warning, setWarning] = useState('')
   const [loadingStatus, setLoadingStatus] = useState('正在连接书库…')
   const [loadingProgress, setLoadingProgress] = useState<number | null>(null)
   const [sidePanel, setSidePanel] = useState<PDFSidePanel>(null)
@@ -129,6 +132,59 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     if (preferences.flow === 'continuous') return Array.from({ length: pageCount }, (_, index) => index + 1)
     return getPDFViewPages(pageNumber, pageCount, effectiveLayout)
   }, [effectiveLayout, pageCount, pageNumber, preferences.flow])
+  const speechPages = useMemo(() => {
+    if (!pageCount) return []
+    return preferences.flow === 'paged'
+      ? getPDFViewPages(pageNumber, pageCount, effectiveLayout)
+      : [pageNumber]
+  }, [effectiveLayout, pageCount, pageNumber, preferences.flow])
+  const loadSpeechPages = useCallback(async (targetPages: number[]) => {
+    if (!pdfDocument || targetPages.length === 0) return { text: '', label: '当前 PDF 页面' }
+    const pageTexts: string[] = []
+    for (const page of targetPages) {
+      const pageProxy = await pdfDocument.getPage(page)
+      try {
+        const content = await pageProxy.getTextContent()
+        pageTexts.push(content.items.map((item) => {
+          if (!('str' in item)) return ''
+          return `${item.str}${'hasEOL' in item && item.hasEOL ? '\n' : ' '}`
+        }).join(''))
+      } finally {
+        pageProxy.cleanup()
+      }
+    }
+    const label = targetPages.length > 1
+      ? `第 ${targetPages[0]}–${targetPages.at(-1)} 页`
+      : `第 ${targetPages[0]} 页`
+    return { text: pageTexts.join('\n\n'), label, cursor: targetPages.at(-1) }
+  }, [pdfDocument])
+  const loadSpeechSource = useCallback(() => loadSpeechPages(speechPages), [loadSpeechPages, speechPages])
+  const loadNextSpeechSource = useCallback(async (source: { cursor?: number }) => {
+    const lastPage = source.cursor ?? speechPages.at(-1) ?? pageNumber
+    if (!pdfDocument || lastPage >= pageCount) return null
+    const nextPage = lastPage + 1
+    const nextPages = preferences.flow === 'paged'
+      ? getPDFViewPages(nextPage, pageCount, effectiveLayout)
+      : [nextPage]
+    const nextSource = await loadSpeechPages(nextPages)
+    return {
+      source: nextSource,
+      sourceKey: `${book.id}:${nextPages.join('-')}`,
+      activate: () => {
+        setPageNumber(nextPages[0])
+        if (preferences.flow === 'continuous') {
+          window.requestAnimationFrame(() => {
+            globalThis.document.querySelector<HTMLElement>(`[data-pdf-page="${nextPages[0]}"]`)?.scrollIntoView({ block: 'start' })
+          })
+        }
+      },
+    }
+  }, [book.id, effectiveLayout, loadSpeechPages, pageCount, pageNumber, pdfDocument, preferences.flow, speechPages])
+  const speech = useSpeechSynthesis({
+    loadSource: loadSpeechSource,
+    loadNextSource: loadNextSpeechSource,
+    sourceKey: `${book.id}:${speechPages.join('-')}`,
+  })
 
   useEffect(() => {
     let disposed = false
@@ -136,6 +192,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     visiblePagesRef.current.clear()
     searchRunRef.current += 1
     setError('')
+    setWarning('')
     setLoadingStatus(contentData ? '正在读取设备副本…' : '正在下载 PDF…')
     setLoadingProgress(contentData ? 100 : null)
     setPDFDocument(null)
@@ -265,6 +322,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   }, [preferences])
 
   const goToPage = useCallback((requestedPage: number) => {
+    speech.stop()
     const requestedTarget = clampPDFPage(requestedPage, pageCount)
     const target = preferences.flow === 'paged' && effectiveLayout === 'spread'
       ? getPDFViewPages(requestedTarget, pageCount, effectiveLayout)[0]
@@ -275,7 +333,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
         globalThis.document.querySelector<HTMLElement>(`[data-pdf-page="${target}"]`)?.scrollIntoView({ block: 'start' })
       })
     }
-  }, [effectiveLayout, pageCount, preferences.flow])
+  }, [effectiveLayout, pageCount, preferences.flow, speech.stop])
 
   const movePage = useCallback((direction: -1 | 1) => {
     goToPage(movePDFPage(pageNumber, pageCount, effectiveLayout, direction))
@@ -372,6 +430,11 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     setError(`PDF 页面渲染失败（${message}）。`)
   }, [])
 
+  const handleTextLayerError = useCallback((failedPage: number, message: string) => {
+    console.warn(`PDF text layer rendering failed on page ${failedPage}.`, message)
+    setWarning('PDF 页面已显示，但当前浏览器无法建立文字层；文字选择和高亮可能不可用。')
+  }, [])
+
   function setFlow(flow: PDFPageFlow) {
     setPreferences((current) => ({ ...current, flow }))
   }
@@ -441,6 +504,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
           <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={() => toggleSidePanel('toc')}>目录</button>
           <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={() => toggleSidePanel('search')}>书内搜索</button>
           <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} disabled={offlineMode} title={offlineMode ? '离线状态下书签与高亮只读' : undefined} onClick={() => toggleSidePanel('marks')}>书签/高亮</button>
+          <button className={sidePanel === 'speech' || speech.status === 'speaking' || speech.status === 'paused' ? 'active' : ''} aria-pressed={sidePanel === 'speech'} onClick={() => toggleSidePanel('speech')}>朗读</button>
         </div>
         <span className="reader-toolbar-divider" />
         <div className="reader-tool-group" aria-label="阅读方式">
@@ -470,7 +534,14 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
         <span className="reader-shortcuts">← → 翻页 · + − / Ctrl+滚轮缩放</span>
       </div>
 
-      {sidePanel === 'marks' ? (
+      {sidePanel === 'speech' ? (
+        <SpeechPanel
+          controls={speech}
+          sourceDescription={speechPages.length > 1 ? `当前第 ${speechPages[0]}–${speechPages.at(-1)} 页` : `当前第 ${speechPages[0] ?? pageNumber} 页`}
+          onClose={() => setSidePanel(null)}
+          onChromeActivity={onChromeActivity}
+        />
+      ) : sidePanel === 'marks' ? (
         !offlineMode && <ReadingMarksPanel
           bookFileID={book.id}
           current={createPDFReadingMarkLocation(pageNumber, pageCount)}
@@ -525,6 +596,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
       )}
 
       {error && <div className="notice error pdf-error">{error}</div>}
+      {warning && !error && <div className="notice warning pdf-warning" role="status">{warning}</div>}
       {!pdfDocument && !error && <div className="pdf-loading"><span className="loading-spinner" /><strong>{loadingStatus}</strong>{loadingProgress !== null && <span className="reader-load-progress" aria-label={`PDF 加载进度 ${loadingProgress}%`}><i style={{ width: `${loadingProgress}%` }} /></span>}<small>大文件首次打开可能需要一些时间，后续页面会按可见区域渲染。</small></div>}
 
       <div ref={viewportRef} className="pdf-reader-viewport">
@@ -541,6 +613,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
                 fallbackSize={basePageSize}
                 onVisibilityChange={handleVisibilityChange}
                 onRenderError={handleRenderError}
+                onTextLayerError={handleTextLayerError}
                 highlights={highlights.filter((mark) => Number(mark.position.pageIndex) === number - 1)}
                 onTextSelection={handleTextSelection}
               />

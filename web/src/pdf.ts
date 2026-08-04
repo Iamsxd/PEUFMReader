@@ -24,6 +24,10 @@ export const DEFAULT_PDF_PREFERENCES: PDFReaderPreferences = {
   zoomPercent: 100,
 }
 
+export function isPDFRenderingCancellation(reason: unknown): boolean {
+  return reason instanceof Error && (reason.name === 'RenderingCancelledException' || reason.name === 'AbortException')
+}
+
 export function getPDFJSAssetOptions(baseURL: string) {
   const normalizedBase = baseURL.endsWith('/') ? baseURL : `${baseURL}/`
   const pdfJSRoot = `${normalizedBase}pdfjs/`
