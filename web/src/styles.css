@@ -48,6 +48,7 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .navigation-menu, .account-menu { position: relative; }
 .navigation-menu > summary, .account-menu > summary { display: flex; align-items: center; gap: 7px; list-style: none; cursor: pointer; user-select: none; }
 .navigation-menu > summary::-webkit-details-marker, .account-menu > summary::-webkit-details-marker { display: none; }
+.navigation-menu > summary::marker { content: ''; }
 .navigation-menu[open] > summary, .account-menu[open] > summary { background: #e4ebe2; color: #21452f; }
 .navigation-popover, .account-popover { position: absolute; top: calc(100% + 10px); z-index: 30; padding: 9px; border: 1px solid #d1d8d0; border-radius: 14px; background: #fbfaf5; box-shadow: 0 18px 48px #1e38252b; }
 .navigation-popover { right: 0; width: 270px; display: grid; gap: 3px; }
@@ -650,7 +651,11 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .reader-chrome-toggle { position: fixed; top: 10px; left: 10px; z-index: 11; min-width: 46px; min-height: 38px; padding: 7px 10px; border: 1px solid #ffffff35; border-radius: 11px; background: #17211bd9; color: #f6f4ed; box-shadow: 0 8px 24px #0005; font-size: .75rem; font-weight: 800; backdrop-filter: blur(12px); }
 .reader-chrome-toggle:hover { background: #294435ed; }
 .pdf-reader { position: relative; height: 100vh; display: flex; min-height: 320px; flex-direction: column; background: #202923; }
-.reader-toolbar { position: fixed; top: 66px; right: 0; left: 0; z-index: 9; min-height: 54px; display: flex; align-items: center; gap: 10px; padding: 8px 16px; overflow-x: auto; border-bottom: 1px solid #354039; background: #f5f2eaf2; color: #26362c; box-shadow: 0 4px 18px #0002; backdrop-filter: blur(12px); scrollbar-width: thin; transition: opacity .2s ease, transform .24s ease, visibility .24s; }
+.reader-toolbar { position: fixed; top: 66px; right: 0; left: 0; z-index: 9; min-height: 54px; display: flex; align-items: center; gap: 10px; padding: 8px 16px; overflow-x: auto; border-bottom: 1px solid #354039; background: #f5f2eaf2; color: #26362c; box-shadow: 0 4px 18px #0002; backdrop-filter: blur(12px); scrollbar-width: thin; scrollbar-color: #52745d #e4e9e3; transition: opacity .2s ease, transform .24s ease, visibility .24s; }
+.reader-toolbar::-webkit-scrollbar { height: 7px; }
+.reader-toolbar::-webkit-scrollbar-track { background: #e4e9e3; }
+.reader-toolbar::-webkit-scrollbar-thumb { border: 1px solid #e4e9e3; border-radius: 999px; background: #52745d; }
+.reader-toolbar::-webkit-scrollbar-thumb:hover { background: #315b40; }
 .reader-toolbar.is-hidden { visibility: hidden; opacity: 0; pointer-events: none; transform: translateY(-230%); }
 .reader-toolbar-collapse { min-height: 34px; flex: 0 0 auto; padding: 6px 10px; border: 1px solid #cbd2cb; border-radius: 9px; background: #e8ece7; color: #34513e; font-size: .76rem; font-weight: 800; }
 .reader-toolbar-collapse:hover { background: #dce5dd; }
@@ -747,7 +752,7 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .pdf-page-placeholder { position: absolute; inset: 0; display: grid; place-items: center; background: linear-gradient(110deg, #f4f4f2 30%, #fff 45%, #f4f4f2 60%); background-size: 240% 100%; color: #9ca39e; font-size: .78rem; animation: pdf-page-loading 1.8s ease-in-out infinite; }
 .pdf-page-number { position: absolute; right: 8px; bottom: 7px; z-index: 4; min-width: 25px; padding: 3px 6px; border-radius: 999px; background: #17211bb8; color: white; font-size: .65rem; text-align: center; opacity: 0; transition: opacity .15s ease; }
 .pdf-page-shell:hover .pdf-page-number { opacity: 1; }
-.pdf-navigation { position: fixed; z-index: 8; left: 50%; bottom: 18px; display: flex; align-items: center; gap: 7px; padding: 7px; border: 1px solid #ffffff2b; border-radius: 14px; background: #17211be8; color: #f6f4ed; box-shadow: 0 12px 38px #0008; transform: translateX(-50%); backdrop-filter: blur(14px); }
+.pdf-navigation { position: fixed; z-index: 8; left: 50%; bottom: 18px; display: flex; align-items: center; gap: 7px; padding: 7px; border: 1px solid #ffffff2b; border-radius: 14px; background: #17211be8; color: #f6f4ed; box-shadow: 0 12px 38px #0008; transform: translateX(-50%); backdrop-filter: blur(14px); transition: opacity .2s ease, transform .24s ease, visibility .24s; }
 .pdf-navigation button { width: 40px; height: 38px; border: 0; border-radius: 9px; background: #345b42; color: white; font-size: 1.1rem; font-weight: 800; }
 .pdf-navigation button:hover:not(:disabled) { background: #477756; }
 .pdf-navigation label { display: flex; grid: none; flex-direction: row; align-items: center; gap: 7px; font-size: .78rem; font-weight: 700; white-space: nowrap; }
@@ -773,7 +778,8 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .epub-loading { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; color: #58665d; font-weight: 700; }
 .theme-night .epub-loading { color: #aebbb1; }
 .epub-error { position: absolute; z-index: 12; top: 18px; left: 50%; width: min(640px, calc(100% - 32px)); margin: 0; transform: translateX(-50%); box-shadow: 0 10px 35px #0005; }
-.epub-navigation { position: fixed; z-index: 8; left: 50%; bottom: 18px; display: flex; align-items: center; gap: 9px; padding: 7px; border: 1px solid #ffffff2b; border-radius: 14px; background: #17211be8; color: #f6f4ed; box-shadow: 0 12px 38px #0008; transform: translateX(-50%); backdrop-filter: blur(14px); }
+.epub-navigation { position: fixed; z-index: 8; left: 50%; bottom: 18px; display: flex; align-items: center; gap: 9px; padding: 7px; border: 1px solid #ffffff2b; border-radius: 14px; background: #17211be8; color: #f6f4ed; box-shadow: 0 12px 38px #0008; transform: translateX(-50%); backdrop-filter: blur(14px); transition: opacity .2s ease, transform .24s ease, visibility .24s; }
+.pdf-navigation.is-hidden, .epub-navigation.is-hidden { visibility: hidden; opacity: 0; pointer-events: none; transform: translate(-50%, calc(100% + 28px)); }
 .epub-navigation button { width: 40px; height: 38px; border: 0; border-radius: 9px; background: #345b42; color: white; font-size: 1.1rem; font-weight: 800; }
 .epub-navigation button:hover:not(:disabled) { background: #477756; }
 .epub-navigation span { min-width: 50px; font-size: .78rem; font-weight: 800; font-variant-numeric: tabular-nums; text-align: center; }
