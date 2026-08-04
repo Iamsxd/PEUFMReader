@@ -9,6 +9,10 @@
 
 初始 `govulncheck` 在 `github.com/jackc/pgx/v5 v5.7.6` 中发现可达的 `GO-2026-5004`，调用路径落到目录分类查询；扫描同时报告两个已导入但未确认调用的 pgx 包级漏洞。项目将 pgx 升级到 `v5.9.2` 后，符号级扫描结果为 0 个可达漏洞。
 
+### Go 标准库
+
+首次 GitHub Actions 扫描按 `go.mod` 中原有的 `go 1.26.0` 安装工具链，并发现 13 个可达的标准库漏洞；本地与生产 Dockerfile 已使用 1.26.5，因此本地扫描没有复现。项目随后把最低 Go 工具链明确固定到 `1.26.5`，使 CI、开发基线和生产构建使用同一已修复补丁版本。
+
 ### EPUB XML 依赖
 
 初始 `pnpm audit --prod` 在 `epubjs 0.3.93` 间接依赖的 `@xmldom/xmldom 0.7.13` 中报告 5 个 high 漏洞，涉及 XML 序列化注入和不受控递归。由于 epubjs 当前仍把依赖范围限制在 0.7.x，工作区使用带注释的 pnpm override 固定到修复版本 `0.8.13`。重新审计后没有已知生产依赖漏洞。
@@ -17,7 +21,7 @@
 
 - Go job 启动 PostgreSQL 18 服务并设置 `TEST_DATABASE_URL`，使真实数据库集成测试不再因缺少连接而跳过。
 - 新增迁移测试，在隔离 schema 中执行全部迁移两次，并核对 `schema_migrations` 数量，验证全新安装和重复执行。
-- Go job 使用官方 `govulncheck v1.6.0` 扫描可达漏洞。
+- Go job 使用 1.26.5 工具链和官方 `govulncheck v1.6.0` 扫描可达漏洞。
 - Web job 在单元测试后运行 `pnpm audit --prod --audit-level high`。
 - Dependabot 每周检查 Go modules、pnpm、GitHub Actions 和 Docker 依赖。
 
