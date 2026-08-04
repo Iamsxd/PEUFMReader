@@ -101,6 +101,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   const [isNarrow, setIsNarrow] = useState(window.innerWidth <= 720)
   const [preferences, setPreferences] = useState(readPreferences)
   const [error, setError] = useState('')
+  const [warning, setWarning] = useState('')
   const [loadingStatus, setLoadingStatus] = useState('正在连接书库…')
   const [loadingProgress, setLoadingProgress] = useState<number | null>(null)
   const [sidePanel, setSidePanel] = useState<PDFSidePanel>(null)
@@ -168,6 +169,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     visiblePagesRef.current.clear()
     searchRunRef.current += 1
     setError('')
+    setWarning('')
     setLoadingStatus(contentData ? '正在读取设备副本…' : '正在下载 PDF…')
     setLoadingProgress(contentData ? 100 : null)
     setPDFDocument(null)
@@ -404,6 +406,11 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     setError(`PDF 页面渲染失败（${message}）。`)
   }, [])
 
+  const handleTextLayerError = useCallback((failedPage: number, message: string) => {
+    console.warn(`PDF text layer rendering failed on page ${failedPage}.`, message)
+    setWarning('PDF 页面已显示，但当前浏览器无法建立文字层；文字选择和高亮可能不可用。')
+  }, [])
+
   function setFlow(flow: PDFPageFlow) {
     setPreferences((current) => ({ ...current, flow }))
   }
@@ -565,6 +572,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
       )}
 
       {error && <div className="notice error pdf-error">{error}</div>}
+      {warning && !error && <div className="notice warning pdf-warning" role="status">{warning}</div>}
       {!pdfDocument && !error && <div className="pdf-loading"><span className="loading-spinner" /><strong>{loadingStatus}</strong>{loadingProgress !== null && <span className="reader-load-progress" aria-label={`PDF 加载进度 ${loadingProgress}%`}><i style={{ width: `${loadingProgress}%` }} /></span>}<small>大文件首次打开可能需要一些时间，后续页面会按可见区域渲染。</small></div>}
 
       <div ref={viewportRef} className="pdf-reader-viewport">
@@ -581,6 +589,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
                 fallbackSize={basePageSize}
                 onVisibilityChange={handleVisibilityChange}
                 onRenderError={handleRenderError}
+                onTextLayerError={handleTextLayerError}
                 highlights={highlights.filter((mark) => Number(mark.position.pageIndex) === number - 1)}
                 onTextSelection={handleTextSelection}
               />
