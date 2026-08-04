@@ -20,6 +20,7 @@ import { HighlightComposer, type PendingHighlight } from './HighlightComposer'
 import { SpeechPanel } from './SpeechPanel'
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis'
 import { extractReadableDocumentText } from '../../speech'
+import { isInteractiveReaderTarget, isReaderCenterTap, MOBILE_READER_CHROME_QUERY } from '../../readerChrome'
 
 interface Props {
   book: BookFile
@@ -30,6 +31,7 @@ interface Props {
   chromeVisible: boolean
   onChromeActivity: () => void
   onHideChrome: () => void
+  onToggleChrome: () => void
   onProgress: (position: Record<string, unknown>, progress: number) => Promise<void>
   readingStatus: ReadingState['status']
   onStatusChange: (status: ReadingState['status']) => Promise<void>
@@ -78,7 +80,7 @@ function readPreferences(): EPUBReaderPreferences {
   }
 }
 
-export function EPUBReader({ book, contentURL, contentData, offlineMode, initialState, chromeVisible, onChromeActivity, onHideChrome, onProgress, readingStatus, onStatusChange }: Props) {
+export function EPUBReader({ book, contentURL, contentData, offlineMode, initialState, chromeVisible, onChromeActivity, onHideChrome, onToggleChrome, onProgress, readingStatus, onStatusChange }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const renditionRef = useRef<Rendition | null>(null)
   const bookRef = useRef<Book | null>(null)
@@ -318,10 +320,40 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
     rendition.themes.select(initialPreferences.theme)
     rendition.themes.fontSize(`${initialPreferences.fontSize}%`)
 
-    const wheelCleanups: Array<() => void> = []
+    const contentEventCleanups: Array<() => void> = []
     const attachContentEvents = (contents: Contents) => {
+      let pointerStart: { pointerId: number; x: number; y: number } | null = null
+      const handleContentPointerDown = (event: PointerEvent) => {
+        if (!window.matchMedia(MOBILE_READER_CHROME_QUERY).matches || !event.isPrimary) return
+        pointerStart = { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
+      }
+      const handleContentPointerUp = (event: PointerEvent) => {
+        const start = pointerStart
+        pointerStart = null
+        if (!window.matchMedia(MOBILE_READER_CHROME_QUERY).matches || !event.isPrimary || !start || start.pointerId !== event.pointerId) return
+        const viewport = contents.document.documentElement
+        if (isReaderCenterTap({
+          startX: start.x,
+          startY: start.y,
+          endX: event.clientX,
+          endY: event.clientY,
+          viewportWidth: viewport.clientWidth,
+          viewportHeight: viewport.clientHeight,
+          hasSelection: Boolean(contents.document.getSelection()?.toString().trim()),
+          interactiveTarget: isInteractiveReaderTarget(event.target),
+        })) onToggleChrome()
+      }
+      const clearContentPointer = () => { pointerStart = null }
       contents.document.addEventListener('wheel', handleWheel, { passive: false })
-      wheelCleanups.push(() => contents.document.removeEventListener('wheel', handleWheel))
+      contents.document.addEventListener('pointerdown', handleContentPointerDown, { passive: true })
+      contents.document.addEventListener('pointerup', handleContentPointerUp, { passive: true })
+      contents.document.addEventListener('pointercancel', clearContentPointer, { passive: true })
+      contentEventCleanups.push(() => {
+        contents.document.removeEventListener('wheel', handleWheel)
+        contents.document.removeEventListener('pointerdown', handleContentPointerDown)
+        contents.document.removeEventListener('pointerup', handleContentPointerUp)
+        contents.document.removeEventListener('pointercancel', clearContentPointer)
+      })
     }
     rendition.hooks.content.register(attachContentEvents)
 
@@ -440,7 +472,7 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
       window.clearTimeout(displayTimeout)
       if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
       if (wheelResetTimerRef.current !== null) window.clearTimeout(wheelResetTimerRef.current)
-      wheelCleanups.forEach((cleanup) => cleanup())
+      contentEventCleanups.forEach((cleanup) => cleanup())
       host.removeEventListener('wheel', handleWheel)
       rendition.hooks.content.deregister(attachContentEvents)
       rendition.off('relocated', relocated)

@@ -229,8 +229,26 @@ test('book detail and reader controls remain reachable', async ({ page }, testIn
   await expect(page.locator('.book-detail-page h1')).toBeVisible()
   await page.getByRole('button', { name: /开始阅读|继续阅读|重新阅读/ }).click()
   const readerToolbar = page.locator('[role="toolbar"][aria-label$="阅读工具"]')
-  if (!await readerToolbar.isVisible()) await page.getByRole('button', { name: /显示 (PDF|EPUB) 阅读工具/ }).click()
+  const readerViewport = page.locator('.pdf-reader-viewport')
+  const readerChromeButton = page.getByRole('button', { name: /显示 (PDF|EPUB) 阅读工具/ })
+  const isMobile = testInfo.project.name === 'mobile-chromium'
+  const revealReaderChrome = async () => {
+    if (await readerToolbar.getAttribute('aria-hidden') !== 'true') return
+    if (isMobile) {
+      const bounds = await readerViewport.boundingBox()
+      if (!bounds) throw new Error('PDF reader viewport is not available')
+      await readerViewport.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } })
+    } else {
+      await readerChromeButton.click()
+    }
+  }
+  await revealReaderChrome()
   await expect(readerToolbar).toBeVisible()
+  if (isMobile) {
+    await expect(readerChromeButton).toBeHidden()
+    await expect.poll(() => readerToolbar.evaluate((element) => getComputedStyle(element).flexWrap)).toBe('wrap')
+    await expect.poll(() => readerToolbar.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+  }
   await expect(readerToolbar.getByRole('button', { name: /书签\/高亮/ })).toBeVisible()
   await readerToolbar.getByRole('button', { name: '朗读', exact: true }).click()
   const speechPanel = page.getByRole('complementary', { name: '浏览器即时朗读' })
@@ -271,7 +289,7 @@ test('book detail and reader controls remain reachable', async ({ page }, testIn
   await readerToolbar.getByRole('button', { name: '收起阅读工具' }).click()
   await expect(readerToolbar).toHaveAttribute('aria-hidden', 'true')
   await expect(readerNavigation).toHaveClass(/is-hidden/)
-  await page.getByRole('button', { name: /显示 (PDF|EPUB) 阅读工具/ }).click()
+  await revealReaderChrome()
   await expect(readerNavigation).not.toHaveClass(/is-hidden/)
 
   await readerToolbar.getByRole('button', { name: '朗读', exact: true }).click()

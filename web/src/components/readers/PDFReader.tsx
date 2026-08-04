@@ -25,6 +25,7 @@ import { ReadingMarksPanel } from './ReadingMarksPanel'
 import { HighlightComposer, type PendingHighlight } from './HighlightComposer'
 import { SpeechPanel } from './SpeechPanel'
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis'
+import { isInteractiveReaderTarget, isReaderCenterTap, MOBILE_READER_CHROME_QUERY } from '../../readerChrome'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerURL
 
@@ -37,6 +38,7 @@ interface Props {
   chromeVisible: boolean
   onChromeActivity: () => void
   onHideChrome: () => void
+  onToggleChrome: () => void
   onProgress: (position: Record<string, unknown>, progress: number) => Promise<void>
   readingStatus: ReadingState['status']
   onStatusChange: (status: ReadingState['status']) => Promise<void>
@@ -85,13 +87,14 @@ function readPreferences(): PDFReaderPreferences {
   }
 }
 
-export function PDFReader({ book, contentURL, contentData, offlineMode, initialState, chromeVisible, onChromeActivity, onHideChrome, onProgress, readingStatus, onStatusChange }: Props) {
+export function PDFReader({ book, contentURL, contentData, offlineMode, initialState, chromeVisible, onChromeActivity, onHideChrome, onToggleChrome, onProgress, readingStatus, onStatusChange }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const loadingTaskRef = useRef<pdfjs.PDFDocumentLoadingTask | null>(null)
   const visiblePagesRef = useRef(new Map<number, number>())
   const searchRunRef = useRef(0)
   const wheelZoomAccumulatorRef = useRef(0)
   const wheelZoomResetTimerRef = useRef<number | null>(null)
+  const contentPointerStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null)
   const initialPage = typeof initialState.position.pageIndex === 'number' ? Number(initialState.position.pageIndex) + 1 : 1
   const [pdfDocument, setPDFDocument] = useState<pdfjs.PDFDocumentProxy | null>(null)
   const [pageNumber, setPageNumber] = useState(Math.max(1, initialPage))
@@ -435,6 +438,33 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     setWarning('PDF 页面已显示，但当前浏览器无法建立文字层；文字选择和高亮可能不可用。')
   }, [])
 
+  const handleContentPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!window.matchMedia(MOBILE_READER_CHROME_QUERY).matches || !event.isPrimary) return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    contentPointerStartRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX - bounds.left,
+      y: event.clientY - bounds.top,
+    }
+  }, [])
+
+  const handleContentPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const start = contentPointerStartRef.current
+    contentPointerStartRef.current = null
+    if (!window.matchMedia(MOBILE_READER_CHROME_QUERY).matches || !event.isPrimary || !start || start.pointerId !== event.pointerId) return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    if (isReaderCenterTap({
+      startX: start.x,
+      startY: start.y,
+      endX: event.clientX - bounds.left,
+      endY: event.clientY - bounds.top,
+      viewportWidth: bounds.width,
+      viewportHeight: bounds.height,
+      hasSelection: Boolean(window.getSelection()?.toString().trim()),
+      interactiveTarget: isInteractiveReaderTarget(event.target),
+    })) onToggleChrome()
+  }, [onToggleChrome])
+
   function setFlow(flow: PDFPageFlow) {
     setPreferences((current) => ({ ...current, flow }))
   }
@@ -599,7 +629,13 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
       {warning && !error && <div className="notice warning pdf-warning" role="status">{warning}</div>}
       {!pdfDocument && !error && <div className="pdf-loading"><span className="loading-spinner" /><strong>{loadingStatus}</strong>{loadingProgress !== null && <span className="reader-load-progress" aria-label={`PDF 加载进度 ${loadingProgress}%`}><i style={{ width: `${loadingProgress}%` }} /></span>}<small>大文件首次打开可能需要一些时间，后续页面会按可见区域渲染。</small></div>}
 
-      <div ref={viewportRef} className="pdf-reader-viewport">
+      <div
+        ref={viewportRef}
+        className="pdf-reader-viewport"
+        onPointerDown={handleContentPointerDown}
+        onPointerUp={handleContentPointerUp}
+        onPointerCancel={() => { contentPointerStartRef.current = null }}
+      >
         {pdfDocument && (
           <div className={`pdf-pages ${preferences.flow} ${effectiveLayout}`}>
             {pages.map((number) => (
