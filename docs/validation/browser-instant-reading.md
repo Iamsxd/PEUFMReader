@@ -1,7 +1,7 @@
 # 浏览器即时朗读 MVP 验证记录
 
-> 验证日期：2026-08-04
-> 最近验证分支：`codex/mobile-chinese-speech`
+> 验证日期：2026-08-05
+> 最近验证分支：`codex/mobile-speech-and-nav`
 
 ## 实现范围
 
@@ -14,6 +14,7 @@
 - 正文优先按句号、问号、感叹号和分号拆成短语音队列，并按结尾标点插入 100–400 毫秒的句间停顿。
 - 移动端根据正文字符纠正错误的 EPUB 语言声明；中文正文会使用 `zh-CN`，并从设备枚举结果中优先匹配中文音色，不再静默沿用英语默认音色。
 - 手机没有提供目标语言音色时显示安装系统文字转语音语言包的提示。
+- Android/OPPO 会在中文朗读前重新查询并等待延迟提供的系统音色；中文音色仍不可用时停止播放，避免退回英语默认音色，并显示系统设置路径。
 - 手机与触摸设备不再显示遮挡正文的左上角“工具”浮层；轻点正文中央区域可显示或收起阅读工具，滚动、文字选择、链接和两侧区域不会触发。
 - 手机阅读工具按可用宽度自动换成两行或多行，禁用横向溢出；横屏触摸设备仍沿用手机交互。
 - PDF 页面画布与文字层独立渲染：Safari 文字层异常时仍保留已完成的页面画布，仅将文字选择与高亮降级，并显示非阻断提示。
@@ -34,14 +35,15 @@
 ```bash
 pnpm test
 pnpm build
-E2E_BROWSER_CHANNEL=chrome E2E_DISABLE_VIDEO=1 pnpm test:e2e layout-and-interactions.spec.ts --grep "book detail and reader controls"
+E2E_BROWSER_CHANNEL=chrome E2E_DISABLE_VIDEO=1 pnpm test:e2e layout-and-interactions.spec.ts --grep "primary navigation stays usable and ordered|book detail and reader controls"
 ```
 
 结果：
 
-- Vitest：9 个测试文件、53 项测试全部通过；覆盖中文正文覆盖错误英语声明、已保存英语音色自动回退到设备中文音色，以及正文中央轻点判定与手势排除。
+- Vitest：9 个测试文件、54 项测试全部通过；覆盖中文正文覆盖错误英语声明、已保存英语音色自动回退到设备中文音色、Android 中文音色名称兼容，以及正文中央轻点判定与手势排除。
 - TypeScript 与 Vite 生产构建通过，离线资源清单成功生成。
-- Playwright：桌面 Chromium 1440×900 与 Pixel 7 移动视口各 1 项通过；覆盖朗读入口、设备音色枚举、1.25× 语速、0.9 语调、开始、暂停、继续、停止、两页 PDF 自动翻页并继续朗读第二页，以及手机隐藏浮层、中央轻点恢复工具栏、工具栏换行且无横向溢出。
+- Playwright：桌面 Chromium 1440×900 与 Pixel 7 移动视口共 4 项通过；覆盖朗读入口、设备音色枚举、1.25× 语速、0.9 语调、开始、暂停、继续、停止、两页 PDF 自动翻页并继续朗读第二页，以及手机隐藏浮层、中央轻点恢复工具栏、工具栏换行且无横向溢出。
+- 主页手机导航使用自适应按钮网格；根据可用宽度换成多行，不保留横向拖动条，并验证无横向溢出。
 - 本地部署后使用真实 PDF“牵伸解剖指南”完成 Chrome 冒烟检查：页面画布进入 `rendered` 状态，页面错误和文字层降级提示均未出现。
 - Safari 26.5.2 的原始问题来自 PDF.js 文字层兼容路径；当前自动化环境不能驱动 Safari，修复后的 Safari 实机结果需要手动复核。
 

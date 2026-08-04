@@ -8,6 +8,7 @@ export interface SpeechPreferences {
 export interface SpeechVoiceCandidate {
   voiceURI: string
   lang: string
+  name?: string
   default?: boolean
   localService?: boolean
 }
@@ -117,11 +118,16 @@ function speechLanguageFamily(language: string): string {
   return primary === 'cmn' ? 'zh' : primary
 }
 
+function voiceLanguageFamily(voice: SpeechVoiceCandidate): string {
+  if (/(?:中文|汉语|普通话|chinese|mandarin)/i.test(voice.name ?? '')) return 'zh'
+  return speechLanguageFamily(voice.lang)
+}
+
 export function findSpeechVoice<TVoice extends SpeechVoiceCandidate>(voices: TVoice[], preferredVoiceURI: string, language: string): TVoice | undefined {
   const normalizedLanguage = normalizeSpeechLanguage(language)
   const languageFamily = speechLanguageFamily(language)
   const compatible = voices.filter((voice) => {
-    const family = speechLanguageFamily(voice.lang)
+    const family = voiceLanguageFamily(voice)
     if (languageFamily === 'zh') return family === 'zh'
     return family === languageFamily
   })

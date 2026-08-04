@@ -51,6 +51,10 @@ export interface BrowserSpeechControls {
   setAutoAdvance: (enabled: boolean) => void
 }
 
+function isChineseSpeechLanguage(language: string): boolean {
+  return /^(zh|cmn|yue)(-|$)/i.test(language)
+}
+
 function readPreferences() {
   try {
     return parseSpeechPreferences(window.localStorage.getItem(SPEECH_PREFERENCES_KEY))
@@ -122,6 +126,37 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
     ? preferences.voiceURI
     : ''
 
+  const resolveVoice = useCallback(async (language: string): Promise<SpeechSynthesisVoice | undefined> => {
+    const synthesis = window.speechSynthesis
+    const inspect = () => {
+      const available = synthesis.getVoices()
+      if (available.length > 0) setVoices(available)
+      return { available, selected: findSpeechVoice(available, preferences.voiceURI, language) }
+    }
+    const initial = inspect()
+    if (initial.selected || !isChineseSpeechLanguage(language)) return initial.selected
+
+    return await new Promise<SpeechSynthesisVoice | undefined>((resolve) => {
+      let finished = false
+      const finish = (selected?: SpeechSynthesisVoice) => {
+        if (finished) return
+        finished = true
+        window.clearInterval(pollTimer)
+        window.clearTimeout(timeout)
+        synthesis.removeEventListener('voiceschanged', refresh)
+        resolve(selected)
+      }
+      const refresh = () => {
+        const next = inspect()
+        if (next.selected) finish(next.selected)
+      }
+      const pollTimer = window.setInterval(refresh, 120)
+      const timeout = window.setTimeout(() => finish(inspect().selected), 1_500)
+      synthesis.addEventListener('voiceschanged', refresh)
+      refresh()
+    })
+  }, [preferences.voiceURI])
+
   const start = useCallback(async () => {
     if (!supported) {
       setError('当前浏览器不支持即时朗读。请使用最新版 Safari、Chrome 或 Edge。')
@@ -170,7 +205,7 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
             expectedSourceKeyRef.current = advance.sourceKey
             await advance.activate()
             if (run !== runRef.current) return
-            speakSource(advance.source, nextChunks)
+            void speakSource(advance.source, nextChunks)
             return
           }
         } catch (reason) {
@@ -181,14 +216,15 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
           setError('自动翻页失败，已停止连续朗读。')
         }
       }
-      const speakSource = (activeSource: SpeechSource, activeChunks: string[]) => {
+      const speakSource = async (activeSource: SpeechSource, activeChunks: string[]) => {
         setSourceLabel(activeSource.label)
         setProgress({ current: 1, total: activeChunks.length })
         const language = inferSpeechLanguage(activeSource.text, activeSource.language)
-        const selectedVoice = findSpeechVoice(voices, preferences.voiceURI, language)
-        if (/^(zh|cmn|yue)(-|$)/i.test(language) && voices.length > 0 && !selectedVoice) {
+        const selectedVoice = await resolveVoice(language)
+        if (run !== runRef.current) return
+        if (isChineseSpeechLanguage(language) && !selectedVoice) {
           setStatus('idle')
-          setError('手机没有向浏览器提供中文音色，请在系统“文字转语音输出”中安装中文语言包后重试。')
+          setError('浏览器没有提供中文音色，已停止以避免用英语朗读中文。请在 OPPO“设置 → 其他设置/无障碍 → 文字转语音输出”中选择语音引擎并下载“中文（中国）”后，重新打开浏览器。')
           return
         }
         const speakChunk = (index: number) => {
@@ -196,7 +232,7 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
           const utterance = new SpeechSynthesisUtterance(activeChunks[index])
           utterance.rate = preferences.rate
           utterance.pitch = preferences.pitch
-          utterance.lang = selectedVoice?.lang || language
+          utterance.lang = language
           if (selectedVoice) utterance.voice = selectedVoice
           utterance.onstart = () => {
             if (run === runRef.current) setStatus('speaking')
@@ -231,14 +267,14 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
         speakChunk(0)
       }
 
-      speakSource(source, chunks)
+      void speakSource(source, chunks)
     } catch (reason) {
       if (run !== runRef.current) return
       console.error('Browser speech source loading failed.', reason)
       setStatus('idle')
       setError(reason instanceof Error ? reason.message : '朗读文本读取失败，请稍后重试。')
     }
-  }, [loadNextSource, loadSource, preferences.autoAdvance, preferences.pitch, preferences.rate, preferences.voiceURI, supported, voices])
+  }, [loadNextSource, loadSource, preferences.autoAdvance, preferences.pitch, preferences.rate, resolveVoice, supported])
 
   const pauseOrResume = useCallback(() => {
     if (!supported) return

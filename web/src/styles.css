@@ -852,9 +852,9 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .app-header { top: 5px; grid-template-columns: 1fr auto; gap: 8px; padding: 9px; border-radius: 15px; }
   .app-brand strong { display: none; }
   .app-navigation { grid-column: 1 / -1; grid-row: 2; justify-content: stretch; }
-  .app-navigation-primary { flex: 1; justify-content: stretch; overflow-x: auto; }
-  .app-navigation-primary button { flex: 1 0 auto; padding: 8px 10px; }
-  .navigation-menu > summary { padding: 8px 10px; }
+  .app-navigation-primary { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(78px, 1fr)); gap: 4px; overflow: visible; }
+  .app-navigation-primary > button, .app-navigation-primary > .navigation-menu { min-width: 0; }
+  .app-navigation-primary > button, .app-navigation-primary > .navigation-menu > summary { width: 100%; justify-content: center; padding: 8px 7px; }
   .navigation-popover { right: 0; width: min(270px, calc(100vw - 24px)); }
   .account-summary { display: none; }
   .account-menu > summary { gap: 4px; }

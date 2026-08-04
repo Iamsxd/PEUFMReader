@@ -66,4 +66,12 @@ describe('browser speech helpers', () => {
     expect(findSpeechVoice(voices, 'english', 'en-US')?.voiceURI).toBe('english')
     expect(findSpeechVoice(voices.filter((voice) => voice.lang === 'en-US'), '', 'zh-CN')).toBeUndefined()
   })
+
+  it('recognizes Android Chinese voices whose language tag is missing or incorrect', () => {
+    const voices = [
+      { voiceURI: 'android-default', lang: 'en-US', name: 'Google 普通话（中国大陆）', localService: true },
+      { voiceURI: 'english', lang: 'en-US', name: 'Google US English', default: true, localService: true },
+    ]
+    expect(findSpeechVoice(voices, '', 'zh-CN')?.voiceURI).toBe('android-default')
+  })
 })
