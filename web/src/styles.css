@@ -990,6 +990,13 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .pdf-navigation, .epub-navigation { bottom: 10px; }
 }
 
+@media (max-width: 720px), (hover: none) and (pointer: coarse) {
+  .reader-chrome-toggle { display: none; }
+  .reader-toolbar { max-height: min(55dvh, 330px); align-content: flex-start; justify-content: center; flex-wrap: wrap; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }
+  .reader-toolbar.is-hidden { transform: translateY(calc(-100% - 80px)); }
+  .reader-toolbar-collapse { order: -1; }
+}
+
 /* Keep controls clear of phone notches and home indicators when viewport-fit=cover is active. */
 @supports (padding: max(0px)) {
   .app-shell {

@@ -21,11 +21,13 @@ export function Reader({ book, contentData, userID, offlineMode, onClose }: Prop
   const [error, setError] = useState('')
   const [readerChromeVisible, setReaderChromeVisible] = useState(true)
   const readerChromeTimerRef = useRef<number | null>(null)
+  const readerChromeVisibleRef = useRef(readerChromeVisible)
   const stateRef = useRef<ReadingState | null>(null)
   const isKindleBook = book.format === 'mobi' || book.format === 'azw3'
   const isImmersiveReader = book.format === 'pdf' || book.format === 'epub' || isKindleBook
   useReadingSession(book.id, offlineMode ? userID : undefined)
   stateRef.current = state
+  readerChromeVisibleRef.current = readerChromeVisible
 
   const clearReaderChromeTimer = useCallback(() => {
     if (readerChromeTimerRef.current !== null) {
@@ -48,6 +50,11 @@ export function Reader({ book, contentData, userID, offlineMode, onClose }: Prop
       setReaderChromeVisible(false)
     }, 3500)
   }, [clearReaderChromeTimer, isImmersiveReader])
+
+  const toggleReaderChrome = useCallback(() => {
+    if (readerChromeVisibleRef.current) hideReaderChrome()
+    else showReaderChrome()
+  }, [hideReaderChrome, showReaderChrome])
 
   useEffect(() => {
     const localState = getOfflineReadingState(userID, book.id)
@@ -179,6 +186,7 @@ export function Reader({ book, contentData, userID, offlineMode, onClose }: Prop
               chromeVisible={readerChromeVisible}
               onChromeActivity={showReaderChrome}
               onHideChrome={hideReaderChrome}
+              onToggleChrome={toggleReaderChrome}
               onProgress={save}
               readingStatus={state.status}
               onStatusChange={changeStatus}
@@ -194,6 +202,7 @@ export function Reader({ book, contentData, userID, offlineMode, onClose }: Prop
               chromeVisible={readerChromeVisible}
               onChromeActivity={showReaderChrome}
               onHideChrome={hideReaderChrome}
+              onToggleChrome={toggleReaderChrome}
               onProgress={save}
               readingStatus={state.status}
               onStatusChange={changeStatus}
