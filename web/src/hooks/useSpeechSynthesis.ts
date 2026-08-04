@@ -4,6 +4,7 @@ import {
   clampSpeechPitch,
   clampSpeechRate,
   getSpeechPauseDuration,
+  findSpeechVoice,
   inferSpeechLanguage,
   parseSpeechPreferences,
   SPEECH_PREFERENCES_KEY,
@@ -144,8 +145,6 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
         return
       }
 
-      const selectedVoice = voices.find((voice) => voice.voiceURI === preferences.voiceURI)
-
       const finish = () => {
         setStatus('idle')
         setProgress((current) => ({ current: current.total, total: current.total }))
@@ -186,6 +185,12 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
         setSourceLabel(activeSource.label)
         setProgress({ current: 1, total: activeChunks.length })
         const language = inferSpeechLanguage(activeSource.text, activeSource.language)
+        const selectedVoice = findSpeechVoice(voices, preferences.voiceURI, language)
+        if (/^(zh|cmn|yue)(-|$)/i.test(language) && voices.length > 0 && !selectedVoice) {
+          setStatus('idle')
+          setError('手机没有向浏览器提供中文音色，请在系统“文字转语音输出”中安装中文语言包后重试。')
+          return
+        }
         const speakChunk = (index: number) => {
           if (run !== runRef.current) return
           const utterance = new SpeechSynthesisUtterance(activeChunks[index])
@@ -214,7 +219,11 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
           utterance.onerror = (event) => {
             if (run !== runRef.current || event.error === 'canceled' || event.error === 'interrupted') return
             setStatus('idle')
-            setError(`朗读失败（${event.error || '未知错误'}），可以更换音色后重试。`)
+            if (event.error === 'language-unavailable' || event.error === 'voice-unavailable') {
+              setError(`手机没有可用的${language.startsWith('zh') ? '中文' : language}语音，请安装对应的系统文字转语音语言包后重试。`)
+            } else {
+              setError(`朗读失败（${event.error || '未知错误'}），可以更换音色后重试。`)
+            }
           }
           window.speechSynthesis.speak(utterance)
         }

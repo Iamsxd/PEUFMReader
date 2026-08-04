@@ -35,7 +35,7 @@ export function SpeechPanel({ controls, sourceDescription, onClose, onChromeActi
             disabled={!controls.supported}
             onChange={(event) => controls.selectVoice(event.target.value)}
           >
-            <option value="">系统默认</option>
+            <option value="">自动匹配正文语言（推荐）</option>
             {controls.voices.map((voice) => (
               <option key={voice.voiceURI} value={voice.voiceURI}>
                 {voice.name} · {voice.lang}{voice.localService ? ' · 本地' : ''}

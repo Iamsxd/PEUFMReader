@@ -5,6 +5,13 @@ export interface SpeechPreferences {
   autoAdvance: boolean
 }
 
+export interface SpeechVoiceCandidate {
+  voiceURI: string
+  lang: string
+  default?: boolean
+  localService?: boolean
+}
+
 export const SPEECH_PREFERENCES_KEY = 'peufmreader.speech.preferences.v1'
 export const DEFAULT_SPEECH_PREFERENCES: SpeechPreferences = { voiceURI: '', rate: 1, pitch: 1, autoAdvance: true }
 
@@ -91,6 +98,39 @@ export function extractReadableDocumentText(document: Document): string {
 
 export function inferSpeechLanguage(text: string, declaredLanguage?: string): string {
   const declared = declaredLanguage?.trim()
+  const normalizedDeclared = declared?.toLocaleLowerCase().replaceAll('_', '-')
+  if (normalizedDeclared?.startsWith('zh') || normalizedDeclared?.startsWith('cmn') || normalizedDeclared?.startsWith('yue')) return declared!
+  if (normalizedDeclared?.startsWith('ja') || normalizedDeclared?.startsWith('ko')) return declared!
+  const chineseCharacters = text.match(/[\u3400-\u9fff]/g)?.length ?? 0
+  const latinCharacters = text.match(/[A-Za-z]/g)?.length ?? 0
+  if (chineseCharacters >= 2 && chineseCharacters >= latinCharacters) return 'zh-CN'
   if (declared) return declared
-  return /[\u3400-\u9fff]/.test(text) ? 'zh-CN' : 'en-US'
+  return chineseCharacters > 0 ? 'zh-CN' : 'en-US'
+}
+
+function normalizeSpeechLanguage(language: string): string {
+  return language.trim().toLocaleLowerCase().replaceAll('_', '-')
+}
+
+function speechLanguageFamily(language: string): string {
+  const primary = normalizeSpeechLanguage(language).split('-')[0]
+  return primary === 'cmn' ? 'zh' : primary
+}
+
+export function findSpeechVoice<TVoice extends SpeechVoiceCandidate>(voices: TVoice[], preferredVoiceURI: string, language: string): TVoice | undefined {
+  const normalizedLanguage = normalizeSpeechLanguage(language)
+  const languageFamily = speechLanguageFamily(language)
+  const compatible = voices.filter((voice) => {
+    const family = speechLanguageFamily(voice.lang)
+    if (languageFamily === 'zh') return family === 'zh'
+    return family === languageFamily
+  })
+  const preferred = voices.find((voice) => voice.voiceURI === preferredVoiceURI)
+  if (preferred && compatible.includes(preferred)) return preferred
+  return compatible.find((voice) => normalizeSpeechLanguage(voice.lang) === normalizedLanguage && voice.default)
+    ?? compatible.find((voice) => normalizeSpeechLanguage(voice.lang) === normalizedLanguage && voice.localService)
+    ?? compatible.find((voice) => normalizeSpeechLanguage(voice.lang) === normalizedLanguage)
+    ?? compatible.find((voice) => voice.default)
+    ?? compatible.find((voice) => voice.localService)
+    ?? compatible[0]
 }

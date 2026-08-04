@@ -4,6 +4,7 @@ import {
   clampSpeechPitch,
   clampSpeechRate,
   extractReadableDocumentText,
+  findSpeechVoice,
   getSpeechPauseDuration,
   inferSpeechLanguage,
   normalizeSpeechText,
@@ -51,5 +52,18 @@ describe('browser speech helpers', () => {
     expect(inferSpeechLanguage('中文内容')).toBe('zh-CN')
     expect(inferSpeechLanguage('English text')).toBe('en-US')
     expect(inferSpeechLanguage('中文内容', 'zh-TW')).toBe('zh-TW')
+    expect(inferSpeechLanguage('这是一本内容完整的中文书籍', 'en-US')).toBe('zh-CN')
+    expect(inferSpeechLanguage('日本語の内容', 'ja-JP')).toBe('ja-JP')
+  })
+
+  it('prefers a compatible device voice over a mismatched saved voice', () => {
+    const voices = [
+      { voiceURI: 'english', lang: 'en-US', default: true, localService: true },
+      { voiceURI: 'chinese', lang: 'zh-CN', default: false, localService: true },
+    ]
+    expect(findSpeechVoice(voices, 'english', 'zh-CN')?.voiceURI).toBe('chinese')
+    expect(findSpeechVoice(voices, '', 'zh-CN')?.voiceURI).toBe('chinese')
+    expect(findSpeechVoice(voices, 'english', 'en-US')?.voiceURI).toBe('english')
+    expect(findSpeechVoice(voices.filter((voice) => voice.lang === 'en-US'), '', 'zh-CN')).toBeUndefined()
   })
 })
