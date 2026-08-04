@@ -1,11 +1,16 @@
-export function minimalPDF(): Buffer {
-  const stream = 'BT /F1 18 Tf 72 72 Td (Reader controls test) Tj ET'
+export function minimalPDF(pageTexts: string[] = ['Reader controls test']): Buffer {
+  const texts = pageTexts.length > 0 ? pageTexts : ['Reader controls test']
+  const pageCount = texts.length
+  const fontID = 3 + pageCount
+  const pageIDs = texts.map((_, index) => 3 + index)
+  const contentIDs = texts.map((_, index) => fontID + 1 + index)
+  const streams = texts.map((text) => `BT /F1 18 Tf 72 72 Td (${text.replace(/[()\\]/g, '')}) Tj ET`)
   const objects = [
     '<</Type/Catalog/Pages 2 0 R>>',
-    '<</Type/Pages/Kids[3 0 R]/Count 1>>',
-    '<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 144]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>',
+    `<</Type/Pages/Kids[${pageIDs.map((id) => `${id} 0 R`).join(' ')}]/Count ${pageCount}>>`,
+    ...pageIDs.map((_, index) => `<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 144]/Resources<</Font<</F1 ${fontID} 0 R>>>>/Contents ${contentIDs[index]} 0 R>>`),
     '<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>',
-    `<</Length ${stream.length}>>\nstream\n${stream}\nendstream`,
+    ...streams.map((stream) => `<</Length ${stream.length}>>\nstream\n${stream}\nendstream`),
   ]
   let content = '%PDF-1.4\n'
   const offsets = [0]

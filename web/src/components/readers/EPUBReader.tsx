@@ -135,18 +135,42 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
     const chapterLabel = toc.find((entry) => entry.href.split('#')[0] === normalizedHref)?.label
       ?? (currentChapter.index >= 0 ? `第 ${currentChapter.index + 1} 章` : '当前章节')
     const language = activeContents[0]?.document.documentElement.lang || undefined
-    return { text, label: chapterLabel, language }
+    return { text, label: chapterLabel, language, cursor: activeContents[0]?.sectionIndex ?? currentChapter.index }
   }, [currentChapter, toc])
+  const loadNextSpeechSource = useCallback(async (source: { cursor?: number }) => {
+    const epub = bookRef.current
+    const rendition = renditionRef.current
+    if (!epub || !rendition) return null
+    const currentIndex = source.cursor ?? currentChapter.index
+    const section = epub.spine.spineItems.find((candidate) => candidate.linear !== false && candidate.index > currentIndex)
+    if (!section) return null
+    await section.load(epub.load.bind(epub))
+    try {
+      const text = extractReadableDocumentText(section.document)
+      const normalizedHref = section.href.split('#')[0]
+      const chapterLabel = toc.find((entry) => entry.href.split('#')[0] === normalizedHref)?.label ?? `第 ${section.index + 1} 章`
+      const language = section.document.documentElement.lang || undefined
+      return {
+        source: { text, label: chapterLabel, language, cursor: section.index },
+        sourceKey: `${book.id}:${section.index}`,
+        activate: async () => { await rendition.display(section.href) },
+      }
+    } finally {
+      section.unload()
+    }
+  }, [book.id, currentChapter.index, toc])
   const speech = useSpeechSynthesis({
     loadSource: loadSpeechSource,
-    sourceKey: `${book.id}:${currentChapter.index}:${currentChapter.href.split('#')[0]}`,
+    loadNextSource: loadNextSpeechSource,
+    sourceKey: `${book.id}:${currentChapter.index}`,
   })
 
   const turnPage = useCallback((direction: -1 | 1) => {
     const rendition = renditionRef.current
     if (!rendition) return
+    speech.stop()
     void (direction < 0 ? rendition.prev() : rendition.next()).catch(() => setError('EPUB 翻页失败。'))
-  }, [])
+  }, [speech.stop])
 
   const updateFontSize = useCallback((delta: number) => {
     setPreferences((current) => ({ ...current, fontSize: clampEPUBFontSize(current.fontSize + delta) }))
@@ -499,6 +523,7 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
   }
 
   function displayLocation(target: string | number) {
+    speech.stop()
     void renditionRef.current?.display(target).then(() => setSidePanel(null)).catch(() => setSearchError('无法定位到该内容。'))
   }
 

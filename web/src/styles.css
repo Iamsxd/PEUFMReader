@@ -701,6 +701,8 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .reader-speech-source { margin: 0; padding: 11px 12px; border-radius: 10px; background: #e9eee8; color: #2f4838; font-size: .82rem; font-weight: 760; line-height: 1.45; }
 .reader-speech-panel label { display: grid; gap: 6px; color: #5d6d63; font-size: .74rem; font-weight: 750; }
 .reader-speech-panel select { width: 100%; min-width: 0; padding: 9px 34px 9px 10px; border: 1px solid #cbd2cb; border-radius: 9px; background-color: white; color: #293b31; font-size: .8rem; }
+.reader-speech-panel .reader-speech-toggle { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 9px; background: #edf2ec; color: #35513f; cursor: pointer; }
+.reader-speech-toggle input { width: 16px; height: 16px; margin: 0; accent-color: #2d6041; }
 .reader-speech-actions { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 8px; }
 .reader-speech-actions button { min-height: 38px; padding: 8px 10px; border: 1px solid #cbd2cb; border-radius: 9px; background: #eef2ed; color: #35513f; font-weight: 760; }
 .reader-speech-actions button.primary { border-color: #2d6041; background: #2d6041; color: white; }

@@ -182,6 +182,7 @@ test('a 3336-book review queue stays paginated and loads one editor on demand', 
 })
 
 test('book detail and reader controls remain reachable', async ({ page }, testInfo) => {
+  const readerPDF = minimalPDF(['Reader controls test first page.', 'Automatic reading second page.'])
   const book = {
     id: 909001,
     workId: 909002,
@@ -192,12 +193,12 @@ test('book detail and reader controls remain reachable', async ({ page }, testIn
     reviewRequired: false,
     textAvailable: true,
     textExtractionMethod: 'embedded',
-    pageCount: 1,
+    pageCount: 2,
     originalFilename: 'reader-controls.pdf',
     storageMode: 'managed',
     format: 'pdf',
     mimeType: 'application/pdf',
-    sizeBytes: minimalPDF().byteLength,
+    sizeBytes: readerPDF.byteLength,
     createdAt: '2026-08-04T00:00:00Z',
   } as const
   const readingState = {
@@ -215,7 +216,7 @@ test('book detail and reader controls remain reachable', async ({ page }, testIn
     body: JSON.stringify({ book, description: '用于验证阅读工具显隐的合成 PDF。', readingState, favorite: false, readerCount: 1, favoriteCount: 0, totalActiveSeconds: 0 }),
   }))
   await page.route('**/api/v1/recommendations?limit=8', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], personalized: false }) }))
-  await page.route(`**/api/v1/book-files/${book.id}/content`, (route) => route.fulfill({ status: 200, contentType: 'application/pdf', body: minimalPDF() }))
+  await page.route(`**/api/v1/book-files/${book.id}/content`, (route) => route.fulfill({ status: 200, contentType: 'application/pdf', body: readerPDF }))
   await page.route(`**/api/v1/book-files/${book.id}/marks`, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) }))
   await page.route(`**/api/v1/book-files/${book.id}/progress`, async (route) => {
     const input = route.request().method() === 'PUT' ? await route.request().postDataJSON() as Record<string, unknown> : {}
@@ -237,13 +238,15 @@ test('book detail and reader controls remain reachable', async ({ page }, testIn
   await expect.poll(() => speechPanel.getByLabel('音色').locator('option').count()).toBeGreaterThan(1)
   await speechPanel.getByLabel('音色').selectOption({ index: 1 })
   await speechPanel.getByLabel('语速').selectOption('1.25')
+  await speechPanel.getByLabel('语调').selectOption('0.9')
   await page.evaluate(() => {
-    const synthesis = window.speechSynthesis as SpeechSynthesis & { spokenText?: string; pausedForTest?: boolean }
+    const synthesis = window.speechSynthesis as SpeechSynthesis & { spokenText?: string; spokenPitch?: number; pausedForTest?: boolean }
     Object.defineProperties(synthesis, {
       speak: {
         configurable: true,
         value: (utterance: SpeechSynthesisUtterance) => {
           synthesis.spokenText = `${synthesis.spokenText ?? ''}${utterance.text}`
+          synthesis.spokenPitch = utterance.pitch
           window.setTimeout(() => utterance.onstart?.({ utterance } as SpeechSynthesisEvent), 0)
         },
       },
@@ -255,6 +258,7 @@ test('book detail and reader controls remain reachable', async ({ page }, testIn
   await speechPanel.getByRole('button', { name: '开始朗读' }).click()
   await expect(speechPanel.getByRole('status')).toContainText('第 1 / 1 段')
   await expect.poll(() => page.evaluate(() => (window.speechSynthesis as SpeechSynthesis & { spokenText?: string }).spokenText)).toContain('Reader controls test')
+  await expect.poll(() => page.evaluate(() => (window.speechSynthesis as SpeechSynthesis & { spokenPitch?: number }).spokenPitch)).toBeCloseTo(0.9, 2)
   await speechPanel.getByRole('button', { name: '暂停' }).click()
   await expect(speechPanel.getByRole('button', { name: '继续' })).toBeVisible()
   await speechPanel.getByRole('button', { name: '继续' }).click()
@@ -269,5 +273,26 @@ test('book detail and reader controls remain reachable', async ({ page }, testIn
   await expect(readerNavigation).toHaveClass(/is-hidden/)
   await page.getByRole('button', { name: /显示 (PDF|EPUB) 阅读工具/ }).click()
   await expect(readerNavigation).not.toHaveClass(/is-hidden/)
+
+  await readerToolbar.getByRole('button', { name: '朗读', exact: true }).click()
+  await expect(speechPanel.getByText('朗读完成后自动翻页并继续')).toBeVisible()
+  await expect(speechPanel.getByRole('checkbox')).toBeChecked()
+  await page.evaluate(() => {
+    const synthesis = window.speechSynthesis as SpeechSynthesis & { spokenText?: string }
+    Object.defineProperties(synthesis, {
+      speak: {
+        configurable: true,
+        value: (utterance: SpeechSynthesisUtterance) => {
+          synthesis.spokenText = `${synthesis.spokenText ?? ''}${utterance.text}`
+          window.setTimeout(() => utterance.onstart?.({ utterance } as SpeechSynthesisEvent), 0)
+          window.setTimeout(() => utterance.onend?.({ utterance } as SpeechSynthesisEvent), 5)
+        },
+      },
+      cancel: { configurable: true, value: () => { synthesis.spokenText = '' } },
+    })
+  })
+  await speechPanel.getByRole('button', { name: '开始朗读' }).click()
+  await expect(page.getByRole('spinbutton', { name: '当前页码' })).toHaveValue('2')
+  await expect.poll(() => page.evaluate(() => (window.speechSynthesis as SpeechSynthesis & { spokenText?: string }).spokenText)).toContain('Automatic reading second')
   await capture(page, testInfo, 'reader-controls')
 })

@@ -70,6 +70,7 @@ declare module 'epubjs' {
     index: number
     href: string
     linear: boolean
+    document: Document
     load(request: (path: string) => Promise<Document>): Promise<unknown>
     find(query: string): SectionSearchResult[]
     unload(): void

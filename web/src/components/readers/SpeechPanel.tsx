@@ -8,6 +8,13 @@ interface Props {
 }
 
 const RATE_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+const PITCH_OPTIONS = [
+  { value: 0.8, label: '低沉' },
+  { value: 0.9, label: '沉稳' },
+  { value: 1, label: '自然' },
+  { value: 1.1, label: '明亮' },
+  { value: 1.2, label: '高扬' },
+]
 
 export function SpeechPanel({ controls, sourceDescription, onClose, onChromeActivity }: Props) {
   const active = controls.status === 'speaking' || controls.status === 'paused'
@@ -44,6 +51,18 @@ export function SpeechPanel({ controls, sourceDescription, onClose, onChromeActi
           </select>
         </label>
 
+        <label>
+          <span>语调</span>
+          <select value={controls.pitch} disabled={!controls.supported} onChange={(event) => controls.selectPitch(Number(event.target.value))}>
+            {PITCH_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label} · {option.value.toFixed(1)}</option>)}
+          </select>
+        </label>
+
+        <label className="reader-speech-toggle">
+          <input type="checkbox" checked={controls.autoAdvance} disabled={!controls.supported} onChange={(event) => controls.setAutoAdvance(event.target.checked)} />
+          <span>朗读完成后自动翻页并继续</span>
+        </label>
+
         <div className="reader-speech-actions">
           <button className="primary" disabled={!controls.supported || controls.status === 'loading'} onClick={() => void controls.start()}>
             {controls.status === 'loading' ? '读取中…' : active ? '重新朗读' : '开始朗读'}
@@ -57,7 +76,7 @@ export function SpeechPanel({ controls, sourceDescription, onClose, onChromeActi
             {controls.error || controls.progressLabel}
           </p>
         )}
-        <p className="reader-speech-note">朗读不经过 PEUFMReader 或 NAS；音色是否完全离线由当前浏览器和操作系统决定。更换音色或语速会停止当前朗读。</p>
+        <p className="reader-speech-note">朗读不经过 PEUFMReader 或 NAS；音色是否完全离线由当前浏览器和操作系统决定。语调只调整音高，实际情感表现取决于所选系统音色。更换朗读设置会停止当前朗读。</p>
       </div>
     </aside>
   )

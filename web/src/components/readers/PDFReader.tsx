@@ -138,10 +138,10 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
       ? getPDFViewPages(pageNumber, pageCount, effectiveLayout)
       : [pageNumber]
   }, [effectiveLayout, pageCount, pageNumber, preferences.flow])
-  const loadSpeechSource = useCallback(async () => {
-    if (!pdfDocument || speechPages.length === 0) return { text: '', label: '当前 PDF 页面' }
+  const loadSpeechPages = useCallback(async (targetPages: number[]) => {
+    if (!pdfDocument || targetPages.length === 0) return { text: '', label: '当前 PDF 页面' }
     const pageTexts: string[] = []
-    for (const page of speechPages) {
+    for (const page of targetPages) {
       const pageProxy = await pdfDocument.getPage(page)
       try {
         const content = await pageProxy.getTextContent()
@@ -153,13 +153,36 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
         pageProxy.cleanup()
       }
     }
-    const label = speechPages.length > 1
-      ? `第 ${speechPages[0]}–${speechPages.at(-1)} 页`
-      : `第 ${speechPages[0]} 页`
-    return { text: pageTexts.join('\n\n'), label }
-  }, [pdfDocument, speechPages])
+    const label = targetPages.length > 1
+      ? `第 ${targetPages[0]}–${targetPages.at(-1)} 页`
+      : `第 ${targetPages[0]} 页`
+    return { text: pageTexts.join('\n\n'), label, cursor: targetPages.at(-1) }
+  }, [pdfDocument])
+  const loadSpeechSource = useCallback(() => loadSpeechPages(speechPages), [loadSpeechPages, speechPages])
+  const loadNextSpeechSource = useCallback(async (source: { cursor?: number }) => {
+    const lastPage = source.cursor ?? speechPages.at(-1) ?? pageNumber
+    if (!pdfDocument || lastPage >= pageCount) return null
+    const nextPage = lastPage + 1
+    const nextPages = preferences.flow === 'paged'
+      ? getPDFViewPages(nextPage, pageCount, effectiveLayout)
+      : [nextPage]
+    const nextSource = await loadSpeechPages(nextPages)
+    return {
+      source: nextSource,
+      sourceKey: `${book.id}:${nextPages.join('-')}`,
+      activate: () => {
+        setPageNumber(nextPages[0])
+        if (preferences.flow === 'continuous') {
+          window.requestAnimationFrame(() => {
+            globalThis.document.querySelector<HTMLElement>(`[data-pdf-page="${nextPages[0]}"]`)?.scrollIntoView({ block: 'start' })
+          })
+        }
+      },
+    }
+  }, [book.id, effectiveLayout, loadSpeechPages, pageCount, pageNumber, pdfDocument, preferences.flow, speechPages])
   const speech = useSpeechSynthesis({
     loadSource: loadSpeechSource,
+    loadNextSource: loadNextSpeechSource,
     sourceKey: `${book.id}:${speechPages.join('-')}`,
   })
 
@@ -299,6 +322,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   }, [preferences])
 
   const goToPage = useCallback((requestedPage: number) => {
+    speech.stop()
     const requestedTarget = clampPDFPage(requestedPage, pageCount)
     const target = preferences.flow === 'paged' && effectiveLayout === 'spread'
       ? getPDFViewPages(requestedTarget, pageCount, effectiveLayout)[0]
@@ -309,7 +333,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
         globalThis.document.querySelector<HTMLElement>(`[data-pdf-page="${target}"]`)?.scrollIntoView({ block: 'start' })
       })
     }
-  }, [effectiveLayout, pageCount, preferences.flow])
+  }, [effectiveLayout, pageCount, preferences.flow, speech.stop])
 
   const movePage = useCallback((direction: -1 | 1) => {
     goToPage(movePDFPage(pageNumber, pageCount, effectiveLayout, direction))

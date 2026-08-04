@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   chunkSpeechText,
+  clampSpeechPitch,
   clampSpeechRate,
   extractReadableDocumentText,
+  getSpeechPauseDuration,
   inferSpeechLanguage,
   normalizeSpeechText,
   parseSpeechPreferences,
@@ -10,9 +12,17 @@ import {
 
 describe('browser speech helpers', () => {
   it('sanitizes persisted speech preferences', () => {
-    expect(parseSpeechPreferences('{"voiceURI":"voice-1","rate":9}')).toEqual({ voiceURI: 'voice-1', rate: 2 })
-    expect(parseSpeechPreferences('not-json')).toEqual({ voiceURI: '', rate: 1 })
+    expect(parseSpeechPreferences('{"voiceURI":"voice-1","rate":9,"pitch":4,"autoAdvance":false}')).toEqual({ voiceURI: 'voice-1', rate: 2, pitch: 1.2, autoAdvance: false })
+    expect(parseSpeechPreferences('not-json')).toEqual({ voiceURI: '', rate: 1, pitch: 1, autoAdvance: true })
     expect(clampSpeechRate(0.1)).toBe(0.5)
+    expect(clampSpeechPitch(0.1)).toBe(0.8)
+  })
+
+  it('creates sentence-sized chunks and explicit punctuation pauses', () => {
+    expect(chunkSpeechText('第一句。第二句！第三句？')).toEqual(['第一句。', '第二句！', '第三句？'])
+    expect(getSpeechPauseDuration('第一句。')).toBe(320)
+    expect(getSpeechPauseDuration('半句，')).toBe(120)
+    expect(getSpeechPauseDuration('无标点')).toBe(80)
   })
 
   it('normalizes and chunks long text at readable punctuation', () => {
