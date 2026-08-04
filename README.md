@@ -413,6 +413,7 @@ location / {
 cd web
 pnpm install --frozen-lockfile
 pnpm test
+pnpm audit --prod
 pnpm build
 # 需要先安装 Chromium，并提供 E2E 管理员账号
 pnpm test:e2e
@@ -426,6 +427,7 @@ pnpm test:reader-regression
 ```sh
 cd server
 go test ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
 ```
 
 本机没有 Go 时可以使用容器：
