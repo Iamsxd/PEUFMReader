@@ -67,8 +67,8 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
 
   const requestedView = route.view === 'admin' && !isAdmin ? 'home' : route.view
   const activeView = offlineMode ? 'offline' : requestedView
-  const secondaryLabel = activeView === 'statistics' ? '阅读统计' : activeView === 'offline' ? '离线书籍' : activeView === 'devices' ? '设备同步' : activeView === 'admin' ? '管理后台' : '更多'
-  const secondaryActive = activeView === 'statistics' || activeView === 'offline' || activeView === 'devices' || activeView === 'admin'
+  const secondaryLabel = activeView === 'offline' ? '离线书籍' : activeView === 'devices' ? '设备同步' : activeView === 'admin' ? '管理后台' : '更多'
+  const secondaryActive = activeView === 'offline' || activeView === 'devices' || activeView === 'admin'
 
   function navigateFromMenu(event: MouseEvent<HTMLButtonElement>, view: NavigationView) {
     event.currentTarget.closest('details')?.removeAttribute('open')
@@ -88,12 +88,12 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
             <button className={activeView === 'favorites' ? 'active' : ''} onClick={() => navigate('favorites')}>收藏</button>
             <button className={activeView === 'books' ? 'active' : ''} onClick={() => navigate('books')}>全部书籍</button>
             <button className={activeView === 'categories' ? 'active' : ''} onClick={() => navigate('categories')}>分类</button>
+            <button className={activeView === 'statistics' ? 'active' : ''} onClick={() => navigate('statistics')}>阅读统计</button>
           </div>
           <details className={`navigation-menu${secondaryActive ? ' active' : ''}`}>
-            <summary>{secondaryLabel}<span aria-hidden="true">⌄</span></summary>
+            <summary>{secondaryLabel}</summary>
             <div className="navigation-popover">
               <p>本机阅读</p>
-              <button className={activeView === 'statistics' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'statistics')}><span>阅读统计</span><small>时长、连续阅读、题材与格式分布</small></button>
               <button className={activeView === 'offline' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'offline')}><span>离线书籍</span><small>保存在当前浏览器的设备副本</small></button>
               <p>阅读设备</p>
               <button className={activeView === 'devices' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'devices')}><span>设备同步</span><small>OPDS、KOReader 与 Kobo</small></button>

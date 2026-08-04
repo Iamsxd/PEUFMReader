@@ -639,7 +639,7 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
       <div className="epub-host" ref={hostRef} aria-busy={loading} />
 
       {!loading && !error && (
-        <nav className="epub-navigation" aria-label="EPUB 翻页">
+        <nav className={`epub-navigation${chromeVisible ? '' : ' is-hidden'}`} aria-label="EPUB 翻页" aria-hidden={!chromeVisible}>
           <button disabled={atStart} onClick={() => turnPage(-1)} aria-label="上一页" title={preferences.flow === 'paged' ? '上一页（←）' : '向上翻页'}>←</button>
           <span>{progressLabel}</span>
           <button disabled={atEnd} onClick={() => turnPage(1)} aria-label="下一页" title={preferences.flow === 'paged' ? '下一页（→）' : '向下翻页'}>→</button>

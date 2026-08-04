@@ -550,7 +550,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
       </div>
 
       {pageCount > 0 && (
-        <nav className="pdf-navigation" aria-label="PDF 翻页">
+        <nav className={`pdf-navigation${chromeVisible ? '' : ' is-hidden'}`} aria-label="PDF 翻页" aria-hidden={!chromeVisible}>
           <button disabled={pageNumber <= 1} onClick={() => movePage(-1)} aria-label="上一页" title="上一页（←）">←</button>
           <label>
             <span className="visually-hidden">页码</span>
