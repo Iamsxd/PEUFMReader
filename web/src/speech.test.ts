@@ -20,9 +20,9 @@ describe('browser speech helpers', () => {
 
   it('creates sentence-sized chunks and explicit punctuation pauses', () => {
     expect(chunkSpeechText('第一句。第二句！第三句？')).toEqual(['第一句。', '第二句！', '第三句？'])
-    expect(getSpeechPauseDuration('第一句。')).toBe(320)
-    expect(getSpeechPauseDuration('半句，')).toBe(120)
-    expect(getSpeechPauseDuration('无标点')).toBe(80)
+    expect(getSpeechPauseDuration('第一句。')).toBe(400)
+    expect(getSpeechPauseDuration('半句，')).toBe(150)
+    expect(getSpeechPauseDuration('无标点')).toBe(100)
   })
 
   it('normalizes and chunks long text at readable punctuation', () => {

@@ -76,10 +76,10 @@ export function chunkSpeechText(text: string, maxLength = 120): string[] {
 
 export function getSpeechPauseDuration(text: string): number {
   const ending = text.trim().at(-1) ?? ''
-  if (/[。.!！？?]/.test(ending)) return 320
-  if (/[；;]/.test(ending)) return 220
-  if (/[，,、：:]/.test(ending)) return 120
-  return 80
+  if (/[。.!！？?]/.test(ending)) return 400
+  if (/[；;]/.test(ending)) return 260
+  if (/[，,、：:]/.test(ending)) return 150
+  return 100
 }
 
 export function extractReadableDocumentText(document: Document): string {
