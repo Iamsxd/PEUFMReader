@@ -231,6 +231,36 @@ test('book detail and reader controls remain reachable', async ({ page }, testIn
   if (!await readerToolbar.isVisible()) await page.getByRole('button', { name: /显示 (PDF|EPUB) 阅读工具/ }).click()
   await expect(readerToolbar).toBeVisible()
   await expect(readerToolbar.getByRole('button', { name: /书签\/高亮/ })).toBeVisible()
+  await readerToolbar.getByRole('button', { name: '朗读', exact: true }).click()
+  const speechPanel = page.getByRole('complementary', { name: '浏览器即时朗读' })
+  await expect(speechPanel).toBeVisible()
+  await expect.poll(() => speechPanel.getByLabel('音色').locator('option').count()).toBeGreaterThan(1)
+  await speechPanel.getByLabel('音色').selectOption({ index: 1 })
+  await speechPanel.getByLabel('语速').selectOption('1.25')
+  await page.evaluate(() => {
+    const synthesis = window.speechSynthesis as SpeechSynthesis & { spokenText?: string; pausedForTest?: boolean }
+    Object.defineProperties(synthesis, {
+      speak: {
+        configurable: true,
+        value: (utterance: SpeechSynthesisUtterance) => {
+          synthesis.spokenText = `${synthesis.spokenText ?? ''}${utterance.text}`
+          window.setTimeout(() => utterance.onstart?.({ utterance } as SpeechSynthesisEvent), 0)
+        },
+      },
+      cancel: { configurable: true, value: () => { synthesis.spokenText = ''; synthesis.pausedForTest = false } },
+      pause: { configurable: true, value: () => { synthesis.pausedForTest = true } },
+      resume: { configurable: true, value: () => { synthesis.pausedForTest = false } },
+    })
+  })
+  await speechPanel.getByRole('button', { name: '开始朗读' }).click()
+  await expect(speechPanel.getByRole('status')).toContainText('第 1 / 1 段')
+  await expect.poll(() => page.evaluate(() => (window.speechSynthesis as SpeechSynthesis & { spokenText?: string }).spokenText)).toContain('Reader controls test')
+  await speechPanel.getByRole('button', { name: '暂停' }).click()
+  await expect(speechPanel.getByRole('button', { name: '继续' })).toBeVisible()
+  await speechPanel.getByRole('button', { name: '继续' }).click()
+  await speechPanel.getByRole('button', { name: '停止' }).click()
+  await expect(speechPanel.getByRole('button', { name: '停止' })).toBeDisabled()
+  await speechPanel.getByRole('button', { name: '关闭侧栏' }).click()
   expect(await readerToolbar.evaluate((element) => getComputedStyle(element).scrollbarColor)).not.toBe('auto')
   const readerNavigation = page.locator('.pdf-navigation, .epub-navigation')
   await expect(readerNavigation).toBeVisible()

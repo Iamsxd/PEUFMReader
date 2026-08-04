@@ -14,6 +14,7 @@ declare module 'epubjs' {
 
   export interface Contents {
     document: Document
+    sectionIndex: number
   }
 
   export interface Hook {
@@ -33,6 +34,7 @@ declare module 'epubjs' {
     next(): Promise<unknown>
     flow(flow: 'paginated' | 'scrolled-continuous'): void
     spread(spread: 'none' | 'auto', minWidth?: number): void
+    getContents(): Contents[]
     on<TArgs extends unknown[]>(event: string, callback: (...args: TArgs) => void): void
     off<TArgs extends unknown[]>(event: string, callback: (...args: TArgs) => void): void
     destroy(): void

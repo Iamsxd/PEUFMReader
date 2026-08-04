@@ -23,6 +23,8 @@ import { createPDFHighlightLocation, createPDFReadingMarkLocation, getReadingMar
 import { PDFPageCanvas } from './PDFPageCanvas'
 import { ReadingMarksPanel } from './ReadingMarksPanel'
 import { HighlightComposer, type PendingHighlight } from './HighlightComposer'
+import { SpeechPanel } from './SpeechPanel'
+import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerURL
 
@@ -54,7 +56,7 @@ interface PDFSearchResult {
   excerpt: string
 }
 
-type PDFSidePanel = 'toc' | 'search' | 'marks' | null
+type PDFSidePanel = 'toc' | 'search' | 'marks' | 'speech' | null
 
 async function resolvePDFOutline(document: pdfjs.PDFDocumentProxy, nodes: PDFOutlineNode[], depth = 0): Promise<PDFOutlineEntry[]> {
   const entries: PDFOutlineEntry[] = []
@@ -129,6 +131,36 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     if (preferences.flow === 'continuous') return Array.from({ length: pageCount }, (_, index) => index + 1)
     return getPDFViewPages(pageNumber, pageCount, effectiveLayout)
   }, [effectiveLayout, pageCount, pageNumber, preferences.flow])
+  const speechPages = useMemo(() => {
+    if (!pageCount) return []
+    return preferences.flow === 'paged'
+      ? getPDFViewPages(pageNumber, pageCount, effectiveLayout)
+      : [pageNumber]
+  }, [effectiveLayout, pageCount, pageNumber, preferences.flow])
+  const loadSpeechSource = useCallback(async () => {
+    if (!pdfDocument || speechPages.length === 0) return { text: '', label: '当前 PDF 页面' }
+    const pageTexts: string[] = []
+    for (const page of speechPages) {
+      const pageProxy = await pdfDocument.getPage(page)
+      try {
+        const content = await pageProxy.getTextContent()
+        pageTexts.push(content.items.map((item) => {
+          if (!('str' in item)) return ''
+          return `${item.str}${'hasEOL' in item && item.hasEOL ? '\n' : ' '}`
+        }).join(''))
+      } finally {
+        pageProxy.cleanup()
+      }
+    }
+    const label = speechPages.length > 1
+      ? `第 ${speechPages[0]}–${speechPages.at(-1)} 页`
+      : `第 ${speechPages[0]} 页`
+    return { text: pageTexts.join('\n\n'), label }
+  }, [pdfDocument, speechPages])
+  const speech = useSpeechSynthesis({
+    loadSource: loadSpeechSource,
+    sourceKey: `${book.id}:${speechPages.join('-')}`,
+  })
 
   useEffect(() => {
     let disposed = false
@@ -441,6 +473,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
           <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={() => toggleSidePanel('toc')}>目录</button>
           <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={() => toggleSidePanel('search')}>书内搜索</button>
           <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} disabled={offlineMode} title={offlineMode ? '离线状态下书签与高亮只读' : undefined} onClick={() => toggleSidePanel('marks')}>书签/高亮</button>
+          <button className={sidePanel === 'speech' || speech.status === 'speaking' || speech.status === 'paused' ? 'active' : ''} aria-pressed={sidePanel === 'speech'} onClick={() => toggleSidePanel('speech')}>朗读</button>
         </div>
         <span className="reader-toolbar-divider" />
         <div className="reader-tool-group" aria-label="阅读方式">
@@ -470,7 +503,14 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
         <span className="reader-shortcuts">← → 翻页 · + − / Ctrl+滚轮缩放</span>
       </div>
 
-      {sidePanel === 'marks' ? (
+      {sidePanel === 'speech' ? (
+        <SpeechPanel
+          controls={speech}
+          sourceDescription={speechPages.length > 1 ? `当前第 ${speechPages[0]}–${speechPages.at(-1)} 页` : `当前第 ${speechPages[0] ?? pageNumber} 页`}
+          onClose={() => setSidePanel(null)}
+          onChromeActivity={onChromeActivity}
+        />
+      ) : sidePanel === 'marks' ? (
         !offlineMode && <ReadingMarksPanel
           bookFileID={book.id}
           current={createPDFReadingMarkLocation(pageNumber, pageCount)}
