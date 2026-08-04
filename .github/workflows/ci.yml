@@ -37,9 +37,9 @@ jobs:
         working-directory: server
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
@@ -60,13 +60,13 @@ jobs:
         working-directory: web
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6.0.9
         with:
           version: 11.9.0
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24.18.0
           cache: pnpm
@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Validate shell scripts
         run: sh -n scripts/*.sh
       - name: Set up Docker Buildx
