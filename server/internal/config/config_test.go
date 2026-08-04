@@ -100,3 +100,50 @@ func TestLoadRejectsIncompleteOIDCConfiguration(t *testing.T) {
 		t.Fatal("incomplete OIDC configuration was accepted")
 	}
 }
+
+func TestLoadOperationsMonitoringDefaults(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example.invalid/peufmreader")
+	t.Setenv("ADMIN_PASSWORD", "a-secure-test-password")
+	t.Setenv("BIBLIOGRAPHY_PROVIDERS", "")
+	t.Setenv("AI_PROVIDER", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HealthDiskWarningPercent != 85 || cfg.HealthDiskCriticalPercent != 95 {
+		t.Fatalf("unexpected disk thresholds: %d/%d", cfg.HealthDiskWarningPercent, cfg.HealthDiskCriticalPercent)
+	}
+	if cfg.HealthQueueWarning != 5*time.Minute || cfg.HealthQueueCritical != 30*time.Minute {
+		t.Fatalf("unexpected queue thresholds: %v/%v", cfg.HealthQueueWarning, cfg.HealthQueueCritical)
+	}
+	if cfg.PrometheusEnabled {
+		t.Fatal("Prometheus export must be disabled by default")
+	}
+}
+
+func TestLoadRequiresStrongPrometheusTokenWhenEnabled(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example.invalid/peufmreader")
+	t.Setenv("ADMIN_PASSWORD", "a-secure-test-password")
+	t.Setenv("BIBLIOGRAPHY_PROVIDERS", "")
+	t.Setenv("AI_PROVIDER", "")
+	t.Setenv("PROMETHEUS_ENABLED", "true")
+	t.Setenv("PROMETHEUS_BEARER_TOKEN", "too-short")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Prometheus export accepted a short bearer token")
+	}
+}
+
+func TestLoadRejectsReversedHealthThresholds(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example.invalid/peufmreader")
+	t.Setenv("ADMIN_PASSWORD", "a-secure-test-password")
+	t.Setenv("BIBLIOGRAPHY_PROVIDERS", "")
+	t.Setenv("AI_PROVIDER", "")
+	t.Setenv("HEALTH_DISK_WARNING_PERCENT", "96")
+	t.Setenv("HEALTH_DISK_CRITICAL_PERCENT", "95")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("reversed disk thresholds were accepted")
+	}
+}

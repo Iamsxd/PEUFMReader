@@ -5,6 +5,14 @@ import (
 	"fmt"
 )
 
+type BackgroundJobKindMetric struct {
+	Kind                   string  `json:"kind"`
+	CompletedLast24Hours   int     `json:"completedLast24Hours"`
+	FailedLast24Hours      int     `json:"failedLast24Hours"`
+	AverageDurationSeconds float64 `json:"averageDurationSeconds"`
+	P95DurationSeconds     float64 `json:"p95DurationSeconds"`
+}
+
 // OperationsSnapshot only contains aggregate operational data. It deliberately
 // excludes usernames, titles, IP addresses and reading content.
 type OperationsSnapshot struct {
@@ -44,4 +52,39 @@ func (s *Store) GetOperationsSnapshot(ctx context.Context) (OperationsSnapshot, 
 		return OperationsSnapshot{}, fmt.Errorf("load operations snapshot: %w", err)
 	}
 	return snapshot, nil
+}
+
+// GetBackgroundJobKindMetrics reports end-to-end durations from enqueue to a
+// terminal state. That intentionally includes queueing and retries so the
+// result reflects the delay an administrator actually experiences.
+func (s *Store) GetBackgroundJobKindMetrics(ctx context.Context) ([]BackgroundJobKindMetric, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT kind,
+			COUNT(*) FILTER (WHERE state='completed')::int,
+			COUNT(*) FILTER (WHERE state='failed')::int,
+			COALESCE(AVG(EXTRACT(EPOCH FROM COALESCE(completed_at,updated_at)-created_at)),0)::double precision,
+			COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (
+				ORDER BY EXTRACT(EPOCH FROM COALESCE(completed_at,updated_at)-created_at)
+			),0)::double precision
+		FROM background_jobs
+		WHERE state IN ('completed','failed')
+			AND COALESCE(completed_at,updated_at) >= now()-INTERVAL '24 hours'
+		GROUP BY kind
+		ORDER BY kind`)
+	if err != nil {
+		return nil, fmt.Errorf("load background job kind metrics: %w", err)
+	}
+	defer rows.Close()
+	items := make([]BackgroundJobKindMetric, 0)
+	for rows.Next() {
+		var item BackgroundJobKindMetric
+		if err := rows.Scan(&item.Kind, &item.CompletedLast24Hours, &item.FailedLast24Hours, &item.AverageDurationSeconds, &item.P95DurationSeconds); err != nil {
+			return nil, fmt.Errorf("scan background job kind metrics: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate background job kind metrics: %w", err)
+	}
+	return items, nil
 }

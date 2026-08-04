@@ -11,120 +11,135 @@ import (
 )
 
 type Config struct {
-	Address               string
-	DatabaseURL           string
-	LibraryRoot           string
-	StagingRoot           string
-	CacheRoot             string
-	CalibreRoot           string
-	ImportRoot            string
-	ImportRootLabel       string
-	ImportScanInterval    time.Duration
-	ImportStableAge       time.Duration
-	WatchLibraryEnabled   bool
-	WatchLibraryRoot      string
-	WatchLibraryLabel     string
-	WatchLibraryScanEvery time.Duration
-	WatchLibraryStableAge time.Duration
-	WebRoot               string
-	AdminUsername         string
-	AdminPassword         string
-	CookieSecure          bool
-	SessionTTL            time.Duration
-	MaxUploadBytes        int64
-	TrustedProxyCIDR      string
-	PublicURL             string
-	PublicAccess          bool
-	AllowedHosts          []string
-	OIDCIssuerURL         string
-	OIDCClientID          string
-	OIDCClientSecret      string
-	OIDCRedirectURL       string
-	OIDCUsernameClaim     string
-	OIDCGroupsClaim       string
-	OIDCAdminGroup        string
-	LDAPURL               string
-	LDAPStartTLS          bool
-	LDAPBaseDN            string
-	LDAPBindDN            string
-	LDAPBindPassword      string
-	LDAPUserFilter        string
-	LDAPUsernameAttribute string
-	LDAPAdminGroupDN      string
-	AIProvider            string
-	AIBaseURL             string
-	AIModel               string
-	AIAPIKey              string
-	AITimeout             time.Duration
-	BibliographyProviders string
-	OpenLibraryBaseURL    string
-	GoogleBooksBaseURL    string
-	GoogleBooksAPIKey     string
-	DoubanBaseURL         string
-	BibliographyTimeout   time.Duration
-	PDFOCRMode            string
-	PDFOCRLanguages       string
-	PDFOCRMaxPages        int
-	PDFOCRDPI             int
-	MOBIConverterBinary   string
-	MOBIConversionTimeout time.Duration
+	Address                   string
+	DatabaseURL               string
+	LibraryRoot               string
+	StagingRoot               string
+	CacheRoot                 string
+	CalibreRoot               string
+	ImportRoot                string
+	ImportRootLabel           string
+	ImportScanInterval        time.Duration
+	ImportStableAge           time.Duration
+	WatchLibraryEnabled       bool
+	WatchLibraryRoot          string
+	WatchLibraryLabel         string
+	WatchLibraryScanEvery     time.Duration
+	WatchLibraryStableAge     time.Duration
+	WebRoot                   string
+	AdminUsername             string
+	AdminPassword             string
+	CookieSecure              bool
+	SessionTTL                time.Duration
+	MaxUploadBytes            int64
+	TrustedProxyCIDR          string
+	PublicURL                 string
+	PublicAccess              bool
+	AllowedHosts              []string
+	OIDCIssuerURL             string
+	OIDCClientID              string
+	OIDCClientSecret          string
+	OIDCRedirectURL           string
+	OIDCUsernameClaim         string
+	OIDCGroupsClaim           string
+	OIDCAdminGroup            string
+	LDAPURL                   string
+	LDAPStartTLS              bool
+	LDAPBaseDN                string
+	LDAPBindDN                string
+	LDAPBindPassword          string
+	LDAPUserFilter            string
+	LDAPUsernameAttribute     string
+	LDAPAdminGroupDN          string
+	AIProvider                string
+	AIBaseURL                 string
+	AIModel                   string
+	AIAPIKey                  string
+	AITimeout                 time.Duration
+	BibliographyProviders     string
+	OpenLibraryBaseURL        string
+	GoogleBooksBaseURL        string
+	GoogleBooksAPIKey         string
+	DoubanBaseURL             string
+	BibliographyTimeout       time.Duration
+	PDFOCRMode                string
+	PDFOCRLanguages           string
+	PDFOCRMaxPages            int
+	PDFOCRDPI                 int
+	MOBIConverterBinary       string
+	MOBIConversionTimeout     time.Duration
+	HealthDiskWarningPercent  int
+	HealthDiskCriticalPercent int
+	HealthQueueWarning        time.Duration
+	HealthQueueCritical       time.Duration
+	HealthFailedJobsWarning   int
+	HealthFailedJobsCritical  int
+	PrometheusEnabled         bool
+	PrometheusBearerToken     string
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		Address:               envOr("ADDRESS", ":8080"),
-		DatabaseURL:           os.Getenv("DATABASE_URL"),
-		LibraryRoot:           envOr("LIBRARY_ROOT", "/data/library"),
-		StagingRoot:           envOr("STAGING_ROOT", "/data/staging"),
-		CacheRoot:             envOr("CACHE_ROOT", "/data/cache"),
-		CalibreRoot:           envOr("CALIBRE_LIBRARY_ROOT", "/import/calibre"),
-		ImportRoot:            envOr("IMPORT_ROOT", "/data/import"),
-		ImportRootLabel:       strings.TrimSpace(envOr("IMPORT_ROOT_LABEL", envOr("IMPORT_ROOT", "/data/import"))),
-		ImportScanInterval:    10 * time.Second,
-		ImportStableAge:       10 * time.Second,
-		WatchLibraryRoot:      envOr("WATCH_LIBRARY_ROOT", "/watch/library"),
-		WatchLibraryLabel:     strings.TrimSpace(envOr("WATCH_LIBRARY_LABEL", envOr("WATCH_LIBRARY_ROOT", "/watch/library"))),
-		WatchLibraryScanEvery: time.Minute,
-		WatchLibraryStableAge: 30 * time.Second,
-		WebRoot:               envOr("WEB_ROOT", "/app/web"),
-		AdminUsername:         strings.ToLower(strings.TrimSpace(envOr("ADMIN_USERNAME", "admin"))),
-		AdminPassword:         os.Getenv("ADMIN_PASSWORD"),
-		SessionTTL:            30 * 24 * time.Hour,
-		MaxUploadBytes:        500 << 20,
-		TrustedProxyCIDR:      strings.TrimSpace(os.Getenv("TRUSTED_PROXY_CIDR")),
-		PublicURL:             strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_URL")), "/"),
-		AllowedHosts:          splitCSV(os.Getenv("ALLOWED_HOSTS")),
-		OIDCIssuerURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("OIDC_ISSUER_URL")), "/"),
-		OIDCClientID:          strings.TrimSpace(os.Getenv("OIDC_CLIENT_ID")),
-		OIDCClientSecret:      os.Getenv("OIDC_CLIENT_SECRET"),
-		OIDCRedirectURL:       strings.TrimSpace(os.Getenv("OIDC_REDIRECT_URL")),
-		OIDCUsernameClaim:     strings.TrimSpace(envOr("OIDC_USERNAME_CLAIM", "preferred_username")),
-		OIDCGroupsClaim:       strings.TrimSpace(envOr("OIDC_GROUPS_CLAIM", "groups")),
-		OIDCAdminGroup:        strings.TrimSpace(os.Getenv("OIDC_ADMIN_GROUP")),
-		LDAPURL:               strings.TrimSpace(os.Getenv("LDAP_URL")),
-		LDAPBaseDN:            strings.TrimSpace(os.Getenv("LDAP_BASE_DN")),
-		LDAPBindDN:            strings.TrimSpace(os.Getenv("LDAP_BIND_DN")),
-		LDAPBindPassword:      os.Getenv("LDAP_BIND_PASSWORD"),
-		LDAPUserFilter:        strings.TrimSpace(envOr("LDAP_USER_FILTER", "(uid={username})")),
-		LDAPUsernameAttribute: strings.TrimSpace(envOr("LDAP_USERNAME_ATTRIBUTE", "uid")),
-		LDAPAdminGroupDN:      strings.TrimSpace(os.Getenv("LDAP_ADMIN_GROUP_DN")),
-		AIProvider:            strings.ToLower(strings.TrimSpace(os.Getenv("AI_PROVIDER"))),
-		AIBaseURL:             strings.TrimRight(strings.TrimSpace(os.Getenv("AI_BASE_URL")), "/"),
-		AIModel:               strings.TrimSpace(os.Getenv("AI_MODEL")),
-		AIAPIKey:              os.Getenv("AI_API_KEY"),
-		AITimeout:             45 * time.Second,
-		BibliographyProviders: strings.ToLower(strings.TrimSpace(envOrIfUnset("BIBLIOGRAPHY_PROVIDERS", "openlibrary"))),
-		OpenLibraryBaseURL:    strings.TrimRight(envOr("OPEN_LIBRARY_BASE_URL", "https://openlibrary.org"), "/"),
-		GoogleBooksBaseURL:    strings.TrimRight(envOr("GOOGLE_BOOKS_BASE_URL", "https://www.googleapis.com/books/v1"), "/"),
-		GoogleBooksAPIKey:     os.Getenv("GOOGLE_BOOKS_API_KEY"),
-		DoubanBaseURL:         strings.TrimRight(strings.TrimSpace(os.Getenv("DOUBAN_API_BASE_URL")), "/"),
-		BibliographyTimeout:   12 * time.Second,
-		PDFOCRMode:            strings.ToLower(strings.TrimSpace(envOr("PDF_OCR_MODE", "auto"))),
-		PDFOCRLanguages:       strings.TrimSpace(envOr("PDF_OCR_LANGUAGES", "chi_sim+eng")),
-		PDFOCRMaxPages:        8,
-		PDFOCRDPI:             180,
-		MOBIConverterBinary:   strings.TrimSpace(envOr("MOBI_CONVERTER_BIN", "mobitool")),
-		MOBIConversionTimeout: 2 * time.Minute,
+		Address:                   envOr("ADDRESS", ":8080"),
+		DatabaseURL:               os.Getenv("DATABASE_URL"),
+		LibraryRoot:               envOr("LIBRARY_ROOT", "/data/library"),
+		StagingRoot:               envOr("STAGING_ROOT", "/data/staging"),
+		CacheRoot:                 envOr("CACHE_ROOT", "/data/cache"),
+		CalibreRoot:               envOr("CALIBRE_LIBRARY_ROOT", "/import/calibre"),
+		ImportRoot:                envOr("IMPORT_ROOT", "/data/import"),
+		ImportRootLabel:           strings.TrimSpace(envOr("IMPORT_ROOT_LABEL", envOr("IMPORT_ROOT", "/data/import"))),
+		ImportScanInterval:        10 * time.Second,
+		ImportStableAge:           10 * time.Second,
+		WatchLibraryRoot:          envOr("WATCH_LIBRARY_ROOT", "/watch/library"),
+		WatchLibraryLabel:         strings.TrimSpace(envOr("WATCH_LIBRARY_LABEL", envOr("WATCH_LIBRARY_ROOT", "/watch/library"))),
+		WatchLibraryScanEvery:     time.Minute,
+		WatchLibraryStableAge:     30 * time.Second,
+		WebRoot:                   envOr("WEB_ROOT", "/app/web"),
+		AdminUsername:             strings.ToLower(strings.TrimSpace(envOr("ADMIN_USERNAME", "admin"))),
+		AdminPassword:             os.Getenv("ADMIN_PASSWORD"),
+		SessionTTL:                30 * 24 * time.Hour,
+		MaxUploadBytes:            500 << 20,
+		TrustedProxyCIDR:          strings.TrimSpace(os.Getenv("TRUSTED_PROXY_CIDR")),
+		PublicURL:                 strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_URL")), "/"),
+		AllowedHosts:              splitCSV(os.Getenv("ALLOWED_HOSTS")),
+		OIDCIssuerURL:             strings.TrimRight(strings.TrimSpace(os.Getenv("OIDC_ISSUER_URL")), "/"),
+		OIDCClientID:              strings.TrimSpace(os.Getenv("OIDC_CLIENT_ID")),
+		OIDCClientSecret:          os.Getenv("OIDC_CLIENT_SECRET"),
+		OIDCRedirectURL:           strings.TrimSpace(os.Getenv("OIDC_REDIRECT_URL")),
+		OIDCUsernameClaim:         strings.TrimSpace(envOr("OIDC_USERNAME_CLAIM", "preferred_username")),
+		OIDCGroupsClaim:           strings.TrimSpace(envOr("OIDC_GROUPS_CLAIM", "groups")),
+		OIDCAdminGroup:            strings.TrimSpace(os.Getenv("OIDC_ADMIN_GROUP")),
+		LDAPURL:                   strings.TrimSpace(os.Getenv("LDAP_URL")),
+		LDAPBaseDN:                strings.TrimSpace(os.Getenv("LDAP_BASE_DN")),
+		LDAPBindDN:                strings.TrimSpace(os.Getenv("LDAP_BIND_DN")),
+		LDAPBindPassword:          os.Getenv("LDAP_BIND_PASSWORD"),
+		LDAPUserFilter:            strings.TrimSpace(envOr("LDAP_USER_FILTER", "(uid={username})")),
+		LDAPUsernameAttribute:     strings.TrimSpace(envOr("LDAP_USERNAME_ATTRIBUTE", "uid")),
+		LDAPAdminGroupDN:          strings.TrimSpace(os.Getenv("LDAP_ADMIN_GROUP_DN")),
+		AIProvider:                strings.ToLower(strings.TrimSpace(os.Getenv("AI_PROVIDER"))),
+		AIBaseURL:                 strings.TrimRight(strings.TrimSpace(os.Getenv("AI_BASE_URL")), "/"),
+		AIModel:                   strings.TrimSpace(os.Getenv("AI_MODEL")),
+		AIAPIKey:                  os.Getenv("AI_API_KEY"),
+		AITimeout:                 45 * time.Second,
+		BibliographyProviders:     strings.ToLower(strings.TrimSpace(envOrIfUnset("BIBLIOGRAPHY_PROVIDERS", "openlibrary"))),
+		OpenLibraryBaseURL:        strings.TrimRight(envOr("OPEN_LIBRARY_BASE_URL", "https://openlibrary.org"), "/"),
+		GoogleBooksBaseURL:        strings.TrimRight(envOr("GOOGLE_BOOKS_BASE_URL", "https://www.googleapis.com/books/v1"), "/"),
+		GoogleBooksAPIKey:         os.Getenv("GOOGLE_BOOKS_API_KEY"),
+		DoubanBaseURL:             strings.TrimRight(strings.TrimSpace(os.Getenv("DOUBAN_API_BASE_URL")), "/"),
+		BibliographyTimeout:       12 * time.Second,
+		PDFOCRMode:                strings.ToLower(strings.TrimSpace(envOr("PDF_OCR_MODE", "auto"))),
+		PDFOCRLanguages:           strings.TrimSpace(envOr("PDF_OCR_LANGUAGES", "chi_sim+eng")),
+		PDFOCRMaxPages:            8,
+		PDFOCRDPI:                 180,
+		MOBIConverterBinary:       strings.TrimSpace(envOr("MOBI_CONVERTER_BIN", "mobitool")),
+		MOBIConversionTimeout:     2 * time.Minute,
+		HealthDiskWarningPercent:  85,
+		HealthDiskCriticalPercent: 95,
+		HealthQueueWarning:        5 * time.Minute,
+		HealthQueueCritical:       30 * time.Minute,
+		HealthFailedJobsWarning:   1,
+		HealthFailedJobsCritical:  5,
+		PrometheusBearerToken:     os.Getenv("PROMETHEUS_BEARER_TOKEN"),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -166,6 +181,12 @@ func Load() (Config, error) {
 		cfg.PublicAccess, err = strconv.ParseBool(raw)
 		if err != nil {
 			return Config{}, fmt.Errorf("parse PUBLIC_ACCESS: %w", err)
+		}
+	}
+	if raw := os.Getenv("PROMETHEUS_ENABLED"); raw != "" {
+		cfg.PrometheusEnabled, err = strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("parse PROMETHEUS_ENABLED: %w", err)
 		}
 	}
 	if raw := os.Getenv("LDAP_START_TLS"); raw != "" {
@@ -278,6 +299,54 @@ func Load() (Config, error) {
 	}
 	if cfg.MOBIConverterBinary == "" {
 		return Config{}, fmt.Errorf("MOBI_CONVERTER_BIN is required")
+	}
+	if raw := os.Getenv("HEALTH_DISK_WARNING_PERCENT"); raw != "" {
+		cfg.HealthDiskWarningPercent, err = strconv.Atoi(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("HEALTH_DISK_WARNING_PERCENT must be an integer")
+		}
+	}
+	if raw := os.Getenv("HEALTH_DISK_CRITICAL_PERCENT"); raw != "" {
+		cfg.HealthDiskCriticalPercent, err = strconv.Atoi(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("HEALTH_DISK_CRITICAL_PERCENT must be an integer")
+		}
+	}
+	if cfg.HealthDiskWarningPercent < 1 || cfg.HealthDiskCriticalPercent > 100 || cfg.HealthDiskWarningPercent >= cfg.HealthDiskCriticalPercent {
+		return Config{}, fmt.Errorf("disk health percentages must satisfy 1 <= warning < critical <= 100")
+	}
+	if raw := os.Getenv("HEALTH_QUEUE_WARNING"); raw != "" {
+		cfg.HealthQueueWarning, err = time.ParseDuration(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("parse HEALTH_QUEUE_WARNING: %w", err)
+		}
+	}
+	if raw := os.Getenv("HEALTH_QUEUE_CRITICAL"); raw != "" {
+		cfg.HealthQueueCritical, err = time.ParseDuration(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("parse HEALTH_QUEUE_CRITICAL: %w", err)
+		}
+	}
+	if cfg.HealthQueueWarning < time.Second || cfg.HealthQueueWarning >= cfg.HealthQueueCritical {
+		return Config{}, fmt.Errorf("queue health durations must satisfy 1s <= warning < critical")
+	}
+	if raw := os.Getenv("HEALTH_FAILED_JOBS_WARNING"); raw != "" {
+		cfg.HealthFailedJobsWarning, err = strconv.Atoi(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("HEALTH_FAILED_JOBS_WARNING must be an integer")
+		}
+	}
+	if raw := os.Getenv("HEALTH_FAILED_JOBS_CRITICAL"); raw != "" {
+		cfg.HealthFailedJobsCritical, err = strconv.Atoi(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("HEALTH_FAILED_JOBS_CRITICAL must be an integer")
+		}
+	}
+	if cfg.HealthFailedJobsWarning < 1 || cfg.HealthFailedJobsWarning >= cfg.HealthFailedJobsCritical {
+		return Config{}, fmt.Errorf("failed-job health counts must satisfy 1 <= warning < critical")
+	}
+	if cfg.PrometheusEnabled && len(cfg.PrometheusBearerToken) < 24 {
+		return Config{}, fmt.Errorf("PROMETHEUS_BEARER_TOKEN must contain at least 24 characters when Prometheus export is enabled")
 	}
 	if cfg.OIDCIssuerURL != "" {
 		if cfg.OIDCClientID == "" || cfg.OIDCClientSecret == "" || cfg.OIDCRedirectURL == "" {
