@@ -1,6 +1,12 @@
 packages:
   - .
 
+overrides:
+  # epubjs 0.3.93 accepts only xmldom 0.7.x, whose XML serializers have known
+  # injection and recursion vulnerabilities. Keep this override until epubjs
+  # publishes a compatible dependency range that includes the patched release.
+  '@xmldom/xmldom': 0.8.13
+
 allowBuilds:
   esbuild: true
   core-js: false
