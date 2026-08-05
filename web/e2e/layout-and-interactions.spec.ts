@@ -24,6 +24,13 @@ test('primary navigation stays usable and ordered', async ({ page }, testInfo) =
   const visibleOrder = await navigation.locator('.app-navigation-primary > button').allTextContents()
   expect(visibleOrder).toEqual(names)
 
+  if (testInfo.project.name === 'mobile-chromium') {
+    const primary = navigation.locator('.app-navigation-primary')
+    await expect.poll(() => primary.evaluate((element) => getComputedStyle(element).display)).toBe('grid')
+    await expect.poll(() => primary.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+    expect(await primary.evaluate((element) => getComputedStyle(element).overflowX)).not.toBe('auto')
+  }
+
   await navigation.getByRole('button', { name: '推荐', exact: true }).click()
   await expect(page.getByRole('heading', { name: '为你推荐' })).toBeVisible()
   await navigation.getByRole('button', { name: '收藏', exact: true }).click()

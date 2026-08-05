@@ -89,17 +89,17 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
             <button className={activeView === 'books' ? 'active' : ''} onClick={() => navigate('books')}>全部书籍</button>
             <button className={activeView === 'categories' ? 'active' : ''} onClick={() => navigate('categories')}>分类</button>
             <button className={activeView === 'statistics' ? 'active' : ''} onClick={() => navigate('statistics')}>阅读统计</button>
+            <details className={`navigation-menu${secondaryActive ? ' active' : ''}`}>
+              <summary>{secondaryLabel}</summary>
+              <div className="navigation-popover">
+                <p>本机阅读</p>
+                <button className={activeView === 'offline' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'offline')}><span>离线书籍</span><small>保存在当前浏览器的设备副本</small></button>
+                <p>阅读设备</p>
+                <button className={activeView === 'devices' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'devices')}><span>设备同步</span><small>OPDS、KOReader 与 Kobo</small></button>
+                {isAdmin && <><hr /><p>系统</p><button className={activeView === 'admin' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'admin')}><span>管理后台</span><small>书库、用户与系统维护</small></button></>}
+              </div>
+            </details>
           </div>
-          <details className={`navigation-menu${secondaryActive ? ' active' : ''}`}>
-            <summary>{secondaryLabel}</summary>
-            <div className="navigation-popover">
-              <p>本机阅读</p>
-              <button className={activeView === 'offline' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'offline')}><span>离线书籍</span><small>保存在当前浏览器的设备副本</small></button>
-              <p>阅读设备</p>
-              <button className={activeView === 'devices' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'devices')}><span>设备同步</span><small>OPDS、KOReader 与 Kobo</small></button>
-              {isAdmin && <><hr /><p>系统</p><button className={activeView === 'admin' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'admin')}><span>管理后台</span><small>书库、用户与系统维护</small></button></>}
-            </div>
-          </details>
         </nav>
         <details className="account-menu">
           <summary aria-label="账号菜单"><span className="account-avatar">{session.user.username.slice(0, 1).toUpperCase()}</span><span className="account-summary"><strong>{session.user.username}</strong><small>{session.user.role === 'admin' ? '管理员' : '阅读者'}</small></span><span aria-hidden="true">⌄</span></summary>
