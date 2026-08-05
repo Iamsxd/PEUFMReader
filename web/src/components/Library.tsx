@@ -1,4 +1,4 @@
-import { type MouseEvent, useCallback, useEffect, useState } from 'react'
+import { type MouseEvent, useCallback, useEffect, useRef, useState } from 'react'
 import type { BookFile, CatalogQuery, Session } from '../types'
 import { AdminPage } from './AdminPage'
 import { BookDetailPage } from './BookDetailPage'
@@ -31,6 +31,8 @@ interface LibraryRoute {
 
 export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
   const [route, setRoute] = useState(readRoute)
+  const [mobileHeaderHidden, setMobileHeaderHidden] = useState(false)
+  const lastScrollYRef = useRef(0)
   const isAdmin = session.user.role === 'admin'
 
   useEffect(() => {
@@ -39,6 +41,38 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
     if (!window.location.hash) window.history.replaceState(null, '', '#/home')
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [])
+
+  useEffect(() => {
+    const mobileQuery = window.matchMedia('(max-width: 720px), (hover: none) and (pointer: coarse)')
+    const handleScroll = () => {
+      const scrollY = Math.max(0, window.scrollY)
+      const movement = scrollY - lastScrollYRef.current
+      lastScrollYRef.current = scrollY
+      if (!mobileQuery.matches || scrollY < 36) {
+        setMobileHeaderHidden(false)
+        return
+      }
+      if (document.querySelector('.app-header details[open]')) return
+      if (movement > 12) setMobileHeaderHidden(true)
+      else if (movement < -8) setMobileHeaderHidden(false)
+    }
+    const handleViewportChange = () => {
+      lastScrollYRef.current = window.scrollY
+      if (!mobileQuery.matches) setMobileHeaderHidden(false)
+    }
+    handleViewportChange()
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    mobileQuery.addEventListener('change', handleViewportChange)
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      mobileQuery.removeEventListener('change', handleViewportChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    lastScrollYRef.current = window.scrollY
+    setMobileHeaderHidden(false)
+  }, [route.key])
 
   useEffect(() => {
     const closeMenus = (event: PointerEvent) => {
@@ -77,7 +111,7 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
 
   return (
     <main className="app-shell">
-      <header className="app-header">
+      <header className={`app-header${mobileHeaderHidden ? ' is-mobile-hidden' : ''}`} onFocusCapture={() => setMobileHeaderHidden(false)}>
         <button className="app-brand" onClick={() => navigate('home')} aria-label="返回首页">
           <span>PR</span><strong>PEUFMReader</strong>
         </button>

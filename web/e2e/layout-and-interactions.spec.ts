@@ -29,6 +29,11 @@ test('primary navigation stays usable and ordered', async ({ page }, testInfo) =
     await expect.poll(() => primary.evaluate((element) => getComputedStyle(element).display)).toBe('grid')
     await expect.poll(() => primary.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
     expect(await primary.evaluate((element) => getComputedStyle(element).overflowX)).not.toBe('auto')
+
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+    await expect(page.locator('.app-header')).toHaveClass(/is-mobile-hidden/)
+    await page.evaluate(() => window.scrollBy(0, -120))
+    await expect(page.locator('.app-header')).not.toHaveClass(/is-mobile-hidden/)
   }
 
   await navigation.getByRole('button', { name: '推荐', exact: true }).click()
