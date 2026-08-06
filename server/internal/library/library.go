@@ -44,6 +44,14 @@ type StoredFile struct {
 	Created          bool
 }
 
+// ManagedRemoval holds a managed ebook after it has been atomically moved out
+// of its normal library path. The API can restore it if the catalogue update
+// fails, and only permanently removes it after that update succeeds.
+type ManagedRemoval struct {
+	originalPath string
+	pendingPath  string
+}
+
 func NewManager(libraryRoot, stagingRoot, cacheRoot string, maxBytes int64) (*Manager, error) {
 	if maxBytes <= 0 {
 		return nil, fmt.Errorf("maxBytes must be positive")
@@ -182,6 +190,95 @@ func moveIntoLibrary(sourcePath, destinationPath string) error {
 
 func (m *Manager) Resolve(relativePath string) (string, error) {
 	return SecureResolve(m.libraryRoot, filepath.FromSlash(relativePath))
+}
+
+// StageManagedRemoval moves an application-owned ebook into a private pending
+// directory on the same filesystem. It never operates on external references.
+// The caller must either Restore or Finalize a non-nil removal.
+func (m *Manager) StageManagedRemoval(relativePath string) (*ManagedRemoval, bool, error) {
+	originalPath, err := m.Resolve(relativePath)
+	if err != nil {
+		return nil, false, err
+	}
+	info, err := os.Lstat(originalPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("inspect managed ebook for removal: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, false, fmt.Errorf("managed ebook is not a regular file")
+	}
+	pendingName, err := randomHex(12)
+	if err != nil {
+		return nil, false, fmt.Errorf("create pending ebook removal name: %w", err)
+	}
+	pendingDir, err := SecureResolve(m.libraryRoot, filepath.Join(".pending-delete", pendingName))
+	if err != nil {
+		return nil, false, err
+	}
+	if err := os.MkdirAll(pendingDir, 0o750); err != nil {
+		return nil, false, fmt.Errorf("create pending ebook removal directory: %w", err)
+	}
+	pendingPath := filepath.Join(pendingDir, filepath.Base(originalPath))
+	if err := os.Rename(originalPath, pendingPath); err != nil {
+		return nil, false, fmt.Errorf("stage managed ebook removal: %w", err)
+	}
+	return &ManagedRemoval{originalPath: originalPath, pendingPath: pendingPath}, true, nil
+}
+
+// Restore returns a staged ebook to its original library path.
+func (r *ManagedRemoval) Restore() error {
+	if r == nil || r.pendingPath == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(r.originalPath), 0o750); err != nil {
+		return err
+	}
+	return os.Rename(r.pendingPath, r.originalPath)
+}
+
+// Finalize permanently removes a previously staged ebook.
+func (r *ManagedRemoval) Finalize() error {
+	if r == nil || r.pendingPath == "" {
+		return nil
+	}
+	if err := os.Remove(r.pendingPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	_ = os.Remove(filepath.Dir(r.pendingPath))
+	return nil
+}
+
+// RemoveCachedFile clears a regenerable cache entry. Missing entries are
+// treated as already clean, so deleting a book does not depend on its cache.
+func (m *Manager) RemoveCachedFile(relativePath string) error {
+	if strings.TrimSpace(relativePath) == "" {
+		return nil
+	}
+	relativePath = filepath.ToSlash(filepath.Clean(relativePath))
+	absolutePath, err := SecureResolve(m.cacheRoot, filepath.FromSlash(relativePath))
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(absolutePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if strings.HasPrefix(relativePath, "covers/") {
+		base := strings.TrimSuffix(filepath.Base(relativePath), filepath.Ext(relativePath)) + ".webp"
+		for _, width := range []int{240, 320, 480} {
+			thumbnailRelative := filepath.Join("cover-thumbnails", fmt.Sprintf("w%d", width), filepath.Dir(relativePath), base)
+			thumbnailPath, err := SecureResolve(m.cacheRoot, thumbnailRelative)
+			if err != nil {
+				return err
+			}
+			if err := os.Remove(thumbnailPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (m *Manager) StoreCover(sha256Hex, extension string, content []byte) (string, error) {

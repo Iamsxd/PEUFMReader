@@ -3,6 +3,14 @@ import { APIError, querySuffix, transport } from './core'
 
 interface ErrorBody { error?: { code?: string; message?: string } }
 export interface UploadBookResult { bookFile: BookFile; duplicate: boolean; importJobId: number }
+export interface DeleteBookResult {
+  deleted: boolean
+  storageMode: 'managed' | 'calibre-reference'
+  fileAction: 'deleted_managed_copy' | 'removed_catalog_reference'
+  managedFileFound: boolean
+  externalSourceRetained: boolean
+  cleanupPending: boolean
+}
 
 export const catalogAPI = {
   getHomeDashboard(): Promise<HomeDashboard> {
@@ -31,6 +39,10 @@ export const catalogAPI = {
 
   getBookDetail(bookFileID: number): Promise<BookDetail> {
     return transport.request(`/api/v1/book-files/${bookFileID}`)
+  },
+
+  deleteBook(bookFileID: number): Promise<DeleteBookResult> {
+    return transport.request(`/api/v1/book-files/${bookFileID}`, { method: 'DELETE' })
   },
 
   listFavorites(page = 1, pageSize = 24): Promise<FavoritePage> {

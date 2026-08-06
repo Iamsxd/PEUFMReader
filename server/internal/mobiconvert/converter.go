@@ -139,6 +139,19 @@ func (c *Converter) RemoveIfCreated(result Result) {
 	}
 }
 
+// RemoveCachedEPUB removes the regenerable browser-reading copy for a Kindle
+// source. Missing files are already clean.
+func (c *Converter) RemoveCachedEPUB(sha256Hex string) error {
+	finalPath, err := c.epubPath(sha256Hex)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(finalPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove converted EPUB cache: %w", err)
+	}
+	return nil
+}
+
 func (c *Converter) epubPath(sha256Hex string) (string, error) {
 	decoded, err := hex.DecodeString(strings.TrimSpace(sha256Hex))
 	if err != nil || len(decoded) != sha256.Size {

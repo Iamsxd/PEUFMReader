@@ -239,6 +239,9 @@ test('book detail and reader controls remain reachable', async ({ page }, testIn
 
   await page.goto(`/#/book/${book.id}`)
   await expect(page.locator('.book-detail-page h1')).toBeVisible()
+  const deletionAction = page.getByRole('button', { name: '删除书籍', exact: true })
+  if (await deletionAction.count()) await expect(deletionAction).toBeVisible()
+  await expect(page.getByText('应用托管副本（删除副本，不动来源）')).toBeVisible()
   await page.getByRole('button', { name: /开始阅读|继续阅读|重新阅读/ }).click()
   const readerToolbar = page.locator('[role="toolbar"][aria-label$="阅读工具"]')
   const readerViewport = page.locator('.pdf-reader-viewport')

@@ -191,6 +191,7 @@ func (a *API) routes() {
 	a.mux.Handle("GET /api/v1/book-files", a.requireAuth(http.HandlerFunc(a.listBookFiles), "", false))
 	a.mux.Handle("POST /api/v1/book-files", a.requireAuth(http.HandlerFunc(a.uploadBookFile), "admin", true))
 	a.mux.Handle("GET /api/v1/book-files/{id}", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.bookDetail)), "", false))
+	a.mux.Handle("DELETE /api/v1/book-files/{id}", a.requireAuth(http.HandlerFunc(a.deleteBookFile), "admin", true))
 	a.mux.Handle("PUT /api/v1/book-files/{id}/favorite", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.favoriteBook)), "", true))
 	a.mux.Handle("DELETE /api/v1/book-files/{id}/favorite", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.unfavoriteBook)), "", true))
 	a.mux.Handle("GET /api/v1/book-files/{id}/content", a.requireAuth(a.requireBookAccess(http.HandlerFunc(a.bookContent)), "", false))
@@ -878,6 +879,85 @@ func (a *API) uploadBookFile(w http.ResponseWriter, r *http.Request) {
 	}
 	a.decorateBook(&result.Book)
 	writeJSON(w, status, map[string]any{"bookFile": result.Book, "duplicate": result.Duplicate, "importJobId": result.ImportJobID})
+}
+
+func (a *API) deleteBookFile(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	book, found, err := a.store.GetCatalogBook(r.Context(), id)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "book_not_found", "book file not found")
+		return
+	}
+
+	var removal *library.ManagedRemoval
+	managedFileFound := false
+	if book.StorageMode == "managed" {
+		if a.library == nil {
+			writeError(w, http.StatusServiceUnavailable, "library_unavailable", "managed library is unavailable")
+			return
+		}
+		removal, managedFileFound, err = a.library.StageManagedRemoval(book.StoragePath)
+		if err != nil {
+			writeError(w, http.StatusConflict, "managed_file_remove_failed", "managed ebook could not be prepared for removal")
+			return
+		}
+	}
+
+	deleted, found, err := a.store.DeleteBookFile(r.Context(), id)
+	if err != nil {
+		if removal != nil {
+			if restoreErr := removal.Restore(); restoreErr != nil {
+				a.logger.Error("restore managed ebook after catalogue deletion failure", "bookFileId", id, "error", restoreErr)
+			}
+		}
+		a.internalError(w, err)
+		return
+	}
+	if !found {
+		if removal != nil {
+			_ = removal.Restore()
+		}
+		writeError(w, http.StatusNotFound, "book_not_found", "book file not found")
+		return
+	}
+
+	cleanupPending := false
+	if removal != nil {
+		if err := removal.Finalize(); err != nil {
+			cleanupPending = true
+			a.logger.Error("finalize managed ebook deletion", "bookFileId", id, "error", err)
+		}
+	}
+	if a.library != nil {
+		for _, relativePath := range []string{deleted.CoverPath, deleted.TextPath} {
+			if err := a.library.RemoveCachedFile(relativePath); err != nil {
+				cleanupPending = true
+				a.logger.Warn("remove derived book cache", "bookFileId", id, "error", err)
+			}
+		}
+	}
+	if a.converter != nil && mobiconvert.IsKindleFormat(deleted.Format) {
+		if err := a.converter.RemoveCachedEPUB(hex.EncodeToString(deleted.SHA256)); err != nil {
+			cleanupPending = true
+			a.logger.Warn("remove converted ebook cache", "bookFileId", id, "error", err)
+		}
+	}
+
+	fileAction := "removed_catalog_reference"
+	if deleted.StorageMode == "managed" {
+		fileAction = "deleted_managed_copy"
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"deleted": true, "storageMode": deleted.StorageMode, "fileAction": fileAction,
+		"managedFileFound": managedFileFound, "externalSourceRetained": true, "cleanupPending": cleanupPending,
+	})
 }
 
 func (a *API) decorateBook(book *store.BookFile) {
