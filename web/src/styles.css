@@ -849,12 +849,18 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 
 @media (max-width: 720px) {
   .app-shell { padding: 10px 12px 36px; }
-  .app-header { top: 5px; grid-template-columns: 1fr auto; gap: 8px; padding: 9px; border-radius: 15px; }
+  .app-header { top: 5px; grid-template-columns: 1fr auto; gap: 7px; padding: 8px; border-radius: 16px; transition: transform .24s ease, box-shadow .24s ease; will-change: transform; }
+  .app-header.is-mobile-hidden { transform: translateY(calc(-100% - 14px)); box-shadow: none; }
   .app-brand strong { display: none; }
+  .app-brand span { width: 34px; height: 34px; border-radius: 10px; }
+  .account-menu > summary { padding: 2px 4px; }
+  .account-avatar { width: 32px; height: 32px; }
   .app-navigation { grid-column: 1 / -1; grid-row: 2; justify-content: stretch; }
-  .app-navigation-primary { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(78px, 1fr)); gap: 4px; overflow: visible; }
+  .app-navigation-primary { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; padding: 4px; overflow: visible; border: 1px solid #dce5da; border-radius: 13px; background: #eef3ec; }
   .app-navigation-primary > button, .app-navigation-primary > .navigation-menu { min-width: 0; }
-  .app-navigation-primary > button, .app-navigation-primary > .navigation-menu > summary { width: 100%; justify-content: center; padding: 8px 7px; }
+  .app-navigation-primary > button, .app-navigation-primary > .navigation-menu > summary { width: 100%; min-height: 34px; justify-content: center; padding: 6px 3px; border-radius: 9px; font-size: .72rem; line-height: 1.15; }
+  .app-navigation-primary > .navigation-menu > summary::after { color: #708076; content: '⌄'; font-size: .7rem; transition: transform .18s ease; }
+  .app-navigation-primary > .navigation-menu[open] > summary::after { transform: rotate(180deg); }
   .navigation-popover { right: 0; width: min(270px, calc(100vw - 24px)); }
   .account-summary { display: none; }
   .account-menu > summary { gap: 4px; }
