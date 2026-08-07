@@ -55,7 +55,7 @@ func (s *Service) Import(
 		return Result{}, err
 	}
 	failJob := func(failure error) (Result, error) {
-		_ = s.store.FailImportJob(ctx, job.ID, failure)
+		_ = s.store.FailImportJob(ctx, job.ID, importJobFailure(failure))
 		return Result{ImportJobID: job.ID}, failure
 	}
 
@@ -91,6 +91,7 @@ func (s *Service) Import(
 	if override != nil {
 		extracted = mergeMetadata(extracted, *override)
 	}
+	extracted = metadata.Sanitize(extracted)
 
 	coverPath := ""
 	if extracted.Cover != nil {
@@ -126,6 +127,21 @@ func (s *Service) Import(
 		}
 	}
 	return Result{Book: book, Duplicate: duplicate, ImportJobID: job.ID}, nil
+}
+
+func importJobFailure(failure error) error {
+	switch {
+	case errors.Is(failure, library.ErrUnsupportedFormat):
+		return errors.New("文件内容不是有效的 PDF、EPUB、MOBI 或 AZW3；EPUB 需要包含 META-INF/container.xml")
+	case errors.Is(failure, library.ErrUploadTooLarge):
+		return errors.New("文件超过当前配置的单文件上传上限")
+	case errors.Is(failure, ErrMetadataExtraction):
+		return fmt.Errorf("电子书元数据无法读取：%v", failure)
+	case errors.Is(failure, ErrReadableConversion):
+		return errors.New("MOBI/AZW3 无法生成浏览器阅读副本，文件可能已损坏或受 DRM 保护")
+	default:
+		return failure
+	}
 }
 
 func classify(dataStore *store.Store, ctx context.Context, extracted metadata.Result) []classification.Suggestion {

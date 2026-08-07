@@ -191,7 +191,7 @@ func (s *Store) CreateImportBatch(ctx context.Context, userID int64, source stri
 	var batch ImportBatch
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO import_batches(source,total_items,created_by) VALUES ($1,$2,$3)
-		RETURNING id,source,total_items,created_at,completed_at`, strings.TrimSpace(source), totalItems, userID,
+		RETURNING id,source,total_items,created_at,completed_at`, databaseSafeText(source), totalItems, userID,
 	).Scan(&batch.ID, &batch.Source, &batch.TotalItems, &batch.CreatedAt, &batch.CompletedAt)
 	return batch, err
 }
@@ -201,15 +201,15 @@ func (s *Store) CreateImportJob(ctx context.Context, userID int64, sourceName st
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO import_jobs(state,source_name,created_by,batch_id) VALUES ('running',$1,$2,$3)
 		RETURNING id,batch_id,state,COALESCE(outcome,''),source_name,COALESCE(error_message,''),book_file_id,warnings,created_at,updated_at`,
-		strings.TrimSpace(sourceName), userID, batchID,
+		databaseSafeText(sourceName), userID, batchID,
 	).Scan(&job.ID, &job.BatchID, &job.State, &job.Outcome, &job.SourceName, &job.ErrorMessage, &job.BookFileID, &job.Warnings, &job.CreatedAt, &job.UpdatedAt)
 	return job, err
 }
 
 func (s *Store) FailImportJob(ctx context.Context, jobID int64, failure error) error {
-	message := failure.Error()
+	message := databaseSafeText(failure.Error())
 	if len(message) > 2000 {
-		message = message[:2000]
+		message = strings.ToValidUTF8(message[:2000], "")
 	}
 	var batchID *int64
 	err := s.pool.QueryRow(ctx, `UPDATE import_jobs SET state='failed',outcome='failed',error_message=$1,updated_at=now() WHERE id=$2
@@ -224,7 +224,7 @@ func (s *Store) CompleteImportJob(ctx context.Context, jobID, bookFileID int64, 
 	if outcome != "imported" && outcome != "duplicate" {
 		return errors.New("import job outcome is invalid")
 	}
-	encodedWarnings, _ := json.Marshal(warnings)
+	encodedWarnings, _ := json.Marshal(databaseSafeTexts(warnings))
 	var batchID *int64
 	err := s.pool.QueryRow(ctx, `
 		UPDATE import_jobs SET state='completed',outcome=$1,book_file_id=$2,warnings=$3,error_message=NULL,updated_at=now() WHERE id=$4
@@ -237,7 +237,7 @@ func (s *Store) CompleteImportJob(ctx context.Context, jobID, bookFileID int64, 
 
 func (s *Store) AppendImportJobWarning(ctx context.Context, jobID int64, warning string) error {
 	_, err := s.pool.Exec(ctx, `
-		UPDATE import_jobs SET warnings=warnings || jsonb_build_array($1::text),updated_at=now() WHERE id=$2`, warning, jobID)
+		UPDATE import_jobs SET warnings=warnings || jsonb_build_array($1::text),updated_at=now() WHERE id=$2`, databaseSafeText(warning), jobID)
 	return err
 }
 
@@ -359,6 +359,8 @@ func (s *Store) completeImportBatchIfReady(ctx context.Context, batchID *int64) 
 }
 
 func (s *Store) RegisterImportedBook(ctx context.Context, stored library.StoredFile, extracted metadata.Result, suggestions []classification.Suggestion, coverPath string, createdBy, jobID int64) (BookFile, bool, error) {
+	extracted = metadata.Sanitize(extracted)
+	stored.OriginalFilename = databaseSafeText(stored.OriginalFilename)
 	existing, found, err := s.getCatalogBookByHash(ctx, stored.SHA256)
 	if err != nil {
 		return BookFile{}, false, err
@@ -918,6 +920,22 @@ func uniqueStrings(values []string) []string {
 		}
 		seen[key] = true
 		result = append(result, value)
+	}
+	return result
+}
+
+func databaseSafeText(value string) string {
+	value = strings.ToValidUTF8(value, "\uFFFD")
+	value = strings.ReplaceAll(value, "\x00", "")
+	return strings.TrimSpace(value)
+}
+
+func databaseSafeTexts(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = databaseSafeText(value); value != "" {
+			result = append(result, value)
+		}
 	}
 	return result
 }

@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestExtractEPUBMetadataAndCover(t *testing.T) {
@@ -114,6 +116,41 @@ func TestExtractFallsBackToFilename(t *testing.T) {
 	}
 	if result.Title != "The Book" || result.Source != "filename" || result.Confidence >= 0.8 {
 		t.Fatalf("unexpected fallback: %+v", result)
+	}
+}
+
+func TestExtractPDFSanitizesNULAndInvalidUTF8Metadata(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "book.pdf")
+	content := []byte("%PDF-1.7\n1 0 obj << /Title (中\\000醫\\377入門) /Author (秦\\000伯未) >> endobj\ntrailer << /Info 1 0 R >>")
+	if err := os.WriteFile(filePath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Extract(filePath, "pdf", "中醫入門.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsRune(result.Title, '\x00') || !utf8.ValidString(result.Title) {
+		t.Fatalf("title was not database-safe: %q", result.Title)
+	}
+	if len(result.Authors) != 1 || strings.ContainsRune(result.Authors[0], '\x00') || !utf8.ValidString(result.Authors[0]) {
+		t.Fatalf("authors were not database-safe: %#v", result.Authors)
+	}
+}
+
+func TestSanitizeCleansExternallySuppliedMetadata(t *testing.T) {
+	result := Sanitize(Result{
+		Title:       "书\x00名",
+		Authors:     []string{"作\x00者"},
+		Description: "说\xff明",
+		Warnings:    []string{"警\x00告"},
+	})
+	values := []string{result.Title, result.Description}
+	values = append(values, result.Authors...)
+	values = append(values, result.Warnings...)
+	for _, value := range values {
+		if strings.ContainsRune(value, '\x00') || !utf8.ValidString(value) {
+			t.Fatalf("metadata was not database-safe: %q", value)
+		}
 	}
 }
 
