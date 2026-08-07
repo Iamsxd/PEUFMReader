@@ -36,6 +36,7 @@ export function BookDetailPage({ bookID, userID, isAdmin, onBack, onOpenBook, on
   const [offlineRecord, setOfflineRecord] = useState<OfflineBookRecord | null>(null)
   const [offlineBusy, setOfflineBusy] = useState(false)
   const [offlineNotice, setOfflineNotice] = useState('')
+  const [deleteBusy, setDeleteBusy] = useState(false)
 
   useEffect(() => {
     setDetail(null)
@@ -145,6 +146,27 @@ export function BookDetailPage({ bookID, userID, isAdmin, onBack, onOpenBook, on
     }
   }
 
+  async function deleteBook() {
+    if (!detail || deleteBusy) return
+    const referenceOnly = detail.book.storageMode === 'calibre-reference'
+    const message = referenceOnly
+      ? `从 PEUFMReader 书库移除《${detail.book.title}》？Calibre 中的原书不会被删除；本应用中的阅读进度、收藏和批注将一并移除。`
+      : `永久删除《${detail.book.title}》的应用托管副本？上传、收件箱或监控目录中的来源文件不会被修改；本应用中的阅读进度、收藏和批注将一并移除。`
+    if (!window.confirm(message)) return
+    setDeleteBusy(true)
+    setError('')
+    try {
+      const result = await api.deleteBook(detail.book.id)
+      if (result.cleanupPending) {
+        window.alert('书籍已从书库移除，少量可再生成的缓存将在下次维护时清理。')
+      }
+      onBack()
+    } catch (reason) {
+      setError(reason instanceof APIError ? reason.message : '无法删除书籍。')
+      setDeleteBusy(false)
+    }
+  }
+
   if (error && !detail) {
     return <section className="empty-state detail-error"><h2>{error}</h2><button className="secondary" onClick={onBack}>返回书库</button></section>
   }
@@ -191,6 +213,7 @@ export function BookDetailPage({ bookID, userID, isAdmin, onBack, onOpenBook, on
             </button>
             {offlineStorageSupported() && <button className={offlineRecord ? 'secondary offline-copy active' : 'secondary offline-copy'} disabled={offlineBusy} onClick={() => void toggleOfflineCopy()}>{offlineBusy ? '处理中…' : offlineRecord ? '✓ 已保存到设备' : '↓ 保存到此设备'}</button>}
             {isAdmin && <button className="secondary" onClick={() => onManageBook(book)}>整理书籍信息</button>}
+            {isAdmin && <button className="danger-button" disabled={deleteBusy} onClick={() => void deleteBook()}>{deleteBusy ? '删除中…' : book.storageMode === 'calibre-reference' ? '从书库移除' : '删除书籍'}</button>}
           </div>
           {offlineRecord && <small className="detail-last-read">设备副本 {formatBytes(offlineRecord.contentBytes)} · 保存于 {formatRelativeTime(offlineRecord.cachedAt)}</small>}
           {offlineNotice && <small className="detail-offline-notice" role="status">{offlineNotice}</small>}
@@ -212,6 +235,7 @@ export function BookDetailPage({ bookID, userID, isAdmin, onBack, onOpenBook, on
             <div><dt>语言</dt><dd>{book.language || '未知'}</dd></div>
             <div><dt>ISBN</dt><dd>{book.isbn || '未记录'}</dd></div>
             <div><dt>文件</dt><dd>{book.format.toUpperCase()} · {formatBytes(book.sizeBytes)}</dd></div>
+            <div><dt>书籍来源</dt><dd>{book.storageMode === 'calibre-reference' ? 'Calibre 只读引用（仅移除索引）' : '应用托管副本（删除副本，不动来源）'}</dd></div>
             <div><dt>页数</dt><dd>{book.pageCount ? `${book.pageCount} 页` : '未统计'}</dd></div>
           </dl>
         </article>

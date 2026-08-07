@@ -65,7 +65,7 @@ export function CatalogMaintenance({ categories, onError, onNotice }: Props) {
     <>
       <section className="integration-panel catalog-maintenance-panel">
         <div className="section-title">
-          <div><p className="eyebrow">批量书目维护</p><h2>批量修改与重复合并</h2><p className="muted">先搜索并选择版本，再统一修改出版信息或分类。合并操作保留书籍文件和用户阅读记录。</p></div>
+          <div><p className="eyebrow">批量书目维护</p><h2>批量修改与重复检查</h2><p className="muted">先搜索并选择版本，再统一修改出版信息或分类。合并操作只整理作品/版本关系，保留书籍文件和用户阅读记录。</p></div>
         </div>
         <form className="catalog-maintenance-search" onSubmit={search}>
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索书名、作者、ISBN 或出版社" />
@@ -84,8 +84,9 @@ export function CatalogMaintenance({ categories, onError, onNotice }: Props) {
         <BatchMetadataForm editionIDs={selected} categories={categories} onError={onError} onNotice={onNotice} />
 
         <div className="duplicate-heading"><strong>疑似重复作品 / 版本</strong><span>{duplicates.length} 组</span></div>
+        <p className="muted">完全相同的文件会按 SHA-256 在导入时直接识别并阻止重复入库；这里显示的是同名或同 ISBN 的书目候选，需人工确认后再合并。</p>
         <div className="duplicate-group-list">
-          {duplicates.length === 0 && <p className="muted">没有检测到同名作品或重复 ISBN。</p>}
+          {duplicates.length === 0 && <p className="muted">没有检测到同名作品或重复 ISBN 的候选项。</p>}
           {duplicates.map((group) => <DuplicateGroup key={`${group.kind}:${group.key}`} group={group} onChanged={loadMaintenance} onError={onError} onNotice={onNotice} />)}
         </div>
       </section>
@@ -183,7 +184,7 @@ function DuplicateGroup({ group, onChanged, onError, onNotice }: { group: Duplic
       {group.items.map((item, index) => (
         <div key={item.editionId}>
           <span><b>{item.title}</b><small>Work {item.workId} · Edition {item.editionId} · {item.format.toUpperCase()} · {item.originalFilename}</small></span>
-          {index > 0 && <span className="duplicate-actions"><button type="button" disabled={Boolean(busy)} onClick={() => void merge(index, 'edition')}>合并版本</button><button type="button" disabled={Boolean(busy) || item.workId === target.workId} onClick={() => void merge(index, 'work')}>合并作品</button></span>}
+          {index > 0 && <span className="duplicate-actions"><button type="button" disabled={Boolean(busy)} title="将两个出版版本归为同一版本，保留各自文件" onClick={() => void merge(index, 'edition')}>合并版本</button><button type="button" disabled={Boolean(busy) || item.workId === target.workId} title="将两个书目作品归为同一作品，保留版本与文件" onClick={() => void merge(index, 'work')}>合并作品</button></span>}
         </div>
       ))}
     </article>
