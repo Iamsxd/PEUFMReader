@@ -48,7 +48,7 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .navigation-menu, .account-menu { position: relative; }
 .navigation-menu > summary, .account-menu > summary { display: flex; align-items: center; gap: 7px; list-style: none; cursor: pointer; user-select: none; }
 .navigation-menu > summary::-webkit-details-marker, .account-menu > summary::-webkit-details-marker { display: none; }
-.navigation-menu > summary::marker { content: ''; }
+.navigation-menu > summary::marker, .account-menu > summary::marker { content: ''; }
 .navigation-menu[open] > summary, .account-menu[open] > summary { background: #e4ebe2; color: #21452f; }
 .navigation-popover, .account-popover { position: absolute; top: calc(100% + 10px); z-index: 30; padding: 9px; border: 1px solid #d1d8d0; border-radius: 14px; background: #fbfaf5; box-shadow: 0 18px 48px #1e38252b; }
 .navigation-popover { right: 0; width: 270px; display: grid; gap: 3px; }
@@ -265,8 +265,8 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .upload-queue-item small { color: #718077; }
 .import-history-panel { display: grid; gap: 18px; padding: 22px; border: 1px solid #cbd8cb; border-radius: 19px; background: #f8faf5; }
 .import-history-layout { display: grid; grid-template-columns: minmax(290px, .8fr) minmax(0, 1.2fr); gap: 16px; min-width: 0; }
-.import-batch-list { display: grid; align-content: start; gap: 9px; min-width: 0; max-height: 500px; overflow-y: auto; }
-.import-batch-card { display: flex; align-items: stretch; min-width: 0; border: 1px solid #d7dfd4; border-radius: 13px; overflow: hidden; background: #fffefa; }
+.import-batch-list { min-width: 0; max-height: 500px; display: flex; flex-direction: column; gap: 9px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.import-batch-card { display: flex; flex: 0 0 auto; align-items: stretch; min-width: 0; border: 1px solid #d7dfd4; border-radius: 13px; overflow: hidden; background: #fffefa; }
 .import-batch-card.selected { border-color: #3d7450; box-shadow: 0 0 0 2px #d7e8d8; }
 .import-batch-summary { display: grid; flex: 1; min-width: 0; gap: 5px; padding: 12px; border: 0; background: transparent; color: #253b2c; text-align: left; }
 .import-batch-summary:hover { background: #edf4eb; }
@@ -918,14 +918,14 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .account-menu > summary { padding: 2px 4px; }
   .account-avatar { width: 32px; height: 32px; }
   .app-navigation { grid-column: 1 / -1; grid-row: 2; justify-content: stretch; }
-  .app-navigation-primary { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; padding: 4px; overflow: visible; border: 1px solid #dce5da; border-radius: 13px; background: #eef3ec; }
+  .app-navigation-primary { position: relative; width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; padding: 4px; overflow: visible; border: 1px solid #dce5da; border-radius: 13px; background: #eef3ec; }
   .app-navigation-primary > button, .app-navigation-primary > .navigation-menu { min-width: 0; }
   .app-navigation-primary > button, .app-navigation-primary > .navigation-menu > summary { width: 100%; min-height: 34px; justify-content: center; padding: 6px 3px; border-radius: 9px; font-size: .72rem; line-height: 1.15; }
-  .app-navigation-primary > .navigation-menu > summary::after { color: #708076; content: '⌄'; font-size: .7rem; transition: transform .18s ease; }
-  .app-navigation-primary > .navigation-menu[open] > summary::after { transform: rotate(180deg); }
-  .navigation-popover { right: 0; width: min(270px, calc(100vw - 24px)); }
+  .app-navigation-primary > .navigation-menu { position: static; }
+  .navigation-popover { top: calc(100% + 8px); right: 4px; left: 4px; width: auto; max-height: min(60dvh, 360px); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
   .account-summary { display: none; }
   .account-menu > summary { gap: 4px; }
+  .account-menu > summary > span[aria-hidden='true'] { display: none; }
   .app-content { padding-top: 18px; }
   .page-heading { align-items: stretch; flex-direction: column; margin-top: 16px; }
   .page-heading h1 { font-size: 2.5rem; }
