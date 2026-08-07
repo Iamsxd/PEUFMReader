@@ -3,6 +3,8 @@ import { APIError, api } from '../../api'
 import type { AuditEvent, BackgroundJob, OperationsHealthIssue, OperationsOverview, StorageAuditReport } from '../../types'
 import { formatBytes, formatDuration, formatRelativeTime } from '../../utils'
 
+type JobFilter = 'attention' | 'failed' | 'queued' | 'running' | 'all'
+
 interface Props {
   onError: (message: string) => void
   onDataChanged: () => void
@@ -15,6 +17,7 @@ export default function AdminOperationsWorkspace({ onError, onDataChanged, onAct
   const [storageReport, setStorageReport] = useState<StorageAuditReport | null>(null)
   const [overview, setOverview] = useState<OperationsOverview | null>(null)
   const [checkingStorage, setCheckingStorage] = useState(false)
+  const [jobFilter, setJobFilter] = useState<JobFilter>('attention')
 
   async function refreshOperations() {
     const [jobs, audits, nextOverview] = await Promise.all([api.listBackgroundJobs(), api.listAuditEvents(), api.getOperationsOverview()])
@@ -53,6 +56,17 @@ export default function AdminOperationsWorkspace({ onError, onDataChanged, onAct
     }
   }
 
+  function showRelatedJobs(issue: OperationsHealthIssue) {
+    setJobFilter(issue.code === 'failed_jobs' ? 'failed' : 'queued')
+    window.requestAnimationFrame(() => document.getElementById('background-job-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
+
+  const visibleJobs = backgroundJobs.filter((job) => {
+    if (jobFilter === 'all') return true
+    if (jobFilter === 'attention') return job.state === 'queued' || job.state === 'running' || job.state === 'failed'
+    return job.state === jobFilter
+  })
+
   return <div className="admin-workspace-module">
     <section className="integration-panel operations-overview-panel">
       <div className="section-title"><div><p className="eyebrow">运行概览</p><h2>服务状态</h2><p className="muted">仅展示聚合运维数据；不记录书名、正文、路径或个人阅读内容。</p></div><button className="secondary" type="button" onClick={() => void refreshOperations().catch((reason) => onError(reason instanceof APIError ? reason.message : '无法刷新运行状态。'))}>刷新</button></div>
@@ -62,27 +76,32 @@ export default function AdminOperationsWorkspace({ onError, onDataChanged, onAct
         <Metric label="活跃读者（24 小时）" value={String(overview.snapshot.activeUsers24Hours)} />
         <Metric label="当前阅读会话" value={String(overview.snapshot.activeReadingSessions)} />
         <Metric label="数据库连接" value={String(overview.snapshot.databaseConnections)} />
-        <Metric label="等待 / 运行任务" value={`${overview.snapshot.queuedJobs} / ${overview.snapshot.runningJobs}`} />
-        <Metric label="24 小时失败" value={String(overview.snapshot.failedJobsLast24Hours)} attention={overview.snapshot.failedJobsLast24Hours >= overview.health.thresholds.failedJobsWarning} />
+        <Metric label="后台任务" value={`等待 ${overview.snapshot.queuedJobs} · 运行 ${overview.snapshot.runningJobs}`} />
+        <Metric label="最近 24 小时失败任务" value={`${overview.snapshot.failedJobsLast24Hours} 个`} attention={overview.snapshot.failedJobsLast24Hours >= overview.health.thresholds.failedJobsWarning} />
         <Metric label="可重试任务" value={String(overview.snapshot.retryingJobs)} attention={overview.snapshot.retryingJobs > 0} />
         <Metric label="最长等待" value={formatDuration(overview.snapshot.oldestQueuedSeconds)} attention={overview.snapshot.oldestQueuedSeconds >= overview.health.thresholds.queueWarningSeconds} />
         <Metric label="应用堆内存" value={formatBytes(overview.heapAllocBytes)} />
-        <Metric label="Go 协程" value={String(overview.goRoutines)} />
+        <Metric label="应用内部并发（Go 协程）" value={String(overview.goRoutines)} />
       </div>
       <div className={`operations-health-summary ${overview.health.status}`}>
-        <strong>{overview.health.issues.length === 0 ? '所有健康阈值均正常' : `${overview.health.issues.length} 项需要关注`}</strong>
-        <span>磁盘 {overview.health.thresholds.diskWarningPercent}% / {overview.health.thresholds.diskCriticalPercent}% · 队列 {formatDuration(overview.health.thresholds.queueWarningSeconds)} / {formatDuration(overview.health.thresholds.queueCriticalSeconds)} · 失败任务 {overview.health.thresholds.failedJobsWarning} / {overview.health.thresholds.failedJobsCritical}（预警 / 严重）</span>
-        {overview.health.issues.map((issue) => <small key={`${issue.code}-${issue.resource}`}>{healthIssueLabel(issue)}</small>)}
+        <div className="operations-health-heading"><div><strong>{overview.health.issues.length === 0 ? '当前监测值均正常' : `${overview.health.issues.length} 项当前状态需要关注`}</strong><span>下面先显示实际触发原因，再单独列出系统告警线。</span></div>{overview.health.issues.some((issue) => issue.resource === 'background_jobs') && <button className="secondary" type="button" onClick={() => showRelatedJobs(overview.health.issues.find((issue) => issue.resource === 'background_jobs')!)}>查看相关任务</button>}</div>
+        {overview.health.issues.length > 0 && <div className="operations-health-issues">{overview.health.issues.map((issue) => <div key={`${issue.code}-${issue.resource}`}><b>{issue.severity === 'critical' ? '严重' : '预警'}</b><span>{healthIssueLabel(issue)}</span>{issue.resource === 'background_jobs' && <button type="button" onClick={() => showRelatedJobs(issue)}>定位任务</button>}</div>)}</div>}
+        <div className="operations-threshold-grid">
+          <div><strong>磁盘占用告警线</strong><span>达到 {overview.health.thresholds.diskWarningPercent}% 预警 · 达到 {overview.health.thresholds.diskCriticalPercent}% 严重</span><small>这是阈值，不是当前占用；当前值见下方“磁盘空间”。</small></div>
+          <div><strong>任务排队告警线</strong><span>等待 {formatDuration(overview.health.thresholds.queueWarningSeconds)} 预警 · 等待 {formatDuration(overview.health.thresholds.queueCriticalSeconds)} 严重</span><small>当前最长等待：{formatDuration(overview.snapshot.oldestQueuedSeconds)}</small></div>
+          <div><strong>失败任务告警线（24 小时）</strong><span>达到 {overview.health.thresholds.failedJobsWarning} 个预警 · 达到 {overview.health.thresholds.failedJobsCritical} 个严重</span><small>当前实际失败：{overview.snapshot.failedJobsLast24Hours} 个</small></div>
+        </div>
       </div>
       <div className="operations-detail-grid">
-        <div className="operations-request-list"><div><strong>磁盘空间</strong><small>可用 / 总量 / 已用</small></div>{overview.disks.map((disk) => <p key={disk.label}><span>{diskLabel(disk.label)}</span><span>{disk.available ? `${formatBytes(disk.availableBytes)} / ${formatBytes(disk.totalBytes)} / ${disk.usedPercent.toFixed(1)}%` : '无法读取'}</span></p>)}</div>
-        <div className="operations-request-list"><div><strong>任务分类耗时（24 小时）</strong><small>完成 / 失败 / 平均 / P95</small></div>{overview.jobKinds.length === 0 ? <p><span>暂无已结束任务</span><span>—</span></p> : overview.jobKinds.map((metric) => <p key={metric.kind}><span>{jobKindLabel(metric.kind)}</span><span>{metric.completedLast24Hours} / {metric.failedLast24Hours} / {formatDuration(metric.averageDurationSeconds)} / {formatDuration(metric.p95DurationSeconds)}</span></p>)}</div>
+        <div className="operations-request-list"><div><strong>当前磁盘空间</strong><small>每一行都是实际读取值</small></div>{overview.disks.map((disk) => <p key={disk.label}><span>{diskLabel(disk.label)}</span><span>{disk.available ? `已用 ${disk.usedPercent.toFixed(1)}% · 可用 ${formatBytes(disk.availableBytes)} · 总量 ${formatBytes(disk.totalBytes)}` : '无法读取磁盘信息'}</span></p>)}</div>
+        <div className="operations-request-list"><div><strong>任务分类耗时（最近 24 小时）</strong><small>P95 表示 95% 的任务不超过该时长</small></div>{overview.jobKinds.length === 0 ? <p><span>暂无已结束任务</span><span>—</span></p> : overview.jobKinds.map((metric) => <p key={metric.kind}><span>{jobKindLabel(metric.kind)}</span><span>完成 {metric.completedLast24Hours} · 失败 {metric.failedLast24Hours} · 平均 {formatDuration(metric.averageDurationSeconds)} · P95 {formatDuration(metric.p95DurationSeconds)}</span></p>)}</div>
       </div>
-      <div className="operations-request-list"><div><strong>近期请求（服务启动后，单接口保留最近 200 次）</strong><small>请求 / 错误 / P95</small></div>{overview.requests.slice(0, 8).map((metric) => <p key={metric.route}><code>{metric.route}</code><span>{metric.requests} / {metric.errors} / {metric.p95DurationMs} ms</span></p>)}</div></> : <div className="job-empty">正在汇总运行状态…</div>}
+      <div className="operations-request-list"><div><strong>近期请求（服务启动后，单接口保留最近 200 次）</strong><small>请求次数、错误次数和响应耗时</small></div>{overview.requests.slice(0, 8).map((metric) => <p key={metric.route}><code>{metric.route}</code><span>请求 {metric.requests} · 错误 {metric.errors} · P95 {metric.p95DurationMs} ms</span></p>)}</div></> : <div className="job-empty">正在汇总运行状态…</div>}
     </section>
-    <section className="jobs-panel compact-admin-panel">
-      <div className="section-title"><div><p className="eyebrow">可恢复后台任务</p><h2>处理队列</h2></div><span className="muted">服务重启后自动接续；失败任务可人工重试</span></div>
-      <div className="job-list">{backgroundJobs.length === 0 && <div className="job-empty">暂无后台任务</div>}{backgroundJobs.slice(0, 20).map((job) => <div className="job-row background-job-row" key={job.id}><span className={`job-state ${job.state}`}>{jobStateLabel(job.state)}</span><span><strong>{jobKindLabel(job.kind)}</strong><small>{jobSourceLabel(job)}</small></span><span className="job-progress"><span>{job.lastError || job.progressMessage || `尝试 ${job.attempts} / ${job.maxAttempts}`}</span><i><b style={{ width: `${job.progress}%` }} /></i><small>{job.progress}%</small></span>{job.state === 'failed' && <button className="secondary" type="button" onClick={() => void retryJob(job.id)}>重试</button>}</div>)}</div>
+    <section className="jobs-panel compact-admin-panel" id="background-job-queue">
+      <div className="section-title"><div><p className="eyebrow">可恢复后台任务</p><h2>处理队列与失败详情</h2><p className="muted">失败任务会显示具体来源、错误原因和尝试次数，可在这里人工重试。</p></div></div>
+      <div className="job-filter-bar" aria-label="任务筛选">{(['attention', 'failed', 'queued', 'running', 'all'] as JobFilter[]).map((filter) => <button className={jobFilter === filter ? 'active' : ''} type="button" key={filter} onClick={() => setJobFilter(filter)}>{jobFilterLabel(filter)} <span>{jobFilterCount(filter, backgroundJobs)}</span></button>)}</div>
+      <div className="job-list">{visibleJobs.length === 0 && <div className="job-empty">{jobFilter === 'failed' ? '当前没有失败任务' : '此筛选下暂无后台任务'}</div>}{visibleJobs.slice(0, 50).map((job) => <div className={`job-row background-job-row${job.state === 'failed' ? ' failed-job' : ''}`} key={job.id}><span className={`job-state ${job.state}`}>{jobStateLabel(job.state)}</span><span><strong>{jobKindLabel(job.kind)}</strong><small title={jobSourceLabel(job)}>{jobSourceLabel(job)}</small><small>任务 #{job.id} · 更新于 {formatRelativeTime(job.updatedAt)} · 尝试 {job.attempts} / {job.maxAttempts}</small></span><span className="job-progress"><span className={job.lastError ? 'job-error-message' : ''}>{job.lastError || job.progressMessage || '等待任务处理器'}</span><i><b style={{ width: `${job.progress}%` }} /></i><small>{job.progress}%</small>{job.lastError && <details><summary>展开完整失败原因</summary><p>{job.lastError}</p></details>}</span>{job.state === 'failed' && <button className="secondary" type="button" onClick={() => void retryJob(job.id)}>重新排队</button>}</div>)}</div>
     </section>
 
     <section className="integration-panel operations-panel">
@@ -117,6 +136,16 @@ function diskLabel(label: string): string {
 
 function jobStateLabel(state: BackgroundJob['state']): string {
   return { queued: '排队', running: '处理中', completed: '完成', failed: '失败' }[state]
+}
+
+function jobFilterLabel(filter: JobFilter): string {
+  return { attention: '需要关注', failed: '失败', queued: '排队', running: '处理中', all: '全部' }[filter]
+}
+
+function jobFilterCount(filter: JobFilter, jobs: BackgroundJob[]): number {
+  if (filter === 'all') return jobs.length
+  if (filter === 'attention') return jobs.filter((job) => job.state === 'queued' || job.state === 'running' || job.state === 'failed').length
+  return jobs.filter((job) => job.state === filter).length
 }
 
 function jobKindLabel(kind: string): string {
