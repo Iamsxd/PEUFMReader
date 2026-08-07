@@ -26,7 +26,7 @@ func Handler(manager *Manager, importer *importing.Service) jobs.Handler {
 			return nil, err
 		}
 		_ = jobs.ReportProgress(ctx, 30, "提取元数据并复制到书库")
-		result, importErr := importer.Import(ctx, *job.CreatedBy, "导入收件箱: "+payload.OriginalFilename, payload.OriginalFilename, file, nil)
+		result, importErr := importer.Import(ctx, *job.CreatedBy, "导入收件箱: "+payload.OriginalFilename, payload.OriginalFilename, file, nil, nil)
 		_ = file.Close()
 		if importErr != nil {
 			if job.Attempts >= job.MaxAttempts {

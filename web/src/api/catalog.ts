@@ -61,10 +61,11 @@ export const catalogAPI = {
     return transport.request(`/api/v1/book-files/${bookFileID}/recommendation-feedback`, { method: 'PUT', body: JSON.stringify({ feedback }), headers: { 'Content-Type': 'application/json' } })
   },
 
-  uploadBook(file: File, onProgress?: (progress: number) => void): Promise<UploadBookResult> {
+  uploadBook(file: File, onProgress?: (progress: number) => void, batchID?: number): Promise<UploadBookResult> {
     return new Promise((resolve, reject) => {
       const form = new FormData()
       form.append('file', file)
+      if (batchID) form.append('batchId', String(batchID))
       const request = new XMLHttpRequest()
       request.open('POST', '/api/v1/book-files')
       request.withCredentials = true

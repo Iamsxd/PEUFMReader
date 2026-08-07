@@ -65,6 +65,7 @@ func ImportHandler(scanner *Scanner, importer *importing.Service) jobs.Handler {
 			filepath.Base(file.Name()),
 			file,
 			&preferred,
+			nil,
 		)
 		if err != nil {
 			return nil, err

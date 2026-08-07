@@ -25,7 +25,7 @@ func Handler(manager *Manager, importer *importing.Service) jobs.Handler {
 			return nil, err
 		}
 		_ = jobs.ReportProgress(ctx, 30, "复制文件并提取元数据")
-		result, importErr := importer.Import(ctx, *job.CreatedBy, "只读监控目录: "+payload.SourcePath, payload.OriginalFilename, file, nil)
+		result, importErr := importer.Import(ctx, *job.CreatedBy, "只读监控目录: "+payload.SourcePath, payload.OriginalFilename, file, nil, nil)
 		_ = file.Close()
 		if importErr != nil {
 			return nil, importErr

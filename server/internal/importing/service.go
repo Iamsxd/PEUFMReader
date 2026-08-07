@@ -48,14 +48,15 @@ func (s *Service) Import(
 	originalFilename string,
 	reader io.Reader,
 	override *metadata.Result,
+	batchID *int64,
 ) (Result, error) {
-	job, err := s.store.CreateImportJob(ctx, userID, sourceName)
+	job, err := s.store.CreateImportJob(ctx, userID, sourceName, batchID)
 	if err != nil {
 		return Result{}, err
 	}
 	failJob := func(failure error) (Result, error) {
 		_ = s.store.FailImportJob(ctx, job.ID, failure)
-		return Result{}, failure
+		return Result{ImportJobID: job.ID}, failure
 	}
 
 	stored, err := s.library.Ingest(originalFilename, reader)

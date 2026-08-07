@@ -248,16 +248,52 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .upload-button { position: relative; display: inline-flex; background: #24563a; color: white; cursor: pointer; }
 .upload-button input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .upload-button.disabled { opacity: .55; cursor: wait; }
-.upload-drop-zone { display: grid; grid-template-columns: minmax(260px, .7fr) minmax(360px, 1.3fr); gap: 24px; align-items: start; margin: 26px 0 18px; padding: 24px; border: 2px dashed #aebeb1; border-radius: 20px; background: #eef3ea; transition: border-color .16s ease, background .16s ease, transform .16s ease; }
+.upload-drop-zone { display: grid; gap: 20px; min-width: 0; margin: 26px 0 18px; padding: 24px; border: 2px dashed #aebeb1; border-radius: 20px; background: #eef3ea; transition: border-color .16s ease, background .16s ease, transform .16s ease; }
 .upload-drop-zone.dragging { border-color: #2d6943; background: #dfeee0; transform: translateY(-2px); }
 .upload-drop-zone.busy { border-style: solid; }
 .upload-drop-zone h2 { margin: 4px 0 8px; font-family: Georgia, serif; }
-.upload-queue { display: grid; max-height: 310px; overflow-y: auto; border: 1px solid #d3dbd2; border-radius: 13px; background: #fafbf7; }
-.upload-queue-item { display: grid; grid-template-columns: 62px minmax(150px, 1fr) minmax(120px, .7fr); gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid #e2e6e0; font-size: .78rem; }
+.upload-drop-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.upload-drop-header > div { min-width: 0; }
+.upload-live-report { min-width: 0; padding: 14px; border: 1px solid #cbd8cb; border-radius: 15px; background: #f8faf5; }
+.upload-report-heading, .import-report-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 10px; color: #40574a; font-size: .8rem; }
+.upload-report-heading span, .import-report-heading > span { color: #69796e; font-weight: 750; }
+.upload-queue { display: grid; max-height: 360px; min-width: 0; overflow-y: auto; overflow-x: hidden; border: 1px solid #d3dbd2; border-radius: 13px; background: #fafbf7; }
+.upload-queue-item { display: grid; grid-template-columns: 62px minmax(0, 1fr) minmax(150px, .42fr); gap: 10px; min-width: 0; align-items: center; padding: 10px 12px; border-bottom: 1px solid #e2e6e0; font-size: .78rem; }
 .upload-queue-item:last-child { border-bottom: 0; }
 .upload-queue-item > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
 .upload-queue-item strong, .upload-queue-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upload-queue-item small { color: #718077; }
+.import-history-panel { display: grid; gap: 18px; padding: 22px; border: 1px solid #cbd8cb; border-radius: 19px; background: #f8faf5; }
+.import-history-layout { display: grid; grid-template-columns: minmax(290px, .8fr) minmax(0, 1.2fr); gap: 16px; min-width: 0; }
+.import-batch-list { display: grid; align-content: start; gap: 9px; min-width: 0; max-height: 500px; overflow-y: auto; }
+.import-batch-card { display: flex; align-items: stretch; min-width: 0; border: 1px solid #d7dfd4; border-radius: 13px; overflow: hidden; background: #fffefa; }
+.import-batch-card.selected { border-color: #3d7450; box-shadow: 0 0 0 2px #d7e8d8; }
+.import-batch-summary { display: grid; flex: 1; min-width: 0; gap: 5px; padding: 12px; border: 0; background: transparent; color: #253b2c; text-align: left; }
+.import-batch-summary:hover { background: #edf4eb; }
+.import-batch-summary small { color: #728076; }
+.import-batch-summary span { display: flex; flex-wrap: wrap; gap: 5px; }
+.import-batch-summary b { padding: 3px 6px; border-radius: 999px; font-size: .65rem; }
+.import-batch-summary b.imported { background: #dcebdd; color: #24563a; }
+.import-batch-summary b.duplicate { background: #eee6cf; color: #705b20; }
+.import-batch-summary b.failed { background: #f4d9d5; color: #862b24; }
+.import-batch-summary b.pending { background: #dce5ef; color: #285378; }
+.text-button { border: 0; border-left: 1px solid #e0e5de; background: transparent; padding: 0 10px; color: #536259; font-size: .72rem; font-weight: 750; }
+.text-button:hover { background: #f3f5ef; }
+.text-button.danger { color: #9a3a31; }
+.import-report-detail { display: grid; align-content: start; min-width: 0; border: 1px solid #d7dfd4; border-radius: 14px; background: #fffefa; overflow: hidden; }
+.import-report-detail.empty { place-content: center; min-height: 218px; padding: 22px; color: #6d7b70; text-align: center; }
+.import-report-detail.empty p { max-width: 300px; margin: 7px 0 0; font-size: .8rem; line-height: 1.55; }
+.import-report-heading { margin: 0; padding: 13px 15px; border-bottom: 1px solid #e0e5de; }
+.import-report-heading > div { display: grid; gap: 3px; }
+.import-report-heading small { color: #748177; }
+.import-report-jobs { display: grid; max-height: 438px; overflow-y: auto; }
+.import-report-job { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 10px; align-items: start; padding: 11px 14px; border-bottom: 1px solid #e5e9e3; font-size: .78rem; }
+.import-report-job:last-child { border-bottom: 0; }
+.import-report-job > div { display: grid; min-width: 0; gap: 3px; }
+.import-report-job strong, .import-report-job small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-report-job small { color: #718077; }
+.import-report-job .job-warning { color: #806b2f; }
+.history-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; color: #66746a; font-size: .78rem; }
 .import-sources-panel { margin-top: 18px; }
 .import-source-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; margin-top: 18px; }
 .import-source-card { display: grid; align-content: start; gap: 12px; min-width: 0; padding: 17px; border: 1px solid #cad6c9; border-radius: 14px; background: #f9faf5; }
@@ -917,7 +953,13 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .admin-section-heading { align-items: flex-start; flex-direction: column; min-height: 0; padding: 2px 2px 15px; }
   .admin-section-heading .upload-button { align-self: flex-start; }
   .admin-heading .upload-button { align-self: flex-start; }
-  .upload-drop-zone { grid-template-columns: 1fr; padding: 18px; }
+  .upload-drop-zone { padding: 18px; }
+  .upload-drop-header { align-items: stretch; flex-direction: column; gap: 14px; }
+  .upload-drop-header .upload-button { align-self: flex-start; }
+  .import-history-panel { padding: 17px; }
+  .import-history-layout { grid-template-columns: 1fr; }
+  .import-batch-list { max-height: 330px; }
+  .import-report-jobs { max-height: 360px; }
   .import-source-grid { grid-template-columns: 1fr; }
   .import-source-card p { min-height: 0; }
   .category-create-form { grid-template-columns: 1fr; }
