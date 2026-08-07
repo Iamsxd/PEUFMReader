@@ -254,8 +254,10 @@ test('book detail and reader controls remain reachable', async ({ page }, testIn
       if (!bounds) throw new Error('PDF reader viewport is not available')
       await readerViewport.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } })
     } else {
+      await expect(readerChromeButton).toBeVisible()
       await readerChromeButton.click()
     }
+    await expect(readerToolbar).not.toHaveAttribute('aria-hidden', 'true')
   }
   await revealReaderChrome()
   await expect(readerToolbar).toBeVisible()
