@@ -228,6 +228,10 @@ func (a *API) routes() {
 	a.mux.Handle("POST /api/v1/editions/{id}/ai-classify", a.requireAuth(http.HandlerFunc(a.aiClassifyEdition), "admin", true))
 	a.mux.Handle("POST /api/v1/editions/{id}/bibliography-search", a.requireAuth(http.HandlerFunc(a.searchBibliography), "admin", true))
 	a.mux.Handle("GET /api/v1/import-jobs", a.requireAuth(http.HandlerFunc(a.listImportJobs), "admin", false))
+	a.mux.Handle("GET /api/v1/import-batches", a.requireAuth(http.HandlerFunc(a.listImportBatches), "admin", false))
+	a.mux.Handle("POST /api/v1/import-batches", a.requireAuth(http.HandlerFunc(a.createImportBatch), "admin", true))
+	a.mux.Handle("GET /api/v1/import-batches/{id}", a.requireAuth(http.HandlerFunc(a.getImportBatch), "admin", false))
+	a.mux.Handle("DELETE /api/v1/import-batches/{id}", a.requireAuth(http.HandlerFunc(a.deleteImportBatch), "admin", true))
 	a.mux.Handle("GET /api/v1/admin/import-sources", a.requireAuth(http.HandlerFunc(a.listImportSources), "admin", false))
 	a.mux.Handle("GET /api/v1/background-jobs", a.requireAuth(http.HandlerFunc(a.listBackgroundJobs), "admin", false))
 	a.mux.Handle("GET /api/v1/audit-events", a.requireAuth(http.HandlerFunc(a.listAuditEvents), "admin", false))
@@ -856,8 +860,17 @@ func (a *API) uploadBookFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = file.Close() }()
+	var batchID *int64
+	if value := strings.TrimSpace(r.FormValue("batchId")); value != "" {
+		parsed, parseErr := strconv.ParseInt(value, 10, 64)
+		if parseErr != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid_batch_id", "batchId must be a positive integer")
+			return
+		}
+		batchID = &parsed
+	}
 	userSession := sessionFromContext(r.Context())
-	result, err := a.importer.Import(r.Context(), userSession.User.ID, header.Filename, header.Filename, file, nil)
+	result, err := a.importer.Import(r.Context(), userSession.User.ID, header.Filename, header.Filename, file, nil, batchID)
 	if err != nil {
 		switch {
 		case errors.Is(err, library.ErrUnsupportedFormat):
@@ -1677,6 +1690,83 @@ func (a *API) listImportJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": jobs})
+}
+
+func (a *API) createImportBatch(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		TotalItems int `json:"totalItems"`
+	}
+	if err := readJSON(w, r, &input, 8<<10); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_import_batch", err.Error())
+		return
+	}
+	batch, err := a.store.CreateImportBatch(r.Context(), sessionFromContext(r.Context()).User.ID, "browser-upload", input.TotalItems)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_import_batch", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, batch)
+}
+
+func (a *API) listImportBatches(w http.ResponseWriter, r *http.Request) {
+	page := 1
+	pageSize := 12
+	if value := r.URL.Query().Get("page"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 {
+			writeError(w, http.StatusBadRequest, "invalid_page", "page must be a positive integer")
+			return
+		}
+		page = parsed
+	}
+	if value := r.URL.Query().Get("pageSize"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > 50 {
+			writeError(w, http.StatusBadRequest, "invalid_page_size", "pageSize must be between 1 and 50")
+			return
+		}
+		pageSize = parsed
+	}
+	result, err := a.store.ListImportBatches(r.Context(), page, pageSize)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (a *API) getImportBatch(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	result, found, err := a.store.GetImportBatchDetail(r.Context(), id)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "import_batch_not_found", "import report not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (a *API) deleteImportBatch(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	deleted, err := a.store.DeleteImportBatch(r.Context(), id)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !deleted {
+		writeError(w, http.StatusNotFound, "import_batch_not_found", "import report not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *API) listImportSources(w http.ResponseWriter, _ *http.Request) {

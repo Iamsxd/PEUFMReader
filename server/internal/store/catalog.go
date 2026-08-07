@@ -77,13 +77,40 @@ type ReviewInput struct {
 
 type ImportJob struct {
 	ID           int64           `json:"id"`
+	BatchID      *int64          `json:"batchId,omitempty"`
 	State        string          `json:"state"`
+	Outcome      string          `json:"outcome,omitempty"`
 	SourceName   string          `json:"sourceName"`
 	ErrorMessage string          `json:"errorMessage,omitempty"`
 	BookFileID   *int64          `json:"bookFileId,omitempty"`
 	Warnings     json.RawMessage `json:"warnings"`
 	CreatedAt    time.Time       `json:"createdAt"`
 	UpdatedAt    time.Time       `json:"updatedAt"`
+}
+
+type ImportBatch struct {
+	ID             int64      `json:"id"`
+	Source         string     `json:"source"`
+	TotalItems     int        `json:"totalItems"`
+	ImportedCount  int        `json:"importedCount"`
+	DuplicateCount int        `json:"duplicateCount"`
+	FailedCount    int        `json:"failedCount"`
+	PendingCount   int        `json:"pendingCount"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	CompletedAt    *time.Time `json:"completedAt,omitempty"`
+}
+
+type ImportBatchPage struct {
+	Items      []ImportBatch `json:"items"`
+	Total      int           `json:"total"`
+	Page       int           `json:"page"`
+	PageSize   int           `json:"pageSize"`
+	TotalPages int           `json:"totalPages"`
+}
+
+type ImportBatchDetail struct {
+	Batch ImportBatch `json:"batch"`
+	Jobs  []ImportJob `json:"jobs"`
 }
 
 const catalogBookSelect = `
@@ -157,13 +184,25 @@ func scanCatalogBook(row scanner) (BookFile, error) {
 	return book, nil
 }
 
-func (s *Store) CreateImportJob(ctx context.Context, userID int64, sourceName string) (ImportJob, error) {
+func (s *Store) CreateImportBatch(ctx context.Context, userID int64, source string, totalItems int) (ImportBatch, error) {
+	if totalItems < 1 || totalItems > 1000 {
+		return ImportBatch{}, errors.New("import batch must contain between 1 and 1000 items")
+	}
+	var batch ImportBatch
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO import_batches(source,total_items,created_by) VALUES ($1,$2,$3)
+		RETURNING id,source,total_items,created_at,completed_at`, strings.TrimSpace(source), totalItems, userID,
+	).Scan(&batch.ID, &batch.Source, &batch.TotalItems, &batch.CreatedAt, &batch.CompletedAt)
+	return batch, err
+}
+
+func (s *Store) CreateImportJob(ctx context.Context, userID int64, sourceName string, batchID *int64) (ImportJob, error) {
 	var job ImportJob
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO import_jobs(state,source_name,created_by) VALUES ('running',$1,$2)
-		RETURNING id,state,source_name,COALESCE(error_message,''),book_file_id,warnings,created_at,updated_at`,
-		strings.TrimSpace(sourceName), userID,
-	).Scan(&job.ID, &job.State, &job.SourceName, &job.ErrorMessage, &job.BookFileID, &job.Warnings, &job.CreatedAt, &job.UpdatedAt)
+		INSERT INTO import_jobs(state,source_name,created_by,batch_id) VALUES ('running',$1,$2,$3)
+		RETURNING id,batch_id,state,COALESCE(outcome,''),source_name,COALESCE(error_message,''),book_file_id,warnings,created_at,updated_at`,
+		strings.TrimSpace(sourceName), userID, batchID,
+	).Scan(&job.ID, &job.BatchID, &job.State, &job.Outcome, &job.SourceName, &job.ErrorMessage, &job.BookFileID, &job.Warnings, &job.CreatedAt, &job.UpdatedAt)
 	return job, err
 }
 
@@ -172,16 +211,28 @@ func (s *Store) FailImportJob(ctx context.Context, jobID int64, failure error) e
 	if len(message) > 2000 {
 		message = message[:2000]
 	}
-	_, err := s.pool.Exec(ctx, "UPDATE import_jobs SET state='failed',error_message=$1,updated_at=now() WHERE id=$2", message, jobID)
-	return err
+	var batchID *int64
+	err := s.pool.QueryRow(ctx, `UPDATE import_jobs SET state='failed',outcome='failed',error_message=$1,updated_at=now() WHERE id=$2
+		RETURNING batch_id`, message, jobID).Scan(&batchID)
+	if err != nil {
+		return err
+	}
+	return s.completeImportBatchIfReady(ctx, batchID)
 }
 
-func (s *Store) CompleteImportJob(ctx context.Context, jobID, bookFileID int64, warnings []string) error {
+func (s *Store) CompleteImportJob(ctx context.Context, jobID, bookFileID int64, outcome string, warnings []string) error {
+	if outcome != "imported" && outcome != "duplicate" {
+		return errors.New("import job outcome is invalid")
+	}
 	encodedWarnings, _ := json.Marshal(warnings)
-	_, err := s.pool.Exec(ctx, `
-		UPDATE import_jobs SET state='completed',book_file_id=$1,warnings=$2,error_message=NULL,updated_at=now() WHERE id=$3`,
-		bookFileID, encodedWarnings, jobID)
-	return err
+	var batchID *int64
+	err := s.pool.QueryRow(ctx, `
+		UPDATE import_jobs SET state='completed',outcome=$1,book_file_id=$2,warnings=$3,error_message=NULL,updated_at=now() WHERE id=$4
+		RETURNING batch_id`, outcome, bookFileID, encodedWarnings, jobID).Scan(&batchID)
+	if err != nil {
+		return err
+	}
+	return s.completeImportBatchIfReady(ctx, batchID)
 }
 
 func (s *Store) AppendImportJobWarning(ctx context.Context, jobID int64, warning string) error {
@@ -195,7 +246,7 @@ func (s *Store) ListImportJobs(ctx context.Context, limit int) ([]ImportJob, err
 		limit = 50
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id,state,source_name,COALESCE(error_message,''),book_file_id,warnings,created_at,updated_at
+		SELECT id,batch_id,state,COALESCE(outcome,''),source_name,COALESCE(error_message,''),book_file_id,warnings,created_at,updated_at
 		FROM import_jobs ORDER BY created_at DESC LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
@@ -204,12 +255,107 @@ func (s *Store) ListImportJobs(ctx context.Context, limit int) ([]ImportJob, err
 	result := make([]ImportJob, 0)
 	for rows.Next() {
 		var job ImportJob
-		if err := rows.Scan(&job.ID, &job.State, &job.SourceName, &job.ErrorMessage, &job.BookFileID, &job.Warnings, &job.CreatedAt, &job.UpdatedAt); err != nil {
+		if err := rows.Scan(&job.ID, &job.BatchID, &job.State, &job.Outcome, &job.SourceName, &job.ErrorMessage, &job.BookFileID, &job.Warnings, &job.CreatedAt, &job.UpdatedAt); err != nil {
 			return nil, err
 		}
 		result = append(result, job)
 	}
 	return result, rows.Err()
+}
+
+func (s *Store) ListImportBatches(ctx context.Context, page, pageSize int) (ImportBatchPage, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 50 {
+		pageSize = 12
+	}
+	result := ImportBatchPage{Items: make([]ImportBatch, 0), Page: page, PageSize: pageSize}
+	if err := s.pool.QueryRow(ctx, "SELECT count(*) FROM import_batches").Scan(&result.Total); err != nil {
+		return result, err
+	}
+	result.TotalPages = max(1, (result.Total+pageSize-1)/pageSize)
+	if page > result.TotalPages {
+		page = result.TotalPages
+		result.Page = page
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT b.id,b.source,b.total_items,b.created_at,b.completed_at,
+			COUNT(j.id) FILTER (WHERE j.outcome='imported')::int,
+			COUNT(j.id) FILTER (WHERE j.outcome='duplicate')::int,
+			COUNT(j.id) FILTER (WHERE j.outcome='failed')::int,
+			GREATEST(b.total_items-COUNT(j.id) FILTER (WHERE j.outcome IS NOT NULL),0)::int
+		FROM import_batches b LEFT JOIN import_jobs j ON j.batch_id=b.id
+		GROUP BY b.id ORDER BY b.created_at DESC,b.id DESC LIMIT $1 OFFSET $2`, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return result, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var batch ImportBatch
+		if err := rows.Scan(&batch.ID, &batch.Source, &batch.TotalItems, &batch.CreatedAt, &batch.CompletedAt,
+			&batch.ImportedCount, &batch.DuplicateCount, &batch.FailedCount, &batch.PendingCount); err != nil {
+			return result, err
+		}
+		result.Items = append(result.Items, batch)
+	}
+	return result, rows.Err()
+}
+
+func (s *Store) GetImportBatchDetail(ctx context.Context, batchID int64) (ImportBatchDetail, bool, error) {
+	if batchID <= 0 {
+		return ImportBatchDetail{}, false, nil
+	}
+	var detail ImportBatchDetail
+	// Batches are usually recent, but fetch the exact summary independently so
+	// a detail link remains valid after it moves beyond the first page.
+	err := s.pool.QueryRow(ctx, `
+		SELECT b.id,b.source,b.total_items,b.created_at,b.completed_at,
+			COUNT(j.id) FILTER (WHERE j.outcome='imported')::int,
+			COUNT(j.id) FILTER (WHERE j.outcome='duplicate')::int,
+			COUNT(j.id) FILTER (WHERE j.outcome='failed')::int,
+			GREATEST(b.total_items-COUNT(j.id) FILTER (WHERE j.outcome IS NOT NULL),0)::int
+		FROM import_batches b LEFT JOIN import_jobs j ON j.batch_id=b.id WHERE b.id=$1 GROUP BY b.id`, batchID,
+	).Scan(&detail.Batch.ID, &detail.Batch.Source, &detail.Batch.TotalItems, &detail.Batch.CreatedAt, &detail.Batch.CompletedAt,
+		&detail.Batch.ImportedCount, &detail.Batch.DuplicateCount, &detail.Batch.FailedCount, &detail.Batch.PendingCount)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ImportBatchDetail{}, false, nil
+	}
+	if err != nil {
+		return ImportBatchDetail{}, false, err
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id,batch_id,state,COALESCE(outcome,''),source_name,COALESCE(error_message,''),book_file_id,warnings,created_at,updated_at
+		FROM import_jobs WHERE batch_id=$1 ORDER BY created_at,id`, batchID)
+	if err != nil {
+		return ImportBatchDetail{}, false, err
+	}
+	defer rows.Close()
+	detail.Jobs = make([]ImportJob, 0)
+	for rows.Next() {
+		var job ImportJob
+		if err := rows.Scan(&job.ID, &job.BatchID, &job.State, &job.Outcome, &job.SourceName, &job.ErrorMessage, &job.BookFileID, &job.Warnings, &job.CreatedAt, &job.UpdatedAt); err != nil {
+			return ImportBatchDetail{}, false, err
+		}
+		detail.Jobs = append(detail.Jobs, job)
+	}
+	return detail, true, rows.Err()
+}
+
+func (s *Store) DeleteImportBatch(ctx context.Context, batchID int64) (bool, error) {
+	command, err := s.pool.Exec(ctx, "DELETE FROM import_batches WHERE id=$1", batchID)
+	return command.RowsAffected() > 0, err
+}
+
+func (s *Store) completeImportBatchIfReady(ctx context.Context, batchID *int64) error {
+	if batchID == nil {
+		return nil
+	}
+	_, err := s.pool.Exec(ctx, `UPDATE import_batches b SET completed_at=COALESCE(completed_at,now())
+		WHERE b.id=$1 AND b.completed_at IS NULL AND (
+			SELECT count(*) FROM import_jobs j WHERE j.batch_id=b.id AND j.outcome IS NOT NULL
+		) >= b.total_items`, *batchID)
+	return err
 }
 
 func (s *Store) RegisterImportedBook(ctx context.Context, stored library.StoredFile, extracted metadata.Result, suggestions []classification.Suggestion, coverPath string, createdBy, jobID int64) (BookFile, bool, error) {
@@ -218,7 +364,7 @@ func (s *Store) RegisterImportedBook(ctx context.Context, stored library.StoredF
 		return BookFile{}, false, err
 	}
 	if found {
-		if err := s.CompleteImportJob(ctx, jobID, existing.ID, append(extracted.Warnings, "检测到重复文件，沿用已有书籍记录")); err != nil {
+		if err := s.CompleteImportJob(ctx, jobID, existing.ID, "duplicate", append(extracted.Warnings, "检测到重复文件，未重复导入，沿用已有书籍记录")); err != nil {
 			return BookFile{}, false, err
 		}
 		return existing, true, nil
@@ -280,12 +426,17 @@ func (s *Store) RegisterImportedBook(ctx context.Context, stored library.StoredF
 		}
 	}
 	encodedWarnings, _ := json.Marshal(extracted.Warnings)
-	if _, err := tx.Exec(ctx, `
-		UPDATE import_jobs SET state='completed',book_file_id=$1,warnings=$2,error_message=NULL,updated_at=now() WHERE id=$3`,
-		bookFileID, encodedWarnings, jobID); err != nil {
+	var batchID *int64
+	if err := tx.QueryRow(ctx, `
+		UPDATE import_jobs SET state='completed',outcome='imported',book_file_id=$1,warnings=$2,error_message=NULL,updated_at=now() WHERE id=$3
+		RETURNING batch_id`,
+		bookFileID, encodedWarnings, jobID).Scan(&batchID); err != nil {
 		return BookFile{}, false, fmt.Errorf("complete import job: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
+		return BookFile{}, false, err
+	}
+	if err := s.completeImportBatchIfReady(ctx, batchID); err != nil {
 		return BookFile{}, false, err
 	}
 	book, found, err := s.GetCatalogBook(ctx, bookFileID)

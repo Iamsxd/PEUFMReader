@@ -1,4 +1,4 @@
-import type { AuditEvent, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookPermission, CalibreImportResult, CalibrePreview, Category, ClassificationRule, DuplicateCatalogGroup, GroupLibraryPermission, ImportJob, ImportSource, LibraryGroup, ManagedUser, OperationsOverview, ReviewInput, ReviewItem, ReviewQueuePage, ReviewQueueQuery, Role, StorageAuditReport, User, UserAccessInfo, UserGroup } from '../types'
+import type { AuditEvent, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookPermission, CalibreImportResult, CalibrePreview, Category, ClassificationRule, DuplicateCatalogGroup, GroupLibraryPermission, ImportBatch, ImportBatchDetail, ImportBatchPage, ImportJob, ImportSource, LibraryGroup, ManagedUser, OperationsOverview, ReviewInput, ReviewItem, ReviewQueuePage, ReviewQueueQuery, Role, StorageAuditReport, User, UserAccessInfo, UserGroup } from '../types'
 import { querySuffix, transport } from './core'
 
 export const adminAPI = {
@@ -67,6 +67,18 @@ export const adminAPI = {
   async listImportJobs(): Promise<ImportJob[]> {
     const result = await transport.request<{ items: ImportJob[] }>('/api/v1/import-jobs')
     return result.items
+  },
+  createImportBatch(totalItems: number): Promise<ImportBatch> {
+    return transport.request('/api/v1/import-batches', { method: 'POST', body: JSON.stringify({ totalItems }), headers: { 'Content-Type': 'application/json' } })
+  },
+  listImportBatches(page = 1, pageSize = 12): Promise<ImportBatchPage> {
+    return transport.request(`/api/v1/import-batches${querySuffix({ page, pageSize })}`)
+  },
+  getImportBatch(batchID: number): Promise<ImportBatchDetail> {
+    return transport.request(`/api/v1/import-batches/${batchID}`)
+  },
+  deleteImportBatch(batchID: number): Promise<void> {
+    return transport.request(`/api/v1/import-batches/${batchID}`, { method: 'DELETE' })
   },
   async listImportSources(): Promise<ImportSource[]> {
     const result = await transport.request<{ items: ImportSource[] }>('/api/v1/admin/import-sources')

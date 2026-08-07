@@ -68,7 +68,10 @@ export interface ReviewQueueSummary { editionId: number; workId: number; bookFil
 export interface ReviewQueuePage { items: ReviewQueueSummary[]; total: number; page: number; pageSize: number; totalPages: number }
 export interface ReviewInput { title: string; authors: string[]; publishedYear?: number; language: string; isbn: string; publisher: string; description: string; categorySlugs: string[] }
 
-export interface ImportJob { id: number; state: 'queued' | 'running' | 'completed' | 'failed'; sourceName: string; errorMessage?: string; bookFileId?: number; warnings: string[]; createdAt: string; updatedAt: string }
+export interface ImportJob { id: number; batchId?: number; state: 'queued' | 'running' | 'completed' | 'failed'; outcome?: 'imported' | 'duplicate' | 'failed'; sourceName: string; errorMessage?: string; bookFileId?: number; warnings: string[]; createdAt: string; updatedAt: string }
+export interface ImportBatch { id: number; source: string; totalItems: number; importedCount: number; duplicateCount: number; failedCount: number; pendingCount: number; createdAt: string; completedAt?: string }
+export interface ImportBatchPage { items: ImportBatch[]; total: number; page: number; pageSize: number; totalPages: number }
+export interface ImportBatchDetail { batch: ImportBatch; jobs: ImportJob[] }
 export interface ImportSource { id: 'browser-upload' | 'moving-inbox' | 'watched-library' | string; name: string; mode: 'upload' | 'move' | 'copy' | string; enabled: boolean; path?: string; scanIntervalSeconds?: number; stableAgeSeconds?: number; maxFileBytes?: number }
 
 export interface BackgroundJob {
