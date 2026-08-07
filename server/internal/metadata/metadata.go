@@ -69,13 +69,7 @@ func Extract(filePath, format, originalFilename string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	result.Title = cleanText(result.Title)
-	result.Authors = uniqueClean(result.Authors)
-	result.Subjects = uniqueClean(result.Subjects)
-	result.Language = strings.ToLower(cleanText(result.Language))
-	result.ISBN = normalizeISBN(result.ISBN)
-	result.Publisher = cleanText(result.Publisher)
-	result.Description = cleanDescription(result.Description)
+	result = Sanitize(result)
 	filenameTitle := cleanText(strings.TrimSuffix(filepath.Base(originalFilename), filepath.Ext(originalFilename)))
 	if format == "pdf" && filenameTitle != "" && !strings.EqualFold(result.Title, filenameTitle) && placeholderTitle(result.Title) {
 		placeholder := result.Title
@@ -93,7 +87,23 @@ func Extract(filePath, format, originalFilename string) (Result, error) {
 		result.Source = "filename"
 		result.Warnings = append(result.Warnings, "未找到内嵌书名，已使用文件名")
 	}
-	return result, nil
+	return Sanitize(result), nil
+}
+
+// Sanitize makes extracted or externally supplied metadata safe for PostgreSQL
+// text columns. PDF strings and legacy catalogue files can contain NUL bytes or
+// malformed UTF-8 even when the visible metadata looks normal.
+func Sanitize(result Result) Result {
+	result.Title = cleanText(result.Title)
+	result.Authors = uniqueClean(result.Authors)
+	result.Subjects = uniqueClean(result.Subjects)
+	result.Language = strings.ToLower(cleanText(result.Language))
+	result.ISBN = normalizeISBN(result.ISBN)
+	result.Publisher = cleanText(result.Publisher)
+	result.Description = cleanDescription(result.Description)
+	result.Source = cleanText(result.Source)
+	result.Warnings = uniqueClean(result.Warnings)
+	return result
 }
 
 type epubContainer struct {
@@ -463,6 +473,8 @@ func cleanDescription(value string) string {
 }
 
 func cleanText(value string) string {
+	value = strings.ToValidUTF8(value, "\uFFFD")
+	value = strings.ReplaceAll(value, "\x00", "")
 	return strings.TrimSpace(whitespace.ReplaceAllString(value, " "))
 }
 

@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,6 +64,8 @@ func NewManager(libraryRoot, stagingRoot, cacheRoot string, maxBytes int64) (*Ma
 }
 
 func (m *Manager) Ingest(originalFilename string, src io.Reader) (StoredFile, error) {
+	originalFilename = strings.ToValidUTF8(originalFilename, "\uFFFD")
+	originalFilename = strings.ReplaceAll(originalFilename, "\x00", "")
 	originalFilename = filepath.Base(strings.TrimSpace(originalFilename))
 	if originalFilename == "." || originalFilename == "" {
 		originalFilename = "book"
@@ -509,7 +510,7 @@ func detectFormat(path, originalFilename string) (string, string, error) {
 	if bytes.HasPrefix(header, []byte("%PDF-")) {
 		return "pdf", "application/pdf", nil
 	}
-	if http.DetectContentType(header) == "application/zip" && isEPUB(path) {
+	if isEPUB(path) {
 		return "epub", "application/epub+zip", nil
 	}
 	if len(header) >= 68 && bytes.Equal(header[60:68], []byte("BOOKMOBI")) {
@@ -530,18 +531,24 @@ func isEPUB(path string) bool {
 	}
 	defer archive.Close()
 	for _, entry := range archive.File {
-		if entry.Name != "mimetype" || entry.UncompressedSize64 > 128 {
-			continue
+		// META-INF/container.xml is the EPUB-specific structural entry used to
+		// locate the package document. Checking the ZIP central directory also
+		// accepts otherwise readable EPUBs with leading bytes or a missing or
+		// compressed mimetype entry, while still rejecting generic ZIP files.
+		if cleanArchiveEntryName(entry.Name) == "META-INF/container.xml" && !entry.FileInfo().IsDir() {
+			return true
 		}
-		reader, err := entry.Open()
-		if err != nil {
-			return false
-		}
-		content, err := io.ReadAll(io.LimitReader(reader, 128))
-		_ = reader.Close()
-		return err == nil && strings.TrimSpace(string(content)) == "application/epub+zip"
 	}
 	return false
+}
+
+func cleanArchiveEntryName(value string) string {
+	value = strings.TrimPrefix(strings.ReplaceAll(value, "\\", "/"), "/")
+	cleaned := filepath.ToSlash(filepath.Clean(filepath.FromSlash(value)))
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return ""
+	}
+	return cleaned
 }
 
 func randomHex(bytesCount int) (string, error) {
