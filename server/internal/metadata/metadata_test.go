@@ -54,6 +54,33 @@ func TestExtractEPUBMetadataAndCover(t *testing.T) {
 	}
 }
 
+func TestExtractEPUBAcceptsNonStandardContainerCase(t *testing.T) {
+	buffer := new(bytes.Buffer)
+	writer := zip.NewWriter(buffer)
+	writeZipFile(t, writer, "meta-inf/Container.XML", []byte(`
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OPS/book.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`))
+	writeZipFile(t, writer, "OPS/book.opf", []byte(`
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>兼容 EPUB</dc:title></metadata>
+</package>`))
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(t.TempDir(), "legacy.epub")
+	if err := os.WriteFile(filePath, buffer.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Extract(filePath, "epub", "legacy.epub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Title != "兼容 EPUB" {
+		t.Fatalf("unexpected EPUB metadata: %+v", result)
+	}
+}
+
 func TestExtractPDFInfo(t *testing.T) {
 	filePath := filepath.Join(t.TempDir(), "book.pdf")
 	content := []byte("%PDF-1.7\n1 0 obj << /Title (Clean\\040Code) /Author (Robert C. Martin) /Subject (technology; programming) /CreationDate (D:20080801) >> endobj\ntrailer << /Info 1 0 R >>")

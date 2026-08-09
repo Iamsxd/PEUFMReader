@@ -874,7 +874,7 @@ func (a *API) uploadBookFile(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, library.ErrUnsupportedFormat):
-			writeError(w, http.StatusUnsupportedMediaType, "unsupported_format", "文件内容不是有效的 PDF、EPUB、MOBI 或 AZW3；EPUB 需要是可解压且包含 META-INF/container.xml 的文件")
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_format", importing.FailureMessage(err))
 		case errors.Is(err, library.ErrUploadTooLarge):
 			writeError(w, http.StatusRequestEntityTooLarge, "upload_too_large", "file exceeds the configured upload limit")
 		case errors.Is(err, importing.ErrMetadataExtraction):
