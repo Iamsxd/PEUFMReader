@@ -62,6 +62,32 @@ func TestIngestPDFAndDeduplicate(t *testing.T) {
 	}
 }
 
+func TestIngestPDFWithLeadingBytes(t *testing.T) {
+	manager, err := NewManager(filepath.Join(t.TempDir(), "library"), filepath.Join(t.TempDir(), "staging"), filepath.Join(t.TempDir(), "cache"), 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := append([]byte{0xef, 0xbb, 0xbf}, []byte("transport-prefix\n%PDF-1.7\nreadable test data")...)
+	stored, err := manager.Ingest("prefixed.pdf", bytes.NewReader(content))
+	if err != nil {
+		t.Fatalf("ingest PDF with leading bytes returned error: %v", err)
+	}
+	if stored.Format != "pdf" {
+		t.Fatalf("unexpected PDF result: %+v", stored)
+	}
+}
+
+func TestIngestReportsInvalidPDFSignature(t *testing.T) {
+	manager, err := NewManager(filepath.Join(t.TempDir(), "library"), filepath.Join(t.TempDir(), "staging"), filepath.Join(t.TempDir(), "cache"), 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = manager.Ingest("renamed.pdf", strings.NewReader("this is not a PDF"))
+	if !errors.Is(err, ErrInvalidPDF) || !errors.Is(err, ErrUnsupportedFormat) {
+		t.Fatalf("invalid PDF returned unexpected error: %v", err)
+	}
+}
+
 func TestIngestEPUB(t *testing.T) {
 	buffer := new(bytes.Buffer)
 	writer := zip.NewWriter(buffer)
@@ -139,6 +165,59 @@ func TestIngestEPUBWithoutMimetypeEntry(t *testing.T) {
 	}
 	if stored.Format != "epub" {
 		t.Fatalf("unexpected EPUB result: %+v", stored)
+	}
+}
+
+func TestIngestEPUBWithNonStandardContainerCase(t *testing.T) {
+	buffer := new(bytes.Buffer)
+	writer := zip.NewWriter(buffer)
+	container, _ := writer.Create("meta-inf/Container.XML")
+	_, _ = container.Write([]byte("<container/>"))
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	manager, err := NewManager(filepath.Join(t.TempDir(), "library"), filepath.Join(t.TempDir(), "staging"), filepath.Join(t.TempDir(), "cache"), 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := manager.Ingest("legacy.epub", bytes.NewReader(buffer.Bytes()))
+	if err != nil {
+		t.Fatalf("ingest EPUB with non-standard container case returned error: %v", err)
+	}
+	if stored.Format != "epub" {
+		t.Fatalf("unexpected EPUB result: %+v", stored)
+	}
+}
+
+func TestIngestReportsInvalidEPUBStructure(t *testing.T) {
+	manager, err := NewManager(filepath.Join(t.TempDir(), "library"), filepath.Join(t.TempDir(), "staging"), filepath.Join(t.TempDir(), "cache"), 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Ingest("damaged.epub", strings.NewReader("not a ZIP archive")); !errors.Is(err, ErrInvalidEPUBArchive) {
+		t.Fatalf("damaged EPUB returned unexpected error: %v", err)
+	}
+
+	buffer := new(bytes.Buffer)
+	writer := zip.NewWriter(buffer)
+	entry, _ := writer.Create("book.opf")
+	_, _ = entry.Write([]byte("<package/>"))
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Ingest("missing-container.epub", bytes.NewReader(buffer.Bytes())); !errors.Is(err, ErrMissingEPUBContainer) {
+		t.Fatalf("EPUB without container.xml returned unexpected error: %v", err)
+	}
+}
+
+func TestIngestReportsEmptyEbook(t *testing.T) {
+	manager, err := NewManager(filepath.Join(t.TempDir(), "library"), filepath.Join(t.TempDir(), "staging"), filepath.Join(t.TempDir(), "cache"), 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Ingest("empty.epub", bytes.NewReader(nil)); !errors.Is(err, ErrEmptyEbook) {
+		t.Fatalf("empty ebook returned unexpected error: %v", err)
 	}
 }
 

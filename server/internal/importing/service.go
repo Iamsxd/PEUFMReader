@@ -131,8 +131,18 @@ func (s *Service) Import(
 
 func importJobFailure(failure error) error {
 	switch {
+	case errors.Is(failure, library.ErrEmptyEbook):
+		return errors.New("文件为空，未收到电子书内容；请确认上传没有被浏览器、反向代理或网络中断")
+	case errors.Is(failure, library.ErrInvalidPDF):
+		return errors.New("文件名是 PDF，但前 1 KiB 中没有有效的 %PDF-版本 文件头；文件可能损坏、下载不完整，或只是被改成了 .pdf 扩展名")
+	case errors.Is(failure, library.ErrInvalidEPUBArchive):
+		return errors.New("文件名是 EPUB，但内容不是可读取的 ZIP 容器；文件可能损坏、下载不完整或受 DRM/加密容器保护")
+	case errors.Is(failure, library.ErrMissingEPUBContainer):
+		return errors.New("EPUB 压缩包中缺少 META-INF/container.xml；这通常是普通 ZIP、打包层级错误或不完整的 EPUB")
+	case errors.Is(failure, library.ErrInvalidKindle):
+		return errors.New("文件名是 MOBI/AZW3，但没有有效的 BOOKMOBI 文件标识；文件可能损坏、受 DRM 保护或扩展名不正确")
 	case errors.Is(failure, library.ErrUnsupportedFormat):
-		return errors.New("文件内容不是有效的 PDF、EPUB、MOBI 或 AZW3；EPUB 需要包含 META-INF/container.xml")
+		return errors.New("无法从文件内容识别 PDF、EPUB、MOBI 或 AZW3；请确认没有上传网页下载页、普通压缩包或仅修改扩展名的文件")
 	case errors.Is(failure, library.ErrUploadTooLarge):
 		return errors.New("文件超过当前配置的单文件上传上限")
 	case errors.Is(failure, ErrMetadataExtraction):
@@ -142,6 +152,13 @@ func importJobFailure(failure error) error {
 	default:
 		return failure
 	}
+}
+
+// FailureMessage returns the sanitized reason stored in import reports. It is
+// also used by the upload response so the live result and retained history do
+// not disagree about why a file was rejected.
+func FailureMessage(failure error) string {
+	return importJobFailure(failure).Error()
 }
 
 func classify(dataStore *store.Store, ctx context.Context, extracted metadata.Result) []classification.Suggestion {

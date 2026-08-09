@@ -147,7 +147,11 @@ func extractEPUB(filePath string) (Result, error) {
 	}
 	defer archive.Close()
 
-	containerBytes, err := readZipEntry(archive.File, "META-INF/container.xml", maxMetadataEntryBytes)
+	containerPath := findZipEntryPathFold(archive.File, "META-INF/container.xml")
+	if containerPath == "" {
+		return Result{}, errors.New("EPUB container.xml is missing")
+	}
+	containerBytes, err := readZipEntry(archive.File, containerPath, maxMetadataEntryBytes)
 	if err != nil {
 		return Result{}, fmt.Errorf("read EPUB container: %w", err)
 	}
@@ -413,6 +417,20 @@ func readZipEntry(entries []*zip.File, name string, maxBytes int64) ([]byte, err
 		return content, nil
 	}
 	return nil, os.ErrNotExist
+}
+
+func findZipEntryPathFold(entries []*zip.File, name string) string {
+	fallback := ""
+	for _, entry := range entries {
+		cleaned := cleanArchivePath(entry.Name)
+		if cleaned == name && !entry.FileInfo().IsDir() {
+			return cleaned
+		}
+		if fallback == "" && strings.EqualFold(cleaned, name) && !entry.FileInfo().IsDir() {
+			fallback = cleaned
+		}
+	}
+	return fallback
 }
 
 func cleanArchivePath(value string) string {

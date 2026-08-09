@@ -19,9 +19,14 @@ import (
 var coverThumbnailSlots = make(chan struct{}, 2)
 
 var (
-	ErrUnsupportedFormat = errors.New("unsupported ebook format")
-	ErrUploadTooLarge    = errors.New("upload exceeds configured size limit")
-	ErrUnsafePath        = errors.New("unsafe library path")
+	ErrUnsupportedFormat    = errors.New("unsupported ebook format")
+	ErrEmptyEbook           = fmt.Errorf("empty ebook file: %w", ErrUnsupportedFormat)
+	ErrInvalidPDF           = fmt.Errorf("invalid PDF signature: %w", ErrUnsupportedFormat)
+	ErrInvalidEPUBArchive   = fmt.Errorf("invalid EPUB ZIP archive: %w", ErrUnsupportedFormat)
+	ErrMissingEPUBContainer = fmt.Errorf("EPUB container.xml is missing: %w", ErrUnsupportedFormat)
+	ErrInvalidKindle        = fmt.Errorf("invalid Kindle ebook signature: %w", ErrUnsupportedFormat)
+	ErrUploadTooLarge       = errors.New("upload exceeds configured size limit")
+	ErrUnsafePath           = errors.New("unsafe library path")
 )
 
 type Manager struct {
@@ -501,16 +506,23 @@ func detectFormat(path, originalFilename string) (string, string, error) {
 	}
 	defer file.Close()
 
-	header := make([]byte, 512)
+	// ISO 32000 readers commonly tolerate a short byte-order mark or transport
+	// prefix before the PDF header. Inspect the first 1 KiB so those readable
+	// files are not rejected merely because %PDF- is not byte zero.
+	header := make([]byte, 1024)
 	n, err := file.Read(header)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", "", fmt.Errorf("read staged file header: %w", err)
 	}
 	header = header[:n]
-	if bytes.HasPrefix(header, []byte("%PDF-")) {
+	if len(header) == 0 {
+		return "", "", ErrEmptyEbook
+	}
+	if hasPDFHeader(header) {
 		return "pdf", "application/pdf", nil
 	}
-	if isEPUB(path) {
+	epub, epubErr := hasEPUBContainer(path)
+	if epub {
 		return "epub", "application/epub+zip", nil
 	}
 	if len(header) >= 68 && bytes.Equal(header[60:68], []byte("BOOKMOBI")) {
@@ -521,13 +533,35 @@ func detectFormat(path, originalFilename string) (string, string, error) {
 			return "azw3", "application/vnd.amazon.ebook", nil
 		}
 	}
+	switch strings.ToLower(filepath.Ext(originalFilename)) {
+	case ".pdf":
+		return "", "", ErrInvalidPDF
+	case ".epub":
+		if epubErr != nil {
+			return "", "", ErrInvalidEPUBArchive
+		}
+		return "", "", ErrMissingEPUBContainer
+	case ".mobi", ".azw3":
+		return "", "", ErrInvalidKindle
+	}
 	return "", "", ErrUnsupportedFormat
 }
 
-func isEPUB(path string) bool {
+func hasPDFHeader(header []byte) bool {
+	marker := []byte("%PDF-")
+	index := bytes.Index(header, marker)
+	if index < 0 || len(header) < index+8 {
+		return false
+	}
+	major := header[index+5]
+	minor := header[index+7]
+	return major >= '0' && major <= '9' && header[index+6] == '.' && minor >= '0' && minor <= '9'
+}
+
+func hasEPUBContainer(path string) (bool, error) {
 	archive, err := zip.OpenReader(path)
 	if err != nil {
-		return false
+		return false, err
 	}
 	defer archive.Close()
 	for _, entry := range archive.File {
@@ -535,11 +569,11 @@ func isEPUB(path string) bool {
 		// locate the package document. Checking the ZIP central directory also
 		// accepts otherwise readable EPUBs with leading bytes or a missing or
 		// compressed mimetype entry, while still rejecting generic ZIP files.
-		if cleanArchiveEntryName(entry.Name) == "META-INF/container.xml" && !entry.FileInfo().IsDir() {
-			return true
+		if strings.EqualFold(cleanArchiveEntryName(entry.Name), "META-INF/container.xml") && !entry.FileInfo().IsDir() {
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 func cleanArchiveEntryName(value string) string {
