@@ -122,6 +122,37 @@ func TestLoadOperationsMonitoringDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadDeepSeekDefaultsToOfficialEndpoint(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example.invalid/peufmreader")
+	t.Setenv("ADMIN_PASSWORD", "a-secure-test-password")
+	t.Setenv("BIBLIOGRAPHY_PROVIDERS", "")
+	t.Setenv("AI_PROVIDER", "deepseek")
+	t.Setenv("AI_BASE_URL", "")
+	t.Setenv("AI_MODEL", "deepseek-v4-flash")
+	t.Setenv("AI_API_KEY", "not-a-real-key")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AIBaseURL != "https://api.deepseek.com" {
+		t.Fatalf("AIBaseURL=%q, want official DeepSeek endpoint", cfg.AIBaseURL)
+	}
+}
+
+func TestLoadRequiresDeepSeekAPIKey(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example.invalid/peufmreader")
+	t.Setenv("ADMIN_PASSWORD", "a-secure-test-password")
+	t.Setenv("BIBLIOGRAPHY_PROVIDERS", "")
+	t.Setenv("AI_PROVIDER", "deepseek")
+	t.Setenv("AI_MODEL", "deepseek-v4-flash")
+	t.Setenv("AI_API_KEY", "")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("DeepSeek configuration without AI_API_KEY was accepted")
+	}
+}
+
 func TestLoadRequiresStrongPrometheusTokenWhenEnabled(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://example.invalid/peufmreader")
 	t.Setenv("ADMIN_PASSWORD", "a-secure-test-password")

@@ -463,6 +463,15 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .device-token-list span { display: grid; gap: 3px; }
 .device-token-list small { color: #758078; font-size: .68rem; }
 .bibliography-source-panel { margin-top: 24px; background: linear-gradient(145deg, #edf2e9, #f5f2e8); }
+.ai-classification-panel { margin-top: 24px; background: linear-gradient(145deg, #e6f0e7, #f7f1e4); }
+.ai-classification-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
+.ai-classification-summary > div { display: grid; gap: 4px; padding: 14px; border: 1px solid #d2ddd0; border-radius: 13px; background: #fbfaf5; }
+.ai-classification-summary strong { color: #245d3b; font-family: Georgia, serif; font-size: 1.55rem; }
+.ai-classification-summary span, .ai-classification-provider, .ai-classification-privacy-note { color: #637268; font-size: .73rem; line-height: 1.55; }
+.ai-classification-provider { margin: 15px 0 0; }
+.ai-classification-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+.ai-classification-actions button { min-width: 132px; }
+.ai-classification-privacy-note { margin: 17px 0 0; padding-top: 14px; border-top: 1px solid #d6dfd4; }
 .bibliography-source-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-top: 20px; }
 .bibliography-source-card { min-width: 0; padding: 18px; border: 1px solid #d1d9cf; border-radius: 15px; background: #fbfaf5; box-shadow: 0 9px 25px #3c503d0a; }
 .bibliography-source-card.enabled { border-color: #aac3ad; box-shadow: inset 0 3px #3c7650, 0 9px 25px #3c503d0a; }
@@ -1041,6 +1050,9 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .review-summary-row { grid-template-columns: auto minmax(0, 1fr); }
   .review-summary-reasons { grid-column: 1 / -1; grid-template-columns: repeat(2, max-content); justify-items: start; }
   .integration-actions { align-items: stretch; flex-direction: column; }
+  .ai-classification-summary { grid-template-columns: 1fr; }
+  .ai-classification-actions { display: grid; grid-template-columns: 1fr; }
+  .ai-classification-actions button { width: 100%; }
   .calibre-row { grid-template-columns: auto 1fr; }
   .calibre-row > :last-child { grid-column: 1 / -1; }
   .job-row { grid-template-columns: 80px 1fr; }

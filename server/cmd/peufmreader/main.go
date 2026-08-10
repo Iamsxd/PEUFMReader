@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"peufmreader/internal/aiclassificationjobs"
 	"peufmreader/internal/bibliography"
 	"peufmreader/internal/bibliographyjobs"
 	"peufmreader/internal/calibre"
@@ -143,11 +144,13 @@ func main() {
 	} else if queued > 0 {
 		logger.Info("PDF asset jobs queued", "count", queued)
 	}
+	advisor := classification.NewAdvisor(cfg.AIProvider, cfg.AIBaseURL, cfg.AIModel, cfg.AIAPIKey, cfg.AITimeout)
 	workerID := fmt.Sprintf("%s-%d", hostname(), os.Getpid())
 	handlers := map[string]jobs.Handler{
 		calibre.ImportJobKind:        calibre.ImportHandler(calibreScanner, importService),
 		calibre.ReferenceSyncJobKind: calibre.ReferenceSyncHandler(calibreScanner, dataStore, libraryManager),
 		classificationjobs.JobKind:   classificationjobs.Handler(dataStore),
+		aiclassificationjobs.JobKind: aiclassificationjobs.Handler(dataStore, advisor),
 		importinbox.JobKind:          importinbox.Handler(importManager, importService),
 		pdfassets.JobKind:            pdfassets.Handler(dataStore, libraryManager, pdfProcessor),
 		bibliographyjobs.JobKind:     bibliographyjobs.Handler(dataStore, bibliographyService),
@@ -172,7 +175,6 @@ func main() {
 		logger.Info("read-only watched library enabled", "path", cfg.WatchLibraryLabel)
 	}
 
-	advisor := classification.NewAdvisor(cfg.AIProvider, cfg.AIBaseURL, cfg.AIModel, cfg.AIAPIKey, cfg.AITimeout)
 	importSources := []httpapi.ImportSource{
 		{ID: "browser-upload", Name: "网页批量上传", Mode: "upload", Enabled: true, MaxFileBytes: cfg.MaxUploadBytes},
 		{

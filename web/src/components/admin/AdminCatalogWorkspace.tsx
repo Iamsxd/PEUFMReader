@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { APIError, api } from '../../api'
-import type { BibliographySource, BibliographySourceInput, Category } from '../../types'
+import type { AIClassificationPreview, BibliographySource, BibliographySourceInput, Category } from '../../types'
 import { formatRelativeTime } from '../../utils'
 import { CatalogMaintenance } from '../CatalogMaintenance'
 import { ReviewQueue } from '../ReviewQueue'
@@ -37,11 +37,74 @@ export default function AdminCatalogWorkspace({ initialEditionID, onReviewTotalC
   }, [])
 
   return <div className="admin-workspace-module">
+    <AIClassificationPanel onError={onError} onNotice={onNotice} />
     <ReviewQueue categories={categories} initialEditionID={initialEditionID} onTotalChange={onReviewTotalChange} />
     <CategoryManager categories={adminCategories} onError={onError} onChanged={refreshCategories} />
     <CatalogMaintenance categories={categories} onError={onError} onNotice={onNotice} />
     <BibliographySourceManager sources={bibliographySources} onError={onError} onNotice={onNotice} onChanged={async () => setBibliographySources(await api.listBibliographySources())} />
   </div>
+}
+
+function AIClassificationPanel({ onError, onNotice }: { onError: (message: string) => void; onNotice: (message: string) => void }) {
+  const [preview, setPreview] = useState<AIClassificationPreview | null>(null)
+  const [busy, setBusy] = useState<'test' | 'batch' | ''>('')
+
+  async function refresh() {
+    setPreview(await api.getAIClassificationPreview())
+  }
+
+  useEffect(() => {
+    void refresh().catch((reason) => onError(reason instanceof APIError ? reason.message : '无法读取 AI 分类状态。'))
+  }, [])
+
+  async function testConnection() {
+    setBusy('test')
+    onError('')
+    onNotice('')
+    try {
+      await api.testAIClassification()
+      onNotice('AI 服务连接正常，尚未发送任何书籍信息。')
+    } catch (reason) {
+      onError(reason instanceof APIError ? reason.message : 'AI 连接测试失败。')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function enqueue(limit: number) {
+    if (!preview) return
+    const batchSize = Math.min(limit, preview.unclassifiedCount, preview.maxBatchSize)
+    if (batchSize < 1 || !window.confirm(`将把 ${batchSize} 本书的书名、作者、摘要、主题和现有分类发送给已配置的 AI 服务。不会发送正文，所有结果仍需人工确认。是否继续？`)) return
+    setBusy('batch')
+    onError('')
+    onNotice('')
+    try {
+      const result = await api.enqueueAIClassification(batchSize)
+      onNotice(result.created ? `AI 分类任务 #${result.job.id} 已排队，将处理 ${result.limit} 本书；完成后请在待整理中确认建议。` : `AI 分类任务 #${result.job.id} 已在处理或排队中。`)
+    } catch (reason) {
+      onError(reason instanceof APIError ? reason.message : 'AI 分类任务创建失败。')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const canClassify = Boolean(preview?.configured && preview.activeCategoryCount > 0 && preview.unclassifiedCount > 0)
+  const firstBatch = Math.min(50, preview?.unclassifiedCount ?? 0)
+  const allBatch = Math.min(preview?.unclassifiedCount ?? 0, preview?.maxBatchSize ?? 0)
+  return <section className="integration-panel ai-classification-panel">
+    <div className="section-title"><div><p className="eyebrow">DeepSeek / AI 分类建议</p><h2>批量给未归类书籍生成建议</h2><p className="muted">先测试连接，再选择小批量或全部处理。AI 只给建议，不会直接改动已确认分类。</p></div><span className={`source-status ${preview?.configured ? 'healthy' : 'failed'}`}>{preview?.configured ? '已配置' : '尚未配置'}</span></div>
+    {preview ? <>
+      <div className="ai-classification-summary"><div><strong>{preview.unclassifiedCount}</strong><span>本尚无已确认分类</span></div><div><strong>{preview.activeCategoryCount}</strong><span>个可供选择的启用分类</span></div><div><strong>{preview.maxBatchSize}</strong><span>本为单次任务上限</span></div></div>
+      <p className="ai-classification-provider">当前服务：{preview.configured ? `${providerLabel(preview.provider)} · ${preview.model || '未设置模型'}` : '请在服务器 .env 中设置 AI_PROVIDER、AI_MODEL 和 AI_API_KEY 后重新部署。'}</p>
+      <div className="ai-classification-actions"><button className="secondary" type="button" disabled={!preview.configured || Boolean(busy)} onClick={() => void testConnection()}>{busy === 'test' ? '测试中…' : '测试连接'}</button><button className="secondary" type="button" disabled={!canClassify || Boolean(busy)} onClick={() => void enqueue(firstBatch)}>{busy === 'batch' ? '正在排队…' : `先分类 ${firstBatch} 本`}</button><button className="primary" type="button" disabled={!canClassify || Boolean(busy)} onClick={() => void enqueue(allBatch)}>{allBatch < (preview.unclassifiedCount ?? 0) ? `分类前 ${allBatch} 本` : `分类全部 ${allBatch} 本`}</button></div>
+      {!preview.activeCategoryCount && <p className="source-last-error">请先至少启用一个固定分类，再启动 AI 分类。</p>}
+    </> : <p className="muted">正在读取 AI 分类状态…</p>}
+    <p className="ai-classification-privacy-note">隐私说明：仅发送书名、作者、出版年份、语言、摘要、主题和可选分类；不发送电子书正文、文件内容、阅读进度或用户信息。任务逐本限速，单次最多处理 5000 本，可在“任务与运维”查看进度和失败原因。</p>
+  </section>
+}
+
+function providerLabel(provider?: string): string {
+  return provider === 'deepseek' ? 'DeepSeek' : provider === 'ollama' ? 'Ollama' : provider === 'openai-compatible' ? '兼容云端 AI' : provider || '未配置'
 }
 
 function BibliographySourceManager({ sources, onChanged, onError, onNotice }: {

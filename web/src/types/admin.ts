@@ -14,6 +14,15 @@ export interface ClassificationRule {
   updatedAt: string
 }
 
+export interface AIClassificationPreview {
+  configured: boolean
+  provider?: string
+  model?: string
+  unclassifiedCount: number
+  activeCategoryCount: number
+  maxBatchSize: number
+}
+
 export interface BatchMetadataPatch {
   editionIds: number[]
   language?: string

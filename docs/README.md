@@ -12,6 +12,7 @@
 - [M2 阅读、导入与运维闭环验证](./validation/m2-reader-import-operations-validation.md)
 - [运维监控增强验证](./validation/operations-monitoring-enhancements.md)
 - [批量导入历史、报告与格式兼容验证](./validation/import-history-reports.md)
+- [DeepSeek AI 批量分类验证](./validation/ai-batch-classification.md)
 - [阅读器真实语料与自动化回归](./validation/reader-corpus-regression.md)
 - [桌面与移动浏览器系统测试](./validation/browser-system-test.md)
 - [依赖安全与发布加固验证](./validation/security-release-hardening.md)

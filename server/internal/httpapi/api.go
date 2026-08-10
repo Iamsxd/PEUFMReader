@@ -24,6 +24,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"peufmreader/internal/aiclassificationjobs"
 	"peufmreader/internal/bibliography"
 	"peufmreader/internal/calibre"
 	"peufmreader/internal/classification"
@@ -214,6 +215,9 @@ func (a *API) routes() {
 	a.mux.Handle("GET /api/v1/admin/classification-rules", a.requireAuth(http.HandlerFunc(a.listClassificationRules), "admin", false))
 	a.mux.Handle("PATCH /api/v1/admin/classification-rules/{id}", a.requireAuth(http.HandlerFunc(a.updateClassificationRule), "admin", true))
 	a.mux.Handle("POST /api/v1/admin/classification/reclassify", a.requireAuth(http.HandlerFunc(a.reclassifyCatalog), "admin", true))
+	a.mux.Handle("GET /api/v1/admin/ai-classification/preview", a.requireAuth(http.HandlerFunc(a.aiClassificationPreview), "admin", false))
+	a.mux.Handle("POST /api/v1/admin/ai-classification/test", a.requireAuth(http.HandlerFunc(a.testAIClassification), "admin", true))
+	a.mux.Handle("POST /api/v1/admin/ai-classification/batch", a.requireAuth(http.HandlerFunc(a.enqueueAIClassification), "admin", true))
 	a.mux.Handle("PATCH /api/v1/admin/metadata/batch", a.requireAuth(http.HandlerFunc(a.batchUpdateMetadata), "admin", true))
 	a.mux.Handle("GET /api/v1/admin/catalog/duplicates", a.requireAuth(http.HandlerFunc(a.listDuplicateCatalogGroups), "admin", false))
 	a.mux.Handle("POST /api/v1/admin/catalog/merge-works", a.requireAuth(http.HandlerFunc(a.mergeWorks), "admin", true))
@@ -1294,6 +1298,89 @@ func (a *API) reclassifyCatalog(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"job": job, "created": created})
 }
 
+func (a *API) aiClassificationPreview(w http.ResponseWriter, r *http.Request) {
+	unclassifiedCount, err := a.store.CountUnclassifiedEditions(r.Context())
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	categories, err := a.store.ListCategories(r.Context())
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	response := struct {
+		Configured          bool   `json:"configured"`
+		Provider            string `json:"provider,omitempty"`
+		Model               string `json:"model,omitempty"`
+		UnclassifiedCount   int    `json:"unclassifiedCount"`
+		ActiveCategoryCount int    `json:"activeCategoryCount"`
+		MaxBatchSize        int    `json:"maxBatchSize"`
+	}{
+		Configured:          a.advisor != nil,
+		UnclassifiedCount:   unclassifiedCount,
+		ActiveCategoryCount: len(categories),
+		MaxBatchSize:        aiclassificationjobs.MaxBatchSize,
+	}
+	if a.advisor != nil {
+		response.Provider = a.advisor.Provider()
+		response.Model = a.advisor.Model()
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (a *API) testAIClassification(w http.ResponseWriter, r *http.Request) {
+	if a.advisor == nil {
+		writeError(w, http.StatusConflict, "ai_not_configured", "AI classification is not configured")
+		return
+	}
+	if err := a.advisor.Probe(r.Context()); err != nil {
+		a.logger.Warn("AI classification probe failed", "provider", a.advisor.Provider(), "error", err)
+		writeError(w, http.StatusBadGateway, "ai_connection_failed", "AI connection test failed; check the API key, model, and network")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (a *API) enqueueAIClassification(w http.ResponseWriter, r *http.Request) {
+	if a.advisor == nil {
+		writeError(w, http.StatusConflict, "ai_not_configured", "AI classification is not configured")
+		return
+	}
+	var input struct {
+		Scope string `json:"scope"`
+		Limit int    `json:"limit"`
+	}
+	if err := readJSON(w, r, &input, 4<<10); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_ai_classification", err.Error())
+		return
+	}
+	if input.Scope != aiclassificationjobs.ScopeUnclassified || input.Limit < 1 || input.Limit > aiclassificationjobs.MaxBatchSize {
+		writeError(w, http.StatusBadRequest, "invalid_ai_classification", fmt.Sprintf("scope must be %q and limit must be between 1 and %d", aiclassificationjobs.ScopeUnclassified, aiclassificationjobs.MaxBatchSize))
+		return
+	}
+	total, err := a.store.CountUnclassifiedEditions(r.Context())
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if total == 0 {
+		writeError(w, http.StatusConflict, "no_unclassified_editions", "there are no unclassified editions to process")
+		return
+	}
+	if input.Limit > total {
+		input.Limit = total
+	}
+	userID := sessionFromContext(r.Context()).User.ID
+	job, created, err := a.store.EnqueueBackgroundJob(r.Context(), aiclassificationjobs.JobKind, input.Scope,
+		aiclassificationjobs.Payload{Scope: input.Scope, Limit: input.Limit}, &userID, nil, 3)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"job": job, "created": created, "totalUnclassified": total, "limit": input.Limit})
+}
+
 func (a *API) batchUpdateMetadata(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		EditionIDs    []int64  `json:"editionIds"`
@@ -1621,7 +1708,7 @@ func (a *API) aiClassifyEdition(w http.ResponseWriter, r *http.Request) {
 	}
 	options := make([]classification.CategoryOption, 0, len(categories))
 	for _, category := range categories {
-		options = append(options, classification.CategoryOption{Slug: category.Slug, Name: category.Name})
+		options = append(options, classification.CategoryOption{Slug: category.Slug, Name: category.Name, ParentName: category.ParentName})
 	}
 	suggestions, err := a.advisor.Suggest(r.Context(), book, options)
 	if err != nil {
