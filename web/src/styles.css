@@ -732,6 +732,13 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .reader-tool-group button:last-child { border-right: 0; }
 .reader-tool-group button:hover:not(:disabled) { background: #dce5dd; }
 .reader-tool-group button.active { background: #2d6041; color: white; box-shadow: inset 0 0 0 1px #17482c; }
+.reader-wake-lock-control { min-width: 124px; display: grid; flex: 0 0 auto; gap: 2px; }
+.reader-wake-lock-control button { min-height: 34px; padding: 6px 11px; border: 1px solid #cbd2cb; border-radius: 9px; background: #e8ece7; color: #34513e; font-size: .8rem; font-weight: 760; white-space: nowrap; }
+.reader-wake-lock-control button:hover:not(:disabled) { background: #dce5dd; }
+.reader-wake-lock-control button.active { border-color: #17482c; background: #2d6041; color: white; box-shadow: inset 0 0 0 1px #17482c; }
+.reader-wake-lock-control button:disabled { cursor: not-allowed; opacity: .62; }
+.reader-wake-lock-control > span { max-width: 150px; color: #64756a; font-size: .64rem; line-height: 1.3; }
+.reader-wake-lock-control.blocked > span, .reader-wake-lock-control.unsupported > span { color: #8a4c2f; }
 .reader-status-control { width: auto; display: inline-flex; flex: 0 0 auto; grid-template-columns: none; flex-direction: row; align-items: center; gap: 7px; color: #607067; font-size: .75rem; font-weight: 750; white-space: nowrap; }
 .reader-status-control select { width: auto; min-width: 76px; padding: 7px 26px 7px 9px; border-color: #cbd2cb; border-radius: 9px; background-color: #f8faf7; color: #294333; font-size: .78rem; font-weight: 750; }
 .reader-zoom-tools .reader-zoom-value, .reader-font-tools .reader-font-value { min-width: 58px; color: #233c2c; font-variant-numeric: tabular-nums; }
@@ -1061,6 +1068,8 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
   .reader-title { display: none; }
   .reader-toolbar { gap: 7px; padding: 7px 8px; }
   .reader-tool-group button { min-height: 32px; padding: 5px 9px; font-size: .75rem; }
+  .reader-wake-lock-control { min-width: 112px; }
+  .reader-wake-lock-control button { min-height: 32px; padding: 5px 9px; font-size: .75rem; }
   .reader-toolbar-divider, .reader-shortcuts { display: none; }
   .reader-status-control > span { display: none; }
   .reader-status-control select { min-width: 70px; }

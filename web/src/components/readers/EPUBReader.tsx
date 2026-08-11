@@ -18,6 +18,7 @@ import { createEPUBReadingMarkLocation, getReadingMarkNavigationTarget, upsertRe
 import { ReadingMarksPanel } from './ReadingMarksPanel'
 import { HighlightComposer, type PendingHighlight } from './HighlightComposer'
 import { SpeechPanel } from './SpeechPanel'
+import { ScreenWakeLockControl } from './ScreenWakeLockControl'
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis'
 import { extractReadableDocumentText } from '../../speech'
 import { isInteractiveReaderTarget, isReaderCenterTap, MOBILE_READER_CHROME_QUERY } from '../../readerChrome'
@@ -636,6 +637,7 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
           <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} disabled={offlineMode} title={offlineMode ? '离线状态下书签与高亮只读' : undefined} onClick={() => toggleSidePanel('marks')}>书签/高亮</button>
           <button className={sidePanel === 'speech' || speech.status === 'speaking' || speech.status === 'paused' ? 'active' : ''} aria-pressed={sidePanel === 'speech'} onClick={() => toggleSidePanel('speech')}>朗读</button>
         </div>
+        <ScreenWakeLockControl onChromeActivity={onChromeActivity} />
         <span className="reader-toolbar-divider" />
         <div className="reader-tool-group" aria-label="阅读方式">
           <button className={preferences.flow === 'paged' ? 'active' : ''} aria-pressed={preferences.flow === 'paged'} onClick={() => setFlow('paged')}>分页</button>
