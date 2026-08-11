@@ -69,36 +69,6 @@ const EPUB_THEMES: Record<EPUBTheme, Record<string, Record<string, string>>> = {
 }
 
 const EPUB_DISPLAY_TIMEOUT_MS = 15_000
-const MOBILE_SHORT_CONTENT_ALIGNMENT_STYLE_ID = 'peufm-mobile-short-content-alignment'
-
-function alignShortMobileEPUBContent(contentDocument: Document, readerHeight: number) {
-  const style = contentDocument.getElementById(MOBILE_SHORT_CONTENT_ALIGNMENT_STYLE_ID) as HTMLStyleElement | null
-    ?? Object.assign(contentDocument.createElement('style'), { id: MOBILE_SHORT_CONTENT_ALIGNMENT_STYLE_ID })
-  if (!style.parentNode) contentDocument.head.append(style)
-  style.textContent = ''
-
-  if (!window.matchMedia(MOBILE_READER_CHROME_QUERY).matches || readerHeight < 1) return
-  const body = contentDocument.body
-  const root = contentDocument.documentElement
-  const viewportWidth = Math.max(1, root.clientWidth)
-  const contentRange = contentDocument.createRange()
-  contentRange.selectNodeContents(body)
-  const contentHeight = contentRange.getBoundingClientRect().height
-  const contentWidth = Math.max(body.scrollWidth, root.scrollWidth)
-  const isMultiPageLayout = contentWidth > viewportWidth * 1.12
-  if (isMultiPageLayout || contentHeight < 1 || contentHeight >= readerHeight * 0.96) return
-
-  style.textContent = `
-    html { min-height: 100%; }
-    body {
-      box-sizing: border-box;
-      min-height: ${Math.ceil(readerHeight)}px !important;
-      display: flex !important;
-      flex-direction: column;
-      justify-content: center;
-    }
-  `
-}
 
 const EPUB_HIGHLIGHT_COLORS: Record<HighlightColor, string> = {
   yellow: '#f4d35e', green: '#76c893', blue: '#6ea8fe', pink: '#f49ac2', purple: '#b197fc',
@@ -358,7 +328,6 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
     const contentEventCleanups: Array<() => void> = []
     const attachContentEvents = (contents: Contents) => {
       let pointerStart: { pointerId: number; x: number; y: number } | null = null
-      const alignmentTimers = new Set<number>()
       const handleContentPointerDown = (event: PointerEvent) => {
         if (!window.matchMedia(MOBILE_READER_CHROME_QUERY).matches || !event.isPrimary) return
         pointerStart = { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
@@ -380,23 +349,11 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
         })) onToggleChrome()
       }
       const clearContentPointer = () => { pointerStart = null }
-      const alignContent = (delay = 80) => {
-        const timer = window.setTimeout(() => {
-          alignmentTimers.delete(timer)
-          if (!disposed) alignShortMobileEPUBContent(contents.document, host.clientHeight)
-        }, delay)
-        alignmentTimers.add(timer)
-      }
       contents.document.addEventListener('wheel', handleWheel, { passive: false })
       contents.document.addEventListener('pointerdown', handleContentPointerDown, { passive: true })
       contents.document.addEventListener('pointerup', handleContentPointerUp, { passive: true })
       contents.document.addEventListener('pointercancel', clearContentPointer, { passive: true })
-      contents.document.querySelectorAll('img').forEach((image) => image.addEventListener('load', () => alignContent(0), { once: true }))
-      alignContent()
-      alignContent(260)
-      void contents.document.fonts?.ready.then(() => alignContent(0)).catch(() => undefined)
       contentEventCleanups.push(() => {
-        alignmentTimers.forEach((timer) => window.clearTimeout(timer))
         contents.document.removeEventListener('wheel', handleWheel)
         contents.document.removeEventListener('pointerdown', handleContentPointerDown)
         contents.document.removeEventListener('pointerup', handleContentPointerUp)
@@ -558,28 +515,6 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
   useEffect(() => {
     renditionRef.current?.themes.fontSize(`${preferences.fontSize}%`)
   }, [preferences.fontSize])
-
-  useEffect(() => {
-    const host = hostRef.current
-    if (!host) return
-    let alignmentTimer: number | null = null
-    const alignVisibleContent = () => {
-      if (alignmentTimer !== null) window.clearTimeout(alignmentTimer)
-      alignmentTimer = window.setTimeout(() => {
-        alignmentTimer = null
-        host.querySelectorAll('iframe').forEach((frame) => {
-          if (frame.contentDocument) alignShortMobileEPUBContent(frame.contentDocument, host.clientHeight)
-        })
-      }, 80)
-    }
-    alignVisibleContent()
-    const observer = new ResizeObserver(alignVisibleContent)
-    observer.observe(host)
-    return () => {
-      observer.disconnect()
-      if (alignmentTimer !== null) window.clearTimeout(alignmentTimer)
-    }
-  }, [preferences.flow, preferences.fontSize])
 
   useEffect(() => {
     renditionRef.current?.themes.select(preferences.theme)
