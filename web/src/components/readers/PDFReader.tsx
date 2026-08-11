@@ -26,6 +26,7 @@ import { HighlightComposer, type PendingHighlight } from './HighlightComposer'
 import { SpeechPanel } from './SpeechPanel'
 import { ScreenWakeLockControl } from './ScreenWakeLockControl'
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis'
+import { useReadingProgressPersistence } from '../../hooks/useReadingProgressPersistence'
 import { isInteractiveReaderTarget, isReaderCenterTap, MOBILE_READER_CHROME_QUERY } from '../../readerChrome'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerURL
@@ -118,6 +119,10 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   const [highlights, setHighlights] = useState<ReadingMark[]>([])
   const [pendingHighlight, setPendingHighlight] = useState<PendingHighlight | null>(null)
   const [savingHighlight, setSavingHighlight] = useState(false)
+  const { schedule: scheduleProgress } = useReadingProgressPersistence({
+    onProgress,
+    onError: () => setError('阅读位置保存失败。'),
+  })
 
   const pageCount = pdfDocument?.numPages ?? 0
   const effectiveLayout: PDFPageLayout = isNarrow ? 'single' : preferences.layout
@@ -351,14 +356,11 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
 
   useEffect(() => {
     if (pageCount === 0) return
-    const timer = window.setTimeout(() => {
-      void onProgress(
-        { pageIndex: pageNumber - 1, yRatio: 0 },
-        clampProgress(pageNumber / pageCount),
-      ).catch(() => setError('阅读位置保存失败。'))
+    scheduleProgress({
+      position: { pageIndex: pageNumber - 1, yRatio: 0 },
+      overallProgress: clampProgress(pageNumber / pageCount),
     }, 600)
-    return () => window.clearTimeout(timer)
-  }, [pageCount, pageNumber])
+  }, [pageCount, pageNumber, scheduleProgress])
 
   const updateZoom = useCallback((delta: number) => {
     setPreferences((current) => ({
