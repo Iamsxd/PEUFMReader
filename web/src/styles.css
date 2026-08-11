@@ -730,11 +730,11 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .reader-tool-group { display: inline-flex; flex: 0 0 auto; overflow: hidden; border: 1px solid #cbd2cb; border-radius: 9px; background: #e8ece7; }
 .reader-tool-group button { min-height: 34px; padding: 6px 11px; border: 0; border-right: 1px solid #cbd2cb; background: transparent; color: #34513e; font-size: .8rem; font-weight: 760; white-space: nowrap; }
 .reader-tool-group button:last-child { border-right: 0; }
-.reader-tool-group button:hover:not(:disabled) { background: #dce5dd; }
+.reader-tool-group button:hover:not(:disabled):not(.active) { background: #dce5dd; }
 .reader-tool-group button.active { background: #2d6041; color: white; box-shadow: inset 0 0 0 1px #17482c; }
 .reader-wake-lock-control { min-width: 124px; display: grid; flex: 0 0 auto; gap: 2px; }
 .reader-wake-lock-control button { min-height: 34px; padding: 6px 11px; border: 1px solid #cbd2cb; border-radius: 9px; background: #e8ece7; color: #34513e; font-size: .8rem; font-weight: 760; white-space: nowrap; }
-.reader-wake-lock-control button:hover:not(:disabled) { background: #dce5dd; }
+.reader-wake-lock-control button:hover:not(:disabled):not(.active) { background: #dce5dd; }
 .reader-wake-lock-control button.active { border-color: #17482c; background: #2d6041; color: white; box-shadow: inset 0 0 0 1px #17482c; }
 .reader-wake-lock-control button:disabled { cursor: not-allowed; opacity: .62; }
 .reader-wake-lock-control > span { max-width: 150px; color: #64756a; font-size: .64rem; line-height: 1.3; }
