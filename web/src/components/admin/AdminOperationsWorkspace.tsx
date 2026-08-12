@@ -150,7 +150,7 @@ function jobFilterCount(filter: JobFilter, jobs: BackgroundJob[]): number {
 
 function jobKindLabel(kind: string): string {
   if (kind === 'calibre-reference-sync') return 'Calibre 只读引用同步'
-  return { 'calibre-import': 'Calibre 迁移', 'inbox-import': '移动导入箱', 'watched-library-import': '只读目录增量导入', 'pdf-assets': 'PDF 封面 / OCR', 'bibliography-enrichment': '外部书目自动查询' }[kind] ?? kind
+  return { 'calibre-import': 'Calibre 迁移', 'inbox-import': '移动导入箱', 'watched-library-import': '只读目录增量导入', 'pdf-assets': 'PDF 封面 / OCR', 'bibliography-enrichment': '外部书目自动查询', 'ai-classification-batch': 'AI 批量分类' }[kind] ?? kind
 }
 
 function jobSourceLabel(job: BackgroundJob): string {
@@ -181,6 +181,8 @@ function auditActionLabel(action: string): string {
     'POST /api/v1/editions/{id}/bibliography-search': '查询外部书目',
     'POST /api/v1/background-jobs/{id}/retry': '重试后台任务',
     'POST /api/v1/admin/classification/reclassify': '重新分类未归类书籍',
+    'POST /api/v1/admin/ai-classification/test': '测试 AI 分类连接',
+    'POST /api/v1/admin/ai-classification/batch': '启动 AI 批量分类',
     'POST /api/v1/calibre/import': '启动 Calibre 迁移',
     'POST /api/v1/admin/categories': '创建题材分类',
     'PATCH /api/v1/admin/categories/{id}': '修改题材分类',

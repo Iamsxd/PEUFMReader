@@ -8,7 +8,21 @@ import (
 )
 
 func (s *Store) ListUnclassifiedEditionIDs(ctx context.Context) ([]int64, error) {
-	rows, err := s.pool.Query(ctx, `
+	return s.listUnclassifiedEditionIDs(ctx, 0)
+}
+
+// ListUnclassifiedEditionIDsLimit returns only editions without an accepted
+// category. A bounded AI batch prevents an accidental whole-library request
+// from monopolising a worker or creating an unexpected cloud API bill.
+func (s *Store) ListUnclassifiedEditionIDsLimit(ctx context.Context, limit int) ([]int64, error) {
+	if limit < 1 || limit > 5000 {
+		limit = 5000
+	}
+	return s.listUnclassifiedEditionIDs(ctx, limit)
+}
+
+func (s *Store) listUnclassifiedEditionIDs(ctx context.Context, limit int) ([]int64, error) {
+	query := `
 		SELECT e.id
 		FROM editions e
 		WHERE EXISTS (SELECT 1 FROM book_files bf WHERE bf.edition_id=e.id)
@@ -16,7 +30,13 @@ func (s *Store) ListUnclassifiedEditionIDs(ctx context.Context) ([]int64, error)
 			SELECT 1 FROM classification_decisions cd
 			WHERE cd.edition_id=e.id AND cd.status='accepted'
 		  )
-		ORDER BY e.id`)
+		ORDER BY e.id`
+	args := []any{}
+	if limit > 0 {
+		query += " LIMIT $1"
+		args = append(args, limit)
+	}
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list unclassified editions: %w", err)
 	}
@@ -30,6 +50,40 @@ func (s *Store) ListUnclassifiedEditionIDs(ctx context.Context) ([]int64, error)
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+func (s *Store) CountUnclassifiedEditions(ctx context.Context) (int, error) {
+	var total int
+	err := s.pool.QueryRow(ctx, `
+		SELECT count(*)::int
+		FROM editions e
+		WHERE EXISTS (SELECT 1 FROM book_files bf WHERE bf.edition_id=e.id)
+		  AND NOT EXISTS (
+			SELECT 1 FROM classification_decisions cd
+			WHERE cd.edition_id=e.id AND cd.status='accepted'
+		  )`).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("count unclassified editions: %w", err)
+	}
+	return total, nil
+}
+
+func (s *Store) IsEditionUnclassified(ctx context.Context, editionID int64) (bool, error) {
+	var eligible bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM editions e
+			WHERE e.id=$1
+			  AND EXISTS (SELECT 1 FROM book_files bf WHERE bf.edition_id=e.id)
+			  AND NOT EXISTS (
+				SELECT 1 FROM classification_decisions cd
+				WHERE cd.edition_id=e.id AND cd.status='accepted'
+			  )
+		)`, editionID).Scan(&eligible)
+	if err != nil {
+		return false, fmt.Errorf("check unclassified edition: %w", err)
+	}
+	return eligible, nil
 }
 
 // ReplaceAutomaticClassification replaces only deterministic decisions. It never

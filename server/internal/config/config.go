@@ -238,14 +238,20 @@ func Load() (Config, error) {
 		}
 	}
 	if cfg.AIProvider != "" {
-		if cfg.AIProvider != "ollama" && cfg.AIProvider != "openai-compatible" {
-			return Config{}, fmt.Errorf("AI_PROVIDER must be ollama or openai-compatible")
+		if cfg.AIProvider != "ollama" && cfg.AIProvider != "openai-compatible" && cfg.AIProvider != "deepseek" {
+			return Config{}, fmt.Errorf("AI_PROVIDER must be ollama, deepseek, or openai-compatible")
 		}
 		if cfg.AIModel == "" {
 			return Config{}, fmt.Errorf("AI_MODEL is required when AI_PROVIDER is enabled")
 		}
+		if cfg.AIProvider == "deepseek" && strings.TrimSpace(cfg.AIAPIKey) == "" {
+			return Config{}, fmt.Errorf("AI_API_KEY is required when AI_PROVIDER is deepseek")
+		}
 		if cfg.AIBaseURL == "" && cfg.AIProvider == "ollama" {
 			cfg.AIBaseURL = "http://host.docker.internal:11434"
+		}
+		if cfg.AIBaseURL == "" && cfg.AIProvider == "deepseek" {
+			cfg.AIBaseURL = "https://api.deepseek.com"
 		}
 		parsedAIURL, parseErr := url.Parse(cfg.AIBaseURL)
 		if parseErr != nil || (parsedAIURL.Scheme != "http" && parsedAIURL.Scheme != "https") || parsedAIURL.Host == "" {

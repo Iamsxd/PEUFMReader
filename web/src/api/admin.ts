@@ -1,4 +1,4 @@
-import type { AuditEvent, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookPermission, CalibreImportResult, CalibrePreview, Category, ClassificationRule, DuplicateCatalogGroup, GroupLibraryPermission, ImportBatch, ImportBatchDetail, ImportBatchPage, ImportJob, ImportSource, LibraryGroup, ManagedUser, OperationsOverview, ReviewInput, ReviewItem, ReviewQueuePage, ReviewQueueQuery, Role, StorageAuditReport, User, UserAccessInfo, UserGroup } from '../types'
+import type { AIClassificationPreview, AuditEvent, BackgroundJob, BatchMetadataPatch, BibliographyProbeResponse, BibliographySearchResult, BibliographySource, BibliographySourceInput, BookPermission, CalibreImportResult, CalibrePreview, Category, ClassificationRule, DuplicateCatalogGroup, GroupLibraryPermission, ImportBatch, ImportBatchDetail, ImportBatchPage, ImportJob, ImportSource, LibraryGroup, ManagedUser, OperationsOverview, ReviewInput, ReviewItem, ReviewQueuePage, ReviewQueueQuery, Role, StorageAuditReport, User, UserAccessInfo, UserGroup } from '../types'
 import { querySuffix, transport } from './core'
 
 export const adminAPI = {
@@ -21,6 +21,15 @@ export const adminAPI = {
   },
   reclassifyUnclassified(): Promise<{ job: BackgroundJob; created: boolean }> {
     return transport.request('/api/v1/admin/classification/reclassify', { method: 'POST', body: JSON.stringify({ scope: 'unclassified' }), headers: { 'Content-Type': 'application/json' } })
+  },
+  getAIClassificationPreview(): Promise<AIClassificationPreview> {
+    return transport.request('/api/v1/admin/ai-classification/preview')
+  },
+  testAIClassification(): Promise<{ ok: boolean }> {
+    return transport.request('/api/v1/admin/ai-classification/test', { method: 'POST' })
+  },
+  enqueueAIClassification(limit: number): Promise<{ job: BackgroundJob; created: boolean; totalUnclassified: number; limit: number }> {
+    return transport.request('/api/v1/admin/ai-classification/batch', { method: 'POST', body: JSON.stringify({ scope: 'unclassified', limit }), headers: { 'Content-Type': 'application/json' } })
   },
   batchUpdateMetadata(input: BatchMetadataPatch): Promise<{ updated: number }> {
     return transport.request('/api/v1/admin/metadata/batch', { method: 'PATCH', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' } })

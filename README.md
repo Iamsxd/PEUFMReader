@@ -316,7 +316,16 @@ AI_BASE_URL=http://192.168.1.10:11434
 AI_MODEL=qwen3:8b
 ```
 
-OpenAI-compatible 服务示例：
+DeepSeek 官方 API（推荐的云端配置）示例：
+
+```dotenv
+AI_PROVIDER=deepseek
+AI_MODEL=deepseek-v4-flash
+AI_API_KEY=replace-with-deepseek-api-key
+# AI_BASE_URL 留空时默认使用 https://api.deepseek.com
+```
+
+其他 OpenAI-compatible 服务示例：
 
 ```dotenv
 AI_PROVIDER=openai-compatible
@@ -325,7 +334,9 @@ AI_MODEL=provider-model-name
 AI_API_KEY=replace-with-provider-api-key
 ```
 
-AI 只提供分类建议，不能直接覆盖人工确认结果。使用云端服务意味着相关书目元数据会离开局域网。
+完成配置并以 `docker compose up -d --build` 重启后，管理员可在“管理后台 → 书目与分类”先查看未归类数量并测试连接，再选择先分类 50 本或单次处理全部未归类书籍（单次上限 5000 本）。任务逐本限速执行，可在“任务与运维”查看状态、进度与失败原因。
+
+AI 只提供分类建议，不能直接覆盖人工确认结果；建议会回到“待整理”队列，需由管理员确认。云端批量分类只发送书名、作者、出版年份、语言、摘要、主题和现有分类选项，不发送电子书正文、文件内容、阅读进度或用户信息。详见 [AI 批量分类验证说明](docs/validation/ai-batch-classification.md)。
 
 ## Calibre 与自动导入
 
