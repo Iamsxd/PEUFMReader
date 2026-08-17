@@ -1,4 +1,4 @@
-FROM node:24.18.0-bookworm-slim AS web-build
+FROM node:26.7.0-bookworm-slim AS web-build
 WORKDIR /src/web
 RUN npm install --global pnpm@11.9.0
 COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
@@ -6,7 +6,7 @@ RUN pnpm install --frozen-lockfile
 COPY web/ ./
 RUN pnpm build
 
-FROM golang:1.26.5-bookworm AS server-build
+FROM golang:1.26.6-bookworm AS server-build
 WORKDIR /src/server
 COPY server/go.mod server/go.sum ./
 RUN go mod download
