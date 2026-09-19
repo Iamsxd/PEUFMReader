@@ -11,6 +11,7 @@ import { ReadingStatisticsPage } from './ReadingStatisticsPage'
 import { DeviceSyncPage } from './DeviceSyncPage'
 import { OfflineBooksPage } from './OfflineBooksPage'
 import { InstallAppPrompt } from './InstallAppPrompt'
+import { ThemeSwitch } from './ThemeProvider'
 
 interface Props {
   session: Session
@@ -135,10 +136,13 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
             </details>
           </div>
         </nav>
-        <details className="account-menu">
-          <summary aria-label="账号菜单"><span className="account-avatar">{session.user.username.slice(0, 1).toUpperCase()}</span><span className="account-summary"><strong>{session.user.username}</strong><small>{session.user.role === 'admin' ? '管理员' : '阅读者'}</small></span><span aria-hidden="true">⌄</span></summary>
-          <div className="account-popover"><div><strong>{session.user.username}</strong><small>{session.user.role === 'admin' ? '管理员账号' : '阅读者账号'}</small></div><button className="quiet" onClick={onLogout}>退出登录</button></div>
-        </details>
+        <div className="app-header-tools">
+          <ThemeSwitch />
+          <details className="account-menu">
+            <summary aria-label="账号菜单"><span className="account-avatar">{session.user.username.slice(0, 1).toUpperCase()}</span><span className="account-summary"><strong>{session.user.username}</strong><small>{session.user.role === 'admin' ? '管理员' : '阅读者'}</small></span><span aria-hidden="true">⌄</span></summary>
+            <div className="account-popover"><div><strong>{session.user.username}</strong><small>{session.user.role === 'admin' ? '管理员账号' : '阅读者账号'}</small></div><button className="quiet" onClick={onLogout}>退出登录</button></div>
+          </details>
+        </div>
       </header>
 
       <InstallAppPrompt />

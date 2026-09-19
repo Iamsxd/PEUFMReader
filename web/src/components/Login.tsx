@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { APIError, api } from '../api'
 import type { AuthProviders, Session } from '../types'
+import { ThemeSwitch } from './ThemeProvider'
 
 interface Props {
   onLogin: (session: Session) => void
@@ -33,6 +34,7 @@ export function Login({ onLogin }: Props) {
   return (
     <main className="login-page">
       <section className="login-card">
+        <ThemeSwitch />
         <p className="eyebrow">私有书库 · NAS</p>
         <h1>PEUFMReader</h1>
         <p className="muted">登录后继续你的阅读。</p>

@@ -3,6 +3,8 @@ import { APIError, api } from '../api'
 import type { BookFile, CatalogQuery, CategorySummary, HomeBook, HomeSummary, PersonalStats, Recommendation } from '../types'
 import { coverThumbnailURL, formatDuration, formatRelativeTime } from '../utils'
 import { BookCard } from './BookCard'
+import { BookCover } from './BookCover'
+import { useAppTheme } from './ThemeProvider'
 
 interface Props {
   username: string
@@ -15,6 +17,7 @@ interface Props {
 }
 
 export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategories, onFavorites, onRecommendations }: Props) {
+  const { theme } = useAppTheme()
   const [summary, setSummary] = useState<HomeSummary | null>(null)
   const [categories, setCategories] = useState<CategorySummary[] | null>(null)
   const [hotBooks, setHotBooks] = useState<HomeBook[] | null>(null)
@@ -70,26 +73,24 @@ export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategor
 
   return (
     <div className="dashboard-page">
-      <section className="dashboard-hero">
-        <div>
-          <p className="eyebrow">欢迎回来，{username}</p>
-          <h1>今天想读点什么？</h1>
-          <p>从上次的位置继续，或者在共享书库中发现下一本书。</p>
-        </div>
-        <form className="dashboard-search" role="search" onSubmit={search}>
-          <span aria-hidden="true">⌕</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索书名、作者、ISBN、年份或题材" aria-label="搜索书库" />
-          <button className="primary" type="submit">搜索</button>
-        </form>
-      </section>
+      <div className="home-opening">
+        <section className="dashboard-hero">
+          <div className="home-editorial-copy">
+            <p className="eyebrow">欢迎回来，{username}</p>
+            <h1>{theme === 'night' ? <>今夜，<br />在书里<em>远行。</em></> : <>把时间，<br />还给<em>好书。</em></>}</h1>
+            <p>从上次的位置继续，或者在共享书库中发现下一本书。</p>
+          </div>
+          <form className="dashboard-search" role="search" onSubmit={search}>
+            <span aria-hidden="true">⌕</span>
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索书名、作者、ISBN、年份或题材" aria-label="搜索书库" />
+            <button className="primary" type="submit">搜索</button>
+          </form>
+        </section>
 
-      {summaryError && <div className="notice error dashboard-section-error" role="alert">{summaryError} 其他书库内容仍会继续加载。</div>}
-
-      <div className="dashboard-lead-grid">
         <section className="continue-panel">
           <SectionHeading eyebrow="个人书架" title="继续阅读" actionLabel="查看全部" onAction={() => onBrowse({ status: 'reading', sort: 'newest' })} />
           {!summary ? summaryError ? <SectionFailure message={summaryError} /> : <SectionLoading label="正在加载最近阅读…" compact /> : primaryReading ? (
-            <ContinueCard item={primaryReading} onOpen={onOpenBook} onDetails={onViewBook} />
+            <ContinueCard item={primaryReading} companion={otherReading[0]?.book} onOpen={onOpenBook} onDetails={onViewBook} />
           ) : (
             <div className="continue-empty">
               <strong>还没有正在阅读的书</strong>
@@ -98,8 +99,10 @@ export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategor
             </div>
           )}
         </section>
-        <ReadingStats stats={summary?.stats} error={summaryError} onFavorites={onFavorites} />
       </div>
+
+      {summaryError && <div className="notice error dashboard-section-error" role="alert">{summaryError} 其他书库内容仍会继续加载。</div>}
+      <ReadingStats stats={summary?.stats} error={summaryError} onFavorites={onFavorites} />
 
       {otherReading.length > 0 && (
         <BookShelf title="最近阅读" eyebrow="继续你的节奏" items={otherReading} onOpen={onOpenBook} onDetails={onViewBook} />
@@ -141,12 +144,16 @@ export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategor
   )
 }
 
-function ContinueCard({ item, onOpen, onDetails }: { item: HomeBook; onOpen: (book: BookFile) => void; onDetails: (book: BookFile) => void }) {
+function ContinueCard({ item, companion, onOpen, onDetails }: { item: HomeBook; companion?: BookFile; onOpen: (book: BookFile) => void; onDetails: (book: BookFile) => void }) {
   const progress = Math.round((item.overallProgress ?? 0) * 100)
   return (
     <article className="continue-card">
-      {item.book.coverUrl ? <img src={coverThumbnailURL(item.book.coverUrl, 320)} alt="" decoding="async" /> : <span className="continue-cover-placeholder">{item.book.title.slice(0, 1)}</span>}
-      <div>
+      <div className="continue-stage">
+        <span className="continue-orbit" aria-hidden="true" />
+        {companion && <span className="continue-companion"><BookCover book={companion} featured /></span>}
+        <BookCover book={item.book} featured />
+      </div>
+      <div className="continue-description">
         <span className={`format-badge ${item.book.format}`}>{item.book.format.toUpperCase()}</span>
         <h3>{item.book.title}</h3>
         <p>{item.book.authors.join('、') || '未知作者'}</p>
@@ -192,7 +199,7 @@ function SectionFailure({ message }: { message: string }) {
 
 function BookShelf({ title, eyebrow, items, onOpen, onDetails, hot = false }: { title: string; eyebrow: string; items: HomeBook[]; onOpen: (book: BookFile) => void; onDetails: (book: BookFile) => void; hot?: boolean }) {
   return (
-    <section className="dashboard-section">
+    <section className={`dashboard-section${hot ? '' : ' reading-history-section'}`}>
       <SectionHeading eyebrow={eyebrow} title={title} />
       <div className="book-shelf">
         {items.map((item) => (

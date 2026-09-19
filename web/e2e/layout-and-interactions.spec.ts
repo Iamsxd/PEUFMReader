@@ -95,7 +95,7 @@ test('home shell renders before summary and defers expensive sections', async ({
 
   await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '首页', exact: true }).click()
   try {
-    await expect(page.getByRole('heading', { name: '今天想读点什么？' })).toBeVisible()
+    await expect(page.locator('.dashboard-hero h1')).toBeVisible()
     await expect(page.getByRole('status').filter({ hasText: '正在汇总阅读数据' })).toBeVisible()
     expect(secondaryRequests).toBe(0)
   } finally {

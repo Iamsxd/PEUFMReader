@@ -4,6 +4,7 @@ import { findOfflineBook, offlineStorageSupported, removeOfflineBook, saveBookFo
 import type { BookDetail, BookFile, Recommendation } from '../types'
 import { formatBytes, formatDuration, formatRelativeTime } from '../utils'
 import { BookCard } from './BookCard'
+import { BookCover } from './BookCover'
 
 interface Props {
   bookID: number
@@ -183,7 +184,7 @@ export function BookDetailPage({ bookID, userID, isAdmin, onBack, onOpenBook, on
       <section className="book-detail-hero">
         <div className="detail-cover-column">
           <div className="detail-cover-wrap">
-            {coverURL ? <img src={coverURL} alt={`${book.title}封面`} /> : <span>{book.title.slice(0, 1)}</span>}
+            {coverURL ? <img src={coverURL} alt={`${book.title}封面`} /> : <BookCover book={book} featured />}
           </div>
           {isAdmin && book.format === 'pdf' && book.storageMode !== 'calibre-reference' && (
             <div className="detail-cover-tools">
