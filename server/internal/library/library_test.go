@@ -60,6 +60,14 @@ func TestIngestPDFAndDeduplicate(t *testing.T) {
 	if second.Created || second.RelativePath != first.RelativePath {
 		t.Fatalf("duplicate was not detected: %+v", second)
 	}
+	entries, err := os.ReadDir(manager.stagingRoot)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("duplicate left staging files: %v, %v", entries, err)
+	}
+	preserved, err := os.ReadFile(first.AbsolutePath)
+	if err != nil || !bytes.Equal(preserved, content) {
+		t.Fatalf("duplicate cleanup changed the original book: %v", err)
+	}
 }
 
 func TestIngestPDFWithLeadingBytes(t *testing.T) {
@@ -74,6 +82,46 @@ func TestIngestPDFWithLeadingBytes(t *testing.T) {
 	}
 	if stored.Format != "pdf" {
 		t.Fatalf("unexpected PDF result: %+v", stored)
+	}
+}
+
+func TestIngestAcrossVolumesCleansStaging(t *testing.T) {
+	// Linux containers mount /dev/shm separately, exercising the same EXDEV
+	// fallback as NAS deployments with separate library/staging bind mounts.
+	libraryRoot, err := os.MkdirTemp("/dev/shm", "peufm-ingest-test-")
+	if err != nil {
+		t.Skip("separate writable filesystem unavailable")
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(libraryRoot) })
+	root := t.TempDir()
+	probe := filepath.Join(root, "probe")
+	if err := os.WriteFile(probe, []byte("probe"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(probe, filepath.Join(libraryRoot, "probe")); err == nil {
+		t.Skip("test directories share a filesystem")
+	}
+	manager, err := NewManager(libraryRoot, filepath.Join(root, "staging"), filepath.Join(root, "cache"), 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := []byte("%PDF-1.7\ncross-volume test")
+	for i := 0; i < 2; i++ {
+		stored, err := manager.Ingest("test.pdf", bytes.NewReader(content))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stored.Created != (i == 0) {
+			t.Fatalf("unexpected created status: %v", stored.Created)
+		}
+		entries, err := os.ReadDir(manager.stagingRoot)
+		if err != nil || len(entries) != 0 {
+			t.Fatalf("cross-volume upload left staging files: %v %v", entries, err)
+		}
+		preserved, err := os.ReadFile(stored.AbsolutePath)
+		if err != nil || !bytes.Equal(preserved, content) {
+			t.Fatal("managed content changed")
+		}
 	}
 }
 

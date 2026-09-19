@@ -378,6 +378,23 @@ func (s *Store) RegisterImportedBook(ctx context.Context, stored library.StoredF
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Serialize final registration for identical content across all importers.
+	// The pre-upload check is advisory: another request may finish meanwhile.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, stored.SHA256Hex); err != nil {
+		return BookFile{}, false, err
+	}
+	existing, err = scanCatalogBook(tx.QueryRow(ctx, catalogBookSelect+" WHERE bf.sha256=$1", stored.SHA256))
+	if err == nil {
+		_ = tx.Rollback(ctx)
+		if err := s.CompleteImportJob(ctx, jobID, existing.ID, "duplicate", []string{"并发导入中发现重复文件，沿用已有书籍记录"}); err != nil {
+			return BookFile{}, false, err
+		}
+		return existing, true, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return BookFile{}, false, err
+	}
+
 	hasAcceptedCategory := false
 	for _, suggestion := range suggestions {
 		if suggestion.Status == "accepted" {

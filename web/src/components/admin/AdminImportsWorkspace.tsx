@@ -2,6 +2,7 @@ import { type ChangeEvent, type DragEvent, useEffect, useState } from 'react'
 import { APIError, api } from '../../api'
 import type { CalibrePreview, ImportBatch, ImportBatchDetail, ImportSource } from '../../types'
 import { formatBytes } from '../../utils'
+import { hashUpload, runUploadQueue } from '../../uploadPreflight'
 
 interface Props {
   onError: (message: string) => void
@@ -9,7 +10,7 @@ interface Props {
   onDataChanged: () => void
 }
 
-type UploadState = 'queued' | 'uploading' | 'processing' | 'completed' | 'duplicate' | 'failed'
+type UploadState = 'queued' | 'checking' | 'uploading' | 'processing' | 'completed' | 'duplicate' | 'failed'
 
 interface UploadItem {
   id: string
@@ -59,11 +60,11 @@ export default function AdminImportsWorkspace({ onError, onNotice, onDataChanged
   async function uploadFiles(files: File[]) {
     if (uploading || files.length === 0) return
     const batch = files.map((file, index): UploadItem => ({
-      id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
+      id: String(index),
       file,
       state: 'queued',
       progress: 0,
-      message: '等待上传',
+      message: '等待上传前检查',
     }))
     setUploading(true)
     onError('')
@@ -78,36 +79,42 @@ export default function AdminImportsWorkspace({ onError, onNotice, onDataChanged
     }
     setUploads(batch)
 
-    let cursor = 0
     let completed = 0
     let duplicated = 0
     let failed = 0
-    async function worker() {
-      while (cursor < batch.length) {
-        const item = batch[cursor++]
-        changeUpload(item.id, { state: 'uploading', message: '正在上传' })
-        try {
-          const result = await api.uploadBook(item.file, (progress) => changeUpload(item.id, {
-            progress,
-            state: progress >= 100 ? 'processing' : 'uploading',
-            message: progress >= 100
-              ? /\.(mobi|azw3)$/i.test(item.file.name) ? '正在生成 EPUB 阅读副本并提取元数据' : '正在提取元数据并分类'
-              : `正在上传 ${progress}%`,
-          }), report.id)
-          if (result.duplicate) {
-            duplicated++
-            changeUpload(item.id, { state: 'duplicate', progress: 100, message: '重复，未导入；沿用已有书籍记录' })
-          } else {
-            completed++
-            changeUpload(item.id, { state: 'completed', progress: 100, message: `已导入《${result.bookFile.title}》` })
-          }
-        } catch (reason) {
-          failed++
-          changeUpload(item.id, { state: 'failed', message: reason instanceof APIError ? reason.message : '上传失败' })
+    let savedBytes = 0
+    const fallbackItems = new Set<string>()
+    await runUploadQueue(batch, {
+      preflight: api.preflightUploads,
+      hash: hashUpload,
+      skip: (file, hash, key) => api.skipDuplicateUpload(file, hash, report.id, key),
+      checking: (item, progress) => changeUpload(item.id, { state: 'checking', progress, message: `正在本地校验 ${progress}%，尚未上传` }),
+      fallback: (item) => { fallbackItems.add(item.id) },
+      upload: (item) => {
+        changeUpload(item.id, { state: 'uploading', progress: 0, message: fallbackItems.has(item.id) ? '预检查不可用，正在上传并由服务器校验' : '正在上传' })
+        return api.uploadBook(item.file, (progress) => changeUpload(item.id, {
+          progress,
+          state: progress >= 100 ? 'processing' : 'uploading',
+          message: progress >= 100
+            ? /\.(mobi|azw3)$/i.test(item.file.name) ? '正在生成 EPUB 阅读副本并提取元数据' : '正在提取元数据并分类'
+            : `${fallbackItems.has(item.id) ? '预检查不可用，服务器将校验；' : ''}正在上传 ${progress}%`,
+        }), report.id)
+      },
+      completed: (item, result, skipped) => {
+        if (result.duplicate) {
+          duplicated++
+          if (skipped) savedBytes += item.file.size
+          changeUpload(item.id, { state: 'duplicate', progress: 100, message: skipped ? `书库已存在，未上传；节省 ${formatBytes(item.file.size)}` : '重复，未导入；上传临时副本已清理' })
+        } else {
+          completed++
+          changeUpload(item.id, { state: 'completed', progress: 100, message: `已导入《${result.bookFile.title}》` })
         }
-      }
-    }
-    await Promise.all(Array.from({ length: Math.min(2, batch.length) }, () => worker()))
+      },
+      failed: (item, reason) => {
+        failed++
+        changeUpload(item.id, { state: 'failed', message: reason instanceof APIError ? reason.message : '上传失败' })
+      },
+    })
     setUploading(false)
     try {
       const detail = await api.getImportBatch(report.id)
@@ -116,7 +123,7 @@ export default function AdminImportsWorkspace({ onError, onNotice, onDataChanged
       // The live queue remains useful even if the report refresh has a transient network failure.
     }
     await refreshImports(1)
-    onNotice(`批量导入完成：新增 ${completed} 本，重复 ${duplicated} 本，失败 ${failed} 本。已保存本次导入报告。`)
+    onNotice(`批量导入完成：新增 ${completed} 本，重复 ${duplicated} 本，失败 ${failed} 本。节省上传 ${formatBytes(savedBytes)}。已保存本次导入报告。`)
     onDataChanged()
   }
 
@@ -217,9 +224,9 @@ function ImportBatchDetailView({ detail }: { detail: ImportBatchDetail | null })
   return <div className="import-report-detail"><div className="import-report-heading"><div><strong>导入明细</strong><small>{formatImportTime(detail.batch.createdAt)} · {detail.batch.totalItems} 个文件</small></div><span>{detail.batch.completedAt ? '已完成' : '处理中'}</span></div><div className="import-report-jobs">{detail.jobs.map((job) => <div className="import-report-job" key={job.id}><span className={`job-state ${job.outcome ?? job.state}`}>{jobOutcomeLabel(job)}</span><div><strong title={job.sourceName}>{job.sourceName}</strong><small>{jobOutcomeMessage(job)}</small>{job.warnings?.length > 0 && <small className="job-warning">{job.warnings.join('；')}</small>}</div></div>)}</div></div>
 }
 
-function uploadStateLabel(state: UploadState): string { return { queued: '等待', uploading: '上传', processing: '处理', completed: '完成', duplicate: '重复', failed: '失败' }[state] }
+function uploadStateLabel(state: UploadState): string { return { queued: '等待', checking: '校验', uploading: '上传', processing: '处理', completed: '完成', duplicate: '重复', failed: '失败' }[state] }
 function jobOutcomeLabel(job: ImportBatchDetail['jobs'][number]): string { return job.outcome === 'imported' ? '新增' : job.outcome === 'duplicate' ? '重复' : job.outcome === 'failed' || job.state === 'failed' ? '失败' : '处理中' }
-function jobOutcomeMessage(job: ImportBatchDetail['jobs'][number]): string { if (job.outcome === 'duplicate') return '重复，未导入；沿用已有书籍记录'; if (job.outcome === 'failed' || job.state === 'failed') return job.errorMessage || '导入失败'; if (job.outcome === 'imported') return '已导入书库'; return '正在处理' }
+function jobOutcomeMessage(job: ImportBatchDetail['jobs'][number]): string { if (job.outcome === 'duplicate') return job.warnings?.find((warning) => warning.includes('跳过上传')) ?? '重复，未导入；沿用已有书籍记录'; if (job.outcome === 'failed' || job.state === 'failed') return job.errorMessage || '导入失败'; if (job.outcome === 'imported') return '已导入书库'; return '正在处理' }
 function formatImportTime(value: string): string { return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
 function importModeLabel(mode: string): string { if (mode === 'reference') return '只读引用，不复制书籍'; return { upload: '网页上传并复制', move: '导入后移动归档', copy: '复制入库，源文件保留' }[mode] ?? mode }
 function importSourceDescription(source: ImportSource): string { if (source.id === 'calibre-reference') return '读取 Calibre 的 metadata.db 并建立引用索引；电子书仍保留在 Calibre 书库中。'; return { 'browser-upload': '需要时在管理后台选择或拖放多个文件，作为手动备用入口。', 'moving-inbox': '递归扫描 inbox；成功后移到 processed，连续失败后移到 failed。', 'watched-library': '递归发现新增或变更书籍，只读复制进托管书库，源目录保持原样。' }[source.id] ?? '电子书导入入口。' }

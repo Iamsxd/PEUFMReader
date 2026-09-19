@@ -81,12 +81,11 @@ func (m *Manager) Ingest(originalFilename string, src io.Reader) (StoredFile, er
 		return StoredFile{}, fmt.Errorf("create staging file: %w", err)
 	}
 	tempPath := temp.Name()
-	keepTemp := false
 	defer func() {
 		_ = temp.Close()
-		if !keepTemp {
-			_ = os.Remove(tempPath)
-		}
+		// A rename has already removed this path; a cross-volume copy has not.
+		// Always remove the upload staging file, including successful imports.
+		_ = os.Remove(tempPath)
 	}()
 
 	hasher := sha256.New()
@@ -127,7 +126,6 @@ func (m *Manager) Ingest(originalFilename string, src io.Reader) (StoredFile, er
 		if err := os.Chmod(absolutePath, 0o640); err != nil {
 			return StoredFile{}, fmt.Errorf("set managed file permissions: %w", err)
 		}
-		keepTemp = true
 		created = true
 	} else if err != nil {
 		return StoredFile{}, fmt.Errorf("inspect managed file: %w", err)

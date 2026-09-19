@@ -6,7 +6,7 @@ RUN pnpm install --frozen-lockfile
 COPY web/ ./
 RUN pnpm build
 
-FROM golang:1.26.5-bookworm AS server-build
+FROM golang:1.26.6-bookworm AS server-build
 WORKDIR /src/server
 COPY server/go.mod server/go.sum ./
 RUN go mod download

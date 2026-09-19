@@ -13,6 +13,14 @@ export interface DeleteBookResult {
 }
 
 export const catalogAPI = {
+  preflightUploads(sizes: number[]): Promise<{ matchingSizes: number[] }> {
+    return transport.request('/api/v1/book-files/preflight', { method: 'POST', body: JSON.stringify({ sizes }), headers: { 'Content-Type': 'application/json' } })
+  },
+
+  skipDuplicateUpload(file: File, sha256: string, batchId: number, itemKey: string): Promise<UploadBookResult | { duplicate: false }> {
+    return transport.request('/api/v1/book-files/skip-duplicate', { method: 'POST', body: JSON.stringify({ filename: file.name, size: file.size, sha256, batchId, itemKey }), headers: { 'Content-Type': 'application/json' } })
+  },
+
   getHomeDashboard(): Promise<HomeDashboard> {
     return transport.request('/api/v1/home')
   },

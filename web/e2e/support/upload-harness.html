@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+  <body>
+    <main id="root"></main><p id="notice" role="status"></p><p id="error" role="alert"></p>
+    <script type="module">
+      import React from 'react'
+      import { createRoot } from 'react-dom/client'
+      import AdminImportsWorkspace from '../../src/components/admin/AdminImportsWorkspace.tsx'
+      import '../../src/styles.css'
+      createRoot(document.getElementById('root')).render(React.createElement(AdminImportsWorkspace, {
+        onNotice: (message) => { document.getElementById('notice').textContent = message },
+        onError: (message) => { document.getElementById('error').textContent = message },
+        onDataChanged: () => {},
+      }))
+    </script>
+  </body>
+</html>

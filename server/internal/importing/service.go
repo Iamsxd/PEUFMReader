@@ -63,6 +63,22 @@ func (s *Service) Import(
 	if err != nil {
 		return failJob(err)
 	}
+	// Ingest already removes its temporary duplicate. Avoid re-extracting or
+	// converting an existing book (and never remove its shared reading caches).
+	existing, found, err := s.store.GetManagedBookByHash(ctx, stored.SHA256)
+	if err != nil {
+		s.library.RemoveIfCreated(stored)
+		return failJob(err)
+	}
+	if found {
+		if stored.Created && existing.StoragePath != stored.RelativePath {
+			s.library.RemoveIfCreated(stored)
+		}
+		if err := s.store.CompleteImportJob(ctx, job.ID, existing.ID, "duplicate", []string{"检测到重复文件，上传临时副本已清理，沿用已有书籍记录"}); err != nil {
+			return failJob(err)
+		}
+		return Result{Book: existing, Duplicate: true, ImportJobID: job.ID}, nil
+	}
 	converted := mobiconvert.Result{}
 	failImport := func(failure error) (Result, error) {
 		if s.converter != nil {
