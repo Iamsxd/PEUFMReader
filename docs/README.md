@@ -15,6 +15,7 @@
 - [阅读器真实语料与自动化回归](./validation/reader-corpus-regression.md)
 - [桌面与移动浏览器系统测试](./validation/browser-system-test.md)
 - [阅读工作台 UI 第一版与版本边界](./validation/reading-workspace-ui.md)
+- [个人书架、跨书笔记与阅读流程增强](./validation/personal-reading-workspace.md)
 - [依赖安全与发布加固验证](./validation/security-release-hardening.md)
 - [早期桌面方案（已废弃）](./product/implementation-proposal.md)
 - [领域术语表](./domain/glossary.md)

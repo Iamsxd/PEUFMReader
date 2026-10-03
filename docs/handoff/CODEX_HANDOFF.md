@@ -37,6 +37,8 @@ PEUFMReader 是面向 NAS 的多用户电子书管理与 Web 阅读应用。它�
 
 已完成并有记录的内容包括：P1 移动离线阅读/PWA/前端加载优化；P1.5 目录查询优化；P2.1 运维监控增强（磁盘、任务分类耗时、健康阈值和受保护的 Prometheus 导出）；P2.4 第一版独立阅读统计页面；阅读器控制栏与首页导航细节优化。
 
+2026-10-03 功能分支补充：最新双主题阅读工作台 UI 在 `codex/reading-workspace-ui`（`799620f`）；基于它的 `codex/reading-library-enhancements` 新增私人书架／有序阅读清单、跨书笔记中心、详情／阅读器批注与设备接入流程增强，包含新增迁移 `030_personal_reading_workspace.sql`。这些分支尚未推送、合并或替换现有运行服务。继续该工作时不要直接从旧 `master` 开始；版本与验证分别见 `docs/validation/reading-workspace-ui.md`、`docs/validation/personal-reading-workspace.md`。
+
 后续路线在 `docs/product/development-roadmap.md`，但不要自行假定优先级。P2 的公开候选方向是：外部告警通知、跨书库全文检索与 AI、听书、阅读目标/导出/隐私等统计增强。开始新功能前先向项目负责人确认本次目标。
 
 ## 代码地图

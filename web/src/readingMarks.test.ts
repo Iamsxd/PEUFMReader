@@ -6,9 +6,19 @@ import {
   getReadingMarkNavigationTarget,
   removeReadingMark,
   upsertReadingMark,
+  readingStateAtMark,
 } from './readingMarks'
+import type { ReadingMark, ReadingState } from './types'
 
 describe('reading mark position model', () => {
+  it('opens a mark without mutating the saved reading status or state', () => {
+    const state: ReadingState = { bookFileId: 10, position: { pageIndex: 20 }, overallProgress: .8, status: 'finished', totalActiveSeconds: 123 }
+    const mark: ReadingMark = { id: 1, kind: 'note', label: '第 5 页', body: '测试笔记', quote: '', color: '', createdAt: '2026-10-03T00:00:00Z', updatedAt: '2026-10-03T00:00:00Z', bookFileId: 10, position: { pageIndex: 4 }, overallProgress: .2 }
+    expect(readingStateAtMark(state, mark)).toEqual({ ...state, position: { pageIndex: 4 }, overallProgress: .2 })
+    expect(state.position).toEqual({ pageIndex: 20 })
+    expect(readingStateAtMark(state)).toBe(state)
+    expect(readingStateAtMark(state, { ...mark, bookFileId: 99 })).toBe(state)
+  })
   it('stores a PDF page as a stable zero-based position', () => {
     expect(createPDFReadingMarkLocation(5, 100)).toEqual({
       position: { pageIndex: 4, yRatio: 0 },

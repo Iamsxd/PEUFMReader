@@ -5,6 +5,7 @@ import type { BookDetail, BookFile, Recommendation } from '../types'
 import { formatBytes, formatDuration, formatRelativeTime } from '../utils'
 import { BookCard } from './BookCard'
 import { BookCover } from './BookCover'
+import { ShelfMembership } from './ShelfMembership'
 
 interface Props {
   bookID: number
@@ -12,6 +13,7 @@ interface Props {
   isAdmin: boolean
   onBack: () => void
   onOpenBook: (book: BookFile) => void
+  onNotebook: () => void
   onViewBook: (book: BookFile) => void
   onManageBook: (book: BookFile) => void
   onBrowseCategory: (slug: string) => void
@@ -25,7 +27,7 @@ const statusLabels: Record<BookDetail['readingState']['status'], string> = {
   abandoned: '已放弃',
 }
 
-export function BookDetailPage({ bookID, userID, isAdmin, onBack, onOpenBook, onViewBook, onManageBook, onBrowseCategory }: Props) {
+export function BookDetailPage({ bookID, userID, isAdmin, onBack, onOpenBook, onNotebook, onViewBook, onManageBook, onBrowseCategory }: Props) {
   const [detail, setDetail] = useState<BookDetail | null>(null)
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
   const [error, setError] = useState('')
@@ -212,10 +214,11 @@ export function BookDetailPage({ bookID, userID, isAdmin, onBack, onOpenBook, on
             <button className={detail.favorite ? 'favorite-button active' : 'favorite-button'} disabled={favoriteBusy} onClick={() => void toggleFavorite()}>
               {detail.favorite ? '♥ 已收藏' : '♡ 加入收藏'}
             </button>
+            <button className="secondary" onClick={onNotebook}>查看本书笔记</button>
             {offlineStorageSupported() && <button className={offlineRecord ? 'secondary offline-copy active' : 'secondary offline-copy'} disabled={offlineBusy} onClick={() => void toggleOfflineCopy()}>{offlineBusy ? '处理中…' : offlineRecord ? '✓ 已保存到设备' : '↓ 保存到此设备'}</button>}
-            {isAdmin && <button className="secondary" onClick={() => onManageBook(book)}>整理书籍信息</button>}
-            {isAdmin && <button className="danger-button" disabled={deleteBusy} onClick={() => void deleteBook()}>{deleteBusy ? '删除中…' : book.storageMode === 'calibre-reference' ? '从书库移除' : '删除书籍'}</button>}
           </div>
+          <ShelfMembership bookID={book.id} />
+          {isAdmin && <details className="detail-management"><summary>书籍管理</summary><p>仅管理员可操作。删除会移除本应用中的阅读记录，来源文件保持不动。</p><div className="personal-actions"><button className="secondary" onClick={() => onManageBook(book)}>整理书籍信息</button><button className="danger-button" disabled={deleteBusy} onClick={() => void deleteBook()}>{deleteBusy ? '删除中…' : book.storageMode === 'calibre-reference' ? '从书库移除' : '删除书籍'}</button></div></details>}
           {offlineRecord && <small className="detail-last-read">设备副本 {formatBytes(offlineRecord.contentBytes)} · 保存于 {formatRelativeTime(offlineRecord.cachedAt)}</small>}
           {offlineNotice && <small className="detail-offline-notice" role="status">{offlineNotice}</small>}
           {readingState.status !== 'unread' && readingState.updatedAt && <small className="detail-last-read">上次记录于 {formatRelativeTime(readingState.updatedAt)}</small>}

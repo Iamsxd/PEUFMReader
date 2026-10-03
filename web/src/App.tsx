@@ -4,11 +4,12 @@ import { Library } from './components/Library'
 import { Login } from './components/Login'
 import { Reader } from './components/Reader'
 import { clearOfflineUserData, loadOfflineIdentity, offlineBookContent, rememberOfflineIdentity, syncOfflineReading } from './offline'
-import type { BookFile, Session } from './types'
+import type { BookFile, ReadingMark, Session } from './types'
 
 interface OpenBookState {
   book: BookFile
   localContent?: ArrayBuffer
+  mark?: ReadingMark
 }
 
 export default function App() {
@@ -60,9 +61,9 @@ export default function App() {
     void syncOfflineReading(next.user.id)
   }
 
-  async function open(book: BookFile) {
+  async function open(book: BookFile, mark?: ReadingMark) {
     const localContent = session ? await offlineBookContent(session.user.id, book.id).catch(() => undefined) : undefined
-    setOpenBook({ book, localContent })
+    setOpenBook({ book, localContent, mark })
   }
 
   function closeBook() {
@@ -84,6 +85,6 @@ export default function App() {
 
   if (session === undefined) return <main className="loading-page">正在连接书库…</main>
   if (!session) return <Login onLogin={authenticated} />
-  if (openBook) return <Reader book={openBook.book} contentData={openBook.localContent} userID={session.user.id} offlineMode={offlineMode} onClose={closeBook} />
-  return <Library session={session} offlineMode={offlineMode} onOpenBook={(book) => void open(book)} onLogout={() => void logout()} />
+  if (openBook) return <Reader key={openBook.book.id} book={openBook.book} initialMark={openBook.mark} contentData={openBook.localContent} userID={session.user.id} offlineMode={offlineMode} onClose={closeBook} />
+  return <Library session={session} offlineMode={offlineMode} onOpenBook={(book, mark) => void open(book, mark)} onLogout={() => void logout()} />
 }

@@ -1,5 +1,5 @@
 import { type MouseEvent, useCallback, useEffect, useRef, useState } from 'react'
-import type { BookFile, CatalogQuery, Session } from '../types'
+import type { BookFile, CatalogQuery, ReadingMark, Session } from '../types'
 import { AdminPage } from './AdminPage'
 import { BookDetailPage } from './BookDetailPage'
 import { CatalogPage } from './CatalogPage'
@@ -13,15 +13,17 @@ import { OfflineBooksPage } from './OfflineBooksPage'
 import { InstallAppPrompt } from './InstallAppPrompt'
 import { ThemeSwitch } from './ThemeProvider'
 import { NavigationIcon } from './NavigationIcon'
+import { NotebookPage } from './NotebookPage'
+import { ShelvesPage } from './ShelvesPage'
 
 interface Props {
   session: Session
   offlineMode: boolean
-  onOpenBook: (book: BookFile) => void
+  onOpenBook: (book: BookFile, mark?: ReadingMark) => void
   onLogout: () => void
 }
 
-type LibraryView = 'home' | 'books' | 'categories' | 'favorites' | 'recommendations' | 'statistics' | 'offline' | 'devices' | 'book' | 'admin'
+type LibraryView = 'home' | 'books' | 'categories' | 'favorites' | 'recommendations' | 'statistics' | 'offline' | 'devices' | 'book' | 'admin' | 'notebook' | 'shelves'
 type NavigationView = Exclude<LibraryView, 'book'>
 
 interface LibraryRoute {
@@ -105,7 +107,7 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
   const activeView = offlineMode ? 'offline' : requestedView
   const secondaryLabel = activeView === 'offline' ? '离线书籍' : activeView === 'devices' ? '设备同步' : activeView === 'admin' ? '管理后台' : '更多'
   const secondaryActive = activeView === 'offline' || activeView === 'devices' || activeView === 'admin'
-  const pageLabel = { home: '我的书房', books: '全部书籍', recommendations: '为你推荐', favorites: '我的收藏', categories: '书籍分类', statistics: '阅读统计', offline: '离线书籍', devices: '设备同步', book: '书籍详情', admin: '管理后台' }[activeView]
+  const pageLabel = { home: '我的书房', books: '全部书籍', recommendations: '为你推荐', favorites: '我的收藏', categories: '书籍分类', statistics: '阅读统计', offline: '离线书籍', devices: '设备同步', book: '书籍详情', admin: '管理后台', notebook: '我的笔记', shelves: '我的书架' }[activeView]
 
   function navigateFromMenu(event: MouseEvent<HTMLButtonElement>, view: NavigationView) {
     event.currentTarget.closest('details')?.removeAttribute('open')
@@ -122,16 +124,18 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
         <p className="sidebar-caption">你的私人书房</p>
         <nav className="app-navigation" aria-label="主导航">
           <div className="app-navigation-primary">
-            {(['home', 'books', 'recommendations', 'favorites', 'categories', 'statistics'] as const).map((view) => (
-              <button key={view} className={`${activeView === view ? 'active' : ''}${view === 'categories' || view === 'statistics' ? ' desktop-navigation-item' : ''}`} aria-current={activeView === view ? 'page' : undefined} onClick={() => navigate(view)}>
-                <NavigationIcon name={view} /><span>{{ home: '首页', books: '全部书籍', recommendations: '推荐', favorites: '收藏', categories: '分类', statistics: '阅读统计' }[view]}</span>
+            {(['home', 'books', 'recommendations', 'favorites', 'shelves', 'notebook', 'categories', 'statistics'] as const).map((view) => (
+              <button key={view} className={`${activeView === view ? 'active' : ''}${view === 'categories' || view === 'statistics' || view === 'notebook' || view === 'shelves' ? ' desktop-navigation-item' : ''}`} aria-current={activeView === view ? 'page' : undefined} onClick={() => navigate(view)}>
+                <NavigationIcon name={view} /><span>{{ home: '首页', books: '全部书籍', recommendations: '推荐', favorites: '收藏', categories: '分类', statistics: '阅读统计', notebook: '我的笔记', shelves: '我的书架' }[view]}</span>
               </button>
             ))}
-            <details className={`navigation-menu${secondaryActive ? ' active' : ''}${activeView === 'categories' || activeView === 'statistics' ? ' mobile-secondary-active' : ''}`}>
+            <details className={`navigation-menu${secondaryActive ? ' active' : ''}${activeView === 'categories' || activeView === 'statistics' || activeView === 'notebook' || activeView === 'shelves' ? ' mobile-secondary-active' : ''}`}>
               <summary><NavigationIcon name="more" /><span>{secondaryLabel}</span></summary>
               <div className="navigation-popover">
                 <div className="mobile-navigation-items">
                   <p>浏览与记录</p>
+                  <button className={activeView === 'shelves' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'shelves')}><span>我的书架</span><small>专题书架与阅读清单</small></button>
+                  <button className={activeView === 'notebook' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'notebook')}><span>我的笔记</span><small>跨书回顾高亮与想法</small></button>
                   <button className={activeView === 'categories' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'categories')}><span>分类</span><small>按题材浏览书库</small></button>
                   <button className={activeView === 'statistics' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'statistics')}><span>阅读统计</span><small>查看个人阅读记录</small></button>
                 </div>
@@ -190,6 +194,8 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
         {activeView === 'statistics' && <ReadingStatisticsPage onOpenBook={onOpenBook} onViewBook={viewBook} />}
         {activeView === 'offline' && <OfflineBooksPage userID={session.user.id} offlineMode={offlineMode} onOpenBook={onOpenBook} onBrowse={() => navigate('books')} />}
         {activeView === 'devices' && <DeviceSyncPage user={session.user} />}
+        {activeView === 'notebook' && <NotebookPage key={route.params.get('bookId') ?? 'all'} bookID={positiveInteger(route.params.get('bookId'))} onOpenBook={onOpenBook} onAllNotes={() => navigate('notebook')} />}
+        {activeView === 'shelves' && <ShelvesPage selectedID={positiveInteger(route.params.get('shelf'))} onSelect={(id) => { window.location.hash = `/shelves${id ? `?shelf=${id}` : ''}` }} onOpenBook={onOpenBook} onViewBook={viewBook} />}
         {activeView === 'book' && route.bookID && (
           <BookDetailPage
             key={route.bookID}
@@ -198,6 +204,7 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
             isAdmin={isAdmin}
             onBack={() => navigate('books')}
             onOpenBook={onOpenBook}
+            onNotebook={() => { window.location.hash = `/notebook?bookId=${route.bookID}` }}
             onViewBook={viewBook}
             onManageBook={(book) => { window.location.hash = `/admin?edition=${book.editionId}` }}
             onBrowseCategory={(category) => navigate('books', { category, sort: 'title' })}
@@ -218,7 +225,7 @@ function readRoute(): LibraryRoute {
     if (bookID) return { view: 'book', bookID, params: new URLSearchParams(search), key: raw }
   }
   const candidate = parts[0]
-  const view: LibraryView = candidate === 'books' || candidate === 'categories' || candidate === 'favorites' || candidate === 'recommendations' || candidate === 'statistics' || candidate === 'offline' || candidate === 'devices' || candidate === 'admin' ? candidate : 'home'
+  const view: LibraryView = candidate === 'books' || candidate === 'categories' || candidate === 'favorites' || candidate === 'recommendations' || candidate === 'statistics' || candidate === 'offline' || candidate === 'devices' || candidate === 'admin' || candidate === 'notebook' || candidate === 'shelves' ? candidate : 'home'
   return { view, params: new URLSearchParams(search), key: raw }
 }
 

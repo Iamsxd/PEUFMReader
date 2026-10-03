@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api'
-import { removeReadingMark, upsertReadingMark, type ReadingMarkLocation } from '../../readingMarks'
+import { highlightColorLabels, markKindLabel, removeReadingMark, upsertReadingMark, type ReadingMarkLocation } from '../../readingMarks'
 import type { ReadingMark, ReadingMarkInput } from '../../types'
 
 interface Props {
@@ -20,6 +20,10 @@ export function ReadingMarksPanel({ bookFileID, current, onNavigate, onClose, on
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
+  const [query, setQuery] = useState('')
+  const [kind, setKind] = useState('')
+  const [color, setColor] = useState('')
+  const visibleMarks = marks.filter(mark => (!kind || mark.kind === kind) && (!color || mark.color === color) && `${mark.label}\n${mark.body}\n${mark.quote}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
 
   useEffect(() => {
     let disposed = false
@@ -132,9 +136,11 @@ export function ReadingMarksPanel({ bookFileID, current, onNavigate, onClose, on
         {error && <p className="reader-panel-error" role="alert">{error}</p>}
       </div>
       <div className="reading-mark-list">
+        <div className="reading-mark-filters"><input aria-label="搜索本书批注" placeholder="搜索摘录或笔记…" value={query} onChange={event => setQuery(event.target.value)} maxLength={200} /><select aria-label="本书记录类型" value={kind} onChange={event => setKind(event.target.value)}><option value="">所有类型</option><option value="highlight">高亮</option><option value="note">笔记</option><option value="bookmark">书签</option></select><select aria-label="本书高亮颜色" value={color} onChange={event => setColor(event.target.value)}><option value="">所有颜色</option>{Object.entries(highlightColorLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select><small>{visibleMarks.length} / {marks.length} 条记录</small></div>
         {loading && <p className="reader-panel-empty">正在加载…</p>}
         {!loading && marks.length === 0 && <p className="reader-panel-empty">还没有书签、高亮或笔记。</p>}
-        {marks.map((mark) => (
+        {!loading && marks.length > 0 && visibleMarks.length === 0 && <p className="reader-panel-empty">没有符合筛选条件的批注。</p>}
+        {visibleMarks.map((mark) => (
           <article key={mark.id} className={`reading-mark-item ${mark.kind}`}>
             <header>
               <button className="reading-mark-location" onClick={() => onNavigate(mark.position)}>
@@ -160,10 +166,4 @@ export function ReadingMarksPanel({ bookFileID, current, onNavigate, onClose, on
       </div>
     </aside>
   )
-}
-
-function markKindLabel(kind: ReadingMark['kind']) {
-  if (kind === 'bookmark') return '书签'
-  if (kind === 'highlight') return '高亮'
-  return '笔记'
 }

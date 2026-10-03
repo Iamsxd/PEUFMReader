@@ -1,4 +1,17 @@
-import type { BookFormat } from './types'
+import type { BookFormat, HighlightColor, ReadingMark, ReadingState } from './types'
+
+export const highlightColorLabels: Record<HighlightColor, string> = { yellow: '黄色', green: '绿色', blue: '蓝色', pink: '粉色', purple: '紫色' }
+
+export function markKindLabel(kind: ReadingMark['kind']): string {
+  return kind === 'bookmark' ? '书签' : kind === 'highlight' ? '高亮' : '笔记'
+}
+
+// An explicit notebook jump changes only the initial viewport. Loading a mark
+// does not issue a progress write; normal reader activity keeps its save policy.
+export function readingStateAtMark(state: ReadingState, mark?: ReadingMark): ReadingState {
+  if (!mark || mark.bookFileId !== state.bookFileId) return state
+  return { ...state, position: mark.position, overallProgress: mark.overallProgress }
+}
 
 export interface ReadingMarkLocation {
   position: Record<string, unknown>

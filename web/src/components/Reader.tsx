@@ -2,7 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { APIError, api } from '../api'
 import { useReadingSession } from '../hooks/useReadingSession'
 import { getOfflineReadingState, offlineDefaultReadingState, rememberOfflineReadingState } from '../offline'
-import type { BookFile, ReadingState } from '../types'
+import type { BookFile, ReadingMark, ReadingState } from '../types'
+import { readingStateAtMark } from '../readingMarks'
 import { formatDuration } from '../utils'
 
 const EPUBReader = lazy(() => import('./readers/EPUBReader').then((module) => ({ default: module.EPUBReader })))
@@ -10,19 +11,21 @@ const PDFReader = lazy(() => import('./readers/PDFReader').then((module) => ({ d
 
 interface Props {
   book: BookFile
+  initialMark?: ReadingMark
   contentData?: ArrayBuffer
   userID: number
   offlineMode: boolean
   onClose: () => void
 }
 
-export function Reader({ book, contentData, userID, offlineMode, onClose }: Props) {
+export function Reader({ book, initialMark, contentData, userID, offlineMode, onClose }: Props) {
   const [state, setState] = useState<ReadingState | null>(null)
   const [error, setError] = useState('')
   const [readerChromeVisible, setReaderChromeVisible] = useState(true)
   const readerChromeTimerRef = useRef<number | null>(null)
   const readerChromeVisibleRef = useRef(readerChromeVisible)
   const stateRef = useRef<ReadingState | null>(null)
+  const initialLocationAppliedRef = useRef(false)
   const isKindleBook = book.format === 'mobi' || book.format === 'azw3'
   const isImmersiveReader = book.format === 'pdf' || book.format === 'epub' || isKindleBook
   useReadingSession(book.id, offlineMode ? userID : undefined)
@@ -57,25 +60,34 @@ export function Reader({ book, contentData, userID, offlineMode, onClose }: Prop
   }, [hideReaderChrome, showReaderChrome])
 
   useEffect(() => {
+    let disposed = false
     const localState = getOfflineReadingState(userID, book.id)
     if (offlineMode) {
-      setState(localState ?? offlineDefaultReadingState(book.id))
+      // A connectivity change must not jump back to the annotation that opened
+      // the reader. Preserve the active viewport after the first restoration.
+      setState(current => current ?? readingStateAtMark(localState ?? offlineDefaultReadingState(book.id), initialMark))
+      initialLocationAppliedRef.current = true
       setError(localState ? '当前处于离线阅读，位置将在联网后同步。' : '当前处于离线阅读。')
       return
     }
     void api.getProgress(book.id).then((next) => {
-      setState(next)
+      if (disposed) return
+      setState(initialLocationAppliedRef.current ? next : readingStateAtMark(next, initialMark))
+      initialLocationAppliedRef.current = true
       rememberOfflineReadingState(userID, next, false)
       setError('')
     }).catch((reason) => {
+      if (disposed) return
       if (reason instanceof APIError && reason.status === 0 && localState) {
-        setState(localState)
+        setState(current => current ?? readingStateAtMark(localState, initialMark))
+        initialLocationAppliedRef.current = true
         setError('网络连接中断，正在使用此设备上的阅读位置。')
       } else {
         setError('无法读取上次阅读位置。')
       }
     })
-  }, [book.id, offlineMode, userID])
+    return () => { disposed = true }
+  }, [book.id, initialMark, offlineMode, userID])
 
   useEffect(() => {
     if (!isImmersiveReader) {

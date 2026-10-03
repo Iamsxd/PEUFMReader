@@ -1,7 +1,29 @@
-import type { ReadingMark, ReadingMarkInput, ReadingSession, ReadingState } from '../types'
-import { transport } from './core'
+import type { CatalogPage, NotebookPage, NotebookQuery, PersonalShelf, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState } from '../types'
+import { querySuffix, transport } from './core'
 
 export const readingAPI = {
+  searchNotebook(query: NotebookQuery = {}): Promise<NotebookPage> {
+    return transport.request(`/api/v1/notebook${querySuffix(query)}`)
+  },
+  async listShelves(bookId?: number): Promise<PersonalShelf[]> {
+    const result = await transport.request<{ items: PersonalShelf[] }>(`/api/v1/shelves${querySuffix({ bookId })}`)
+    return result.items
+  },
+  saveShelf(name: string, description: string, id?: number): Promise<PersonalShelf> {
+    return transport.request(`/api/v1/shelves${id ? `/${id}` : ''}`, { method: id ? 'PATCH' : 'POST', body: JSON.stringify({ name, description }), headers: { 'Content-Type': 'application/json' } })
+  },
+  deleteShelf(id: number): Promise<void> {
+    return transport.request(`/api/v1/shelves/${id}`, { method: 'DELETE' })
+  },
+  shelfBooks(id: number, page = 1): Promise<CatalogPage> {
+    return transport.request(`/api/v1/shelves/${id}/books?page=${page}`)
+  },
+  setShelfBook(id: number, bookId: number, included: boolean): Promise<void> {
+    return transport.request(`/api/v1/shelves/${id}/books/${bookId}`, { method: included ? 'PUT' : 'DELETE' })
+  },
+  moveShelfBook(id: number, bookId: number, direction: 'earlier' | 'later'): Promise<void> {
+    return transport.request(`/api/v1/shelves/${id}/books/${bookId}`, { method: 'PATCH', body: JSON.stringify({ direction }), headers: { 'Content-Type': 'application/json' } })
+  },
   contentURL(bookFileID: number): string {
     return `/api/v1/book-files/${bookFileID}/content`
   },

@@ -42,3 +42,30 @@ export interface ReadingSession {
   endedAt?: string
   activeSeconds: number
 }
+
+export interface NotebookEntry extends ReadingMark {
+  bookTitle: string
+  bookFormat: string
+}
+export interface NotebookQuery {
+  q?: string
+  kind?: '' | ReadingMarkKind
+  color?: '' | HighlightColor
+  bookId?: number
+  page?: number
+}
+export interface NotebookPage {
+  items: NotebookEntry[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+export interface PersonalShelf {
+  id: number
+  name: string
+  description: string
+  bookCount: number
+  containsBook: boolean
+  createdAt: string
+}
