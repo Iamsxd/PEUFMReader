@@ -24,6 +24,8 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? `http://127.0.0.1:${process.env.APP_PORT ?? '8080'}`,
+    // Optional software rendering for hosts with unstable headless GPU drivers.
+    ...(process.env.E2E_DISABLE_GPU === '1' ? { launchOptions: { args: ['--disable-gpu'] } } : {}),
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: process.env.E2E_DISABLE_VIDEO === '1' ? 'off' : 'retain-on-failure',

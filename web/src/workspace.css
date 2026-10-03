@@ -1,0 +1,214 @@
+/* Reading workspace v1. Shared chrome uses application theme tokens;
+   reader chrome stays neutral and never overrides ebook/PDF page colors. */
+.app-shell {
+  --sidebar-width: 220px;
+  width: 100%;
+  padding: 0 0 48px var(--sidebar-width);
+}
+.workspace-skip-link { position: fixed; top: -80px; left: 16px; z-index: 100; padding: 12px 18px; border-radius: 8px; background: var(--ui-accent); color: var(--ui-on-accent); }
+.workspace-skip-link:focus { top: 12px; }
+.library-sidebar { position: fixed; inset: 0 auto 0 0; z-index: 30; display: flex; flex-direction: column; width: var(--sidebar-width); padding: 28px 16px 20px; border-right: 1px solid var(--ui-line); background: var(--ui-surface); }
+.library-sidebar .app-brand { padding: 0 8px; gap: 10px; }
+.library-sidebar .app-brand strong { display: block; font-size: .95rem; letter-spacing: -.035em; }
+.library-sidebar .app-brand span { width: 32px; height: 36px; font-size: .8rem; }
+.sidebar-caption { margin: 38px 12px 14px; color: var(--ui-muted); font-size: .7rem; letter-spacing: .1em; }
+.app-shell .app-navigation { display: block; flex: 1; min-height: 0; overflow-y: auto; }
+.app-shell .app-navigation-primary { display: flex; flex-direction: column; gap: 6px; }
+.navigation-icon { width: 19px; height: 19px; flex: none; }
+.app-shell .app-navigation-primary > button, .app-shell .navigation-menu > summary { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 10px 14px; border-radius: 8px; text-align: left; font-size: .85rem; font-weight: 500; }
+.app-shell .app-navigation-primary > button.active, .app-shell .navigation-menu.active > summary { color: var(--ui-accent); background: var(--ui-accent-soft); box-shadow: none; }
+.app-shell .navigation-menu { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--ui-line); }
+.app-shell .navigation-menu > summary { list-style: none; }
+.app-shell .navigation-menu > summary::-webkit-details-marker { display: none; }
+.app-shell .navigation-popover { position: static; width: 100%; margin-top: 8px; padding: 4px; border: 0; border-radius: 8px; box-shadow: none; }
+.app-shell .navigation-popover button { min-height: 44px; padding: 10px; }
+.app-shell .navigation-popover p { font-size: .65rem; }
+.mobile-navigation-items, .mobile-app-brand { display: none; }
+.sidebar-footer { display: flex; align-items: start; gap: 9px; margin: 20px 10px 0; color: var(--ui-muted); font-size: .72rem; }
+.sidebar-footer small { display: block; margin-top: 6px; font-size: .65rem; opacity: .8; }
+.sidebar-status-dot { flex: none; width: 6px; height: 6px; margin-top: 5px; border-radius: 50%; background: var(--ui-accent); }
+.app-shell .app-header { display: flex; justify-content: space-between; min-height: 76px; gap: 16px; padding: 14px 36px; border-bottom: 1px solid var(--ui-line); background: var(--ui-page); }
+.workspace-location { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: .8rem; color: var(--ui-muted); }
+.workspace-location strong { overflow: hidden; color: var(--ui-ink); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell .app-header-tools { gap: 16px; }
+.app-shell .theme-switch select { padding-block: 7px; border-radius: 7px; font-size: .75rem; }
+.app-shell .account-menu > summary { gap: 8px; }
+.app-shell .account-avatar { width: 30px; height: 30px; border: 1px solid var(--ui-line); font-size: .75rem; }
+.app-shell .account-summary strong { font-weight: 500; }
+.app-shell .app-content { width: min(1280px, 100%); margin: auto; padding: 32px 36px 0; }
+.app-shell .app-content:focus { outline: none; }
+.app-shell > .install-app-prompt { margin: 16px 36px 0; }
+.app-shell :is(.primary, .secondary, .quiet, .upload-button) { border-radius: 7px; font-weight: 500; }
+.app-shell :is(input, select, textarea) { border-radius: 7px; }
+.app-shell .page-heading { margin-bottom: 24px; }
+.app-shell .page-heading h1 { font: 600 clamp(1.65rem, 2.4vw, 2.1rem)/1.4 var(--ui-serif); letter-spacing: -.035em; }
+.app-shell .page-heading .muted { font-size: .82rem; }
+.app-shell .page-heading > strong { padding: 8px 12px; border: 1px solid var(--ui-line); border-radius: 8px; color: var(--ui-muted); background: var(--ui-surface); font-size: .8rem; font-weight: 500; }
+.app-shell .dashboard-page { gap: 30px; }
+.app-shell .home-opening { grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); gap: 32px; align-items: center; }
+.app-shell .dashboard-hero { padding: 8px 0; gap: 24px; }
+.app-shell .dashboard-hero h1 { margin: 14px 0 16px; font-size: clamp(1.7rem, 2.6vw, 2.5rem); line-height: 1.5; letter-spacing: -.05em; }
+.app-shell .dashboard-hero p:not(.eyebrow) { font-size: .82rem; line-height: 1.7; }
+.app-shell .dashboard-search { padding: 6px 8px 6px 14px; border: 1px solid var(--ui-line); border-radius: 9px; background: var(--ui-surface); }
+.app-shell .dashboard-search input { padding-block: 10px; }
+.app-shell .dashboard-search button { padding: 10px 16px; }
+.app-shell .continue-panel { padding: 16px; border: 1px solid var(--ui-line); border-radius: 12px; background: var(--ui-surface); }
+.app-shell .continue-panel .dashboard-section-heading { padding-top: 0; margin-bottom: 14px; }
+.app-shell .continue-panel .dashboard-section-heading h2 { font-family: inherit; font-size: .8rem; color: var(--ui-muted); }
+.app-shell .continue-panel .dashboard-section-heading .quiet { padding: 2px; font-size: .7rem; }
+.app-shell .continue-card { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 18px; background: none; }
+.app-shell .continue-card > .continue-stage { min-height: 0; padding: 0; background: none; align-items: start; }
+.app-shell .continue-stage > .book-jacket { width: 104px; transform: none; box-shadow: 3px 7px 14px #0002; }
+.app-shell .continue-stage .jacket-title { font-size: 1.05rem; }
+.app-shell .continue-stage .jacket-author { font-size: .55rem; }
+.app-shell .continue-card > .continue-description { display: flex; flex-direction: column; align-items: start; min-width: 0; gap: 7px; padding: 0; background: none; color: var(--ui-ink); }
+.app-shell .continue-description h3 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-family: inherit; font-size: 1.05rem; font-weight: 600; }
+.app-shell .continue-description p { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; color: var(--ui-muted); font-size: .75rem; }
+.app-shell .continue-description .continue-progress { width: 100%; margin: 2px 0; }
+.app-shell .continue-description .continue-progress > span { background: var(--ui-surface-alt); }
+.app-shell .continue-description .continue-progress i { background: var(--ui-accent); }
+.app-shell .continue-description small { color: var(--ui-muted); font-size: .67rem; }
+.app-shell .continue-description .continue-actions { flex-direction: row; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.app-shell .continue-description .continue-actions .primary { border: 0; border-radius: 7px; padding: 9px 16px; background: var(--ui-accent); color: var(--ui-on-accent); }
+.app-shell .continue-description .continue-actions .quiet { color: var(--ui-muted); padding: 8px 0; }
+.app-shell .reading-stats-panel { gap: 0; padding: 18px 0; border: 1px solid var(--ui-line); border-radius: 10px; background: var(--ui-surface); }
+.app-shell .reading-stats-panel > div:first-child { margin: 0 18px 10px; }
+.app-shell .reading-stats-panel h2 { font-size: .72rem; }
+.app-shell .reading-stat, .app-shell .reading-stat.primary-stat { min-height: 54px; padding: 4px 18px; border-radius: 0; }
+.app-shell .reading-stat strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.app-shell .reading-stat span { font-size: .7rem; }
+.app-shell .dashboard-section-heading { margin-bottom: 16px; }
+.app-shell .dashboard-section-heading h2 { font-family: inherit; font-size: 1.12rem; font-weight: 600; letter-spacing: -.025em; }
+.app-shell .dashboard-section-heading .eyebrow { margin-bottom: 5px; font-size: .63rem; letter-spacing: .08em; }
+.app-shell .book-shelf { grid-auto-columns: minmax(150px, 172px); gap: 20px; padding: 2px 2px 12px; }
+.app-shell .book-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 28px 22px; }
+.app-shell .book-card { overflow: visible; transform: none; }
+.app-shell .book-card .book-cover-mat { padding: 14px 10px; border: 1px solid var(--ui-line); border-radius: 9px; background: var(--ui-surface-alt); }
+.app-shell .book-card .book-jacket { width: min(100%, 128px); transition: transform .18s ease; }
+.app-shell .book-card:hover .book-jacket { transform: translateY(-3px); }
+.app-shell .book-card .book-card-content { gap: 6px; padding: 12px 2px 10px; }
+.app-shell .book-card .book-title { font-family: inherit; font-size: .85rem; line-height: 1.55; }
+.app-shell .book-card .book-authors { font-size: .7rem; }
+.app-shell .book-card :is(.book-meta, .book-activity, .recommendation-reason) { font-size: .65rem; }
+.app-shell .book-card .format-badge { padding: 3px 5px; border-radius: 4px; font-size: .57rem; font-weight: 500; }
+.app-shell .book-card .category-chips { gap: 4px; }
+.app-shell .book-card .category-chips > span { padding: 2px 4px; font-size: .6rem; }
+.app-shell .book-card-actions { gap: 4px; padding-top: 8px; border-top: 1px solid var(--ui-line); }
+.app-shell .book-card-actions > * { flex: 1 1 auto; padding: 7px 4px; min-width: 0; border: 0; border-radius: 5px; font-size: .65rem; font-weight: 500; }
+.app-shell .reading-history-section .book-shelf { grid-auto-columns: minmax(245px, 280px); }
+.app-shell .reading-history-section .book-cover-mat { width: 76px; padding: 7px; }
+.app-shell .reading-history-section .book-open { gap: 12px; }
+.app-shell .reading-history-section .book-card-content { padding-top: 4px; }
+.app-shell .category-summary-grid { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.app-shell .category-tile { min-height: 92px; padding: 14px; border-radius: 9px; }
+.app-shell .category-tile strong { font-family: inherit; font-size: .85rem; }
+.app-shell .catalog-controls { top: 76px; grid-template-columns: minmax(0, 1fr) repeat(4, minmax(100px, 130px)); padding: 10px; border-radius: 9px; gap: 8px; background: var(--ui-surface); backdrop-filter: none; }
+.app-shell .catalog-controls :is(input, select) { min-width: 0; padding-block: 10px; font-size: .78rem; }
+.app-shell .book-detail-hero { padding: 28px; border: 1px solid var(--ui-line); border-radius: 12px; background: var(--ui-surface); }
+.app-shell .book-detail-hero h1 { font-family: var(--ui-serif); font-weight: 600; }
+.app-shell .admin-workspace { grid-template-columns: 180px minmax(0, 1fr); gap: 22px; }
+.app-shell .admin-section-navigation { top: 96px; padding: 6px; border-radius: 9px; box-shadow: none; }
+.app-shell .admin-section-navigation button { padding: 12px 9px; border-radius: 6px; }
+.app-shell .admin-section-navigation button.active { box-shadow: none; }
+.app-shell .admin-section-heading h2 { font-family: inherit; font-size: 1.35rem; font-weight: 600; }
+.app-shell :is(.integration-panel, .jobs-panel, .user-management-panel, .review-panel, .compact-admin-panel, .upload-drop-zone) { border-radius: 10px; box-shadow: none; }
+
+/* Cosmetic reader changes only: offsets, visibility, page sizing and theme
+   controls intentionally remain in styles.css. */
+.reader-shell .reader-bar { background: #fafaf9f5; color: #292d32; border-bottom: 1px solid #dddfe2; backdrop-filter: blur(12px); }
+.reader-shell .reader-title strong { font-size: .86rem; font-weight: 500; }
+.reader-shell .reader-title span { color: #747981; font-size: .7rem; }
+.reader-shell .reader-bar .quiet { color: #525860; font-weight: 500; }
+.reader-shell .reader-toolbar { background: #fafaf9f5; color: #393f46; border-bottom-color: #dddfe2; box-shadow: 0 2px 8px #00000008; scrollbar-color: #a1a6ad #f0f1f2; }
+.reader-shell :is(.reader-tool-group, .reader-toolbar-collapse, .reader-wake-lock-control button) { border-color: #d7dade; background: #f1f2f3; color: #4b535d; border-radius: 6px; }
+.reader-shell .reader-tool-group button { border-color: #d7dade; color: #4b535d; font-weight: 500; }
+.reader-shell .reader-tool-group button:hover:not(:disabled):not(.active) { background: #e4e7eb; }
+.reader-shell :is(.reader-tool-group button.active, .reader-wake-lock-control button.active) { background: #3e4653; color: white; box-shadow: none; border-color: #3e4653; }
+.reader-shell .reader-side-panel { border-color: #d7dade; border-radius: 10px; background: #fafaf9; color: #393f46; box-shadow: 0 12px 40px #0003; }
+.reader-shell .reader-side-panel > header strong { font-family: inherit; font-size: .85rem; font-weight: 600; }
+.reader-shell .reader-chrome-toggle { border-color: #d7dade; background: #fafaf9ed; color: #393f46; box-shadow: 0 3px 12px #0002; font-weight: 500; }
+
+@media (max-width: 1100px) and (min-width: 721px) {
+  .app-shell { --sidebar-width: 190px; }
+  .library-sidebar { padding-inline: 12px; }
+  .library-sidebar .app-brand strong { font-size: .82rem; }
+  .app-shell .app-content { padding-inline: 24px; }
+  .app-shell .app-header { padding-inline: 24px; }
+  .app-shell .home-opening { gap: 20px; }
+  .app-shell .catalog-controls { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .app-shell .catalog-search-field { grid-column: 1/-1; }
+  .app-shell .reading-stat { padding-inline: 12px; }
+  .app-shell .admin-workspace { grid-template-columns: minmax(0, 1fr); }
+  .app-shell .admin-section-navigation { position: static; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .app-shell .admin-section-navigation button i { display: none; }
+}
+@media (max-width: 850px) and (min-width: 721px) {
+  .app-shell .home-opening { grid-template-columns: minmax(0, 1fr); }
+  .app-shell .reading-stats-panel { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 16px; }
+}
+@media (max-width: 720px) {
+  .app-shell { padding: 0 0 calc(90px + env(safe-area-inset-bottom)); }
+  .library-sidebar { inset: auto 0 0; z-index: 35; width: 100%; padding: 6px max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left)); border: 0; border-top: 1px solid var(--ui-line); background: var(--ui-surface); }
+  .library-sidebar > :is(.app-brand, .sidebar-caption, .sidebar-footer) { display: none; }
+  .app-shell .app-navigation { overflow: visible; }
+  .app-shell .app-navigation-primary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; padding: 0; }
+  .app-shell .app-navigation-primary > button, .app-shell .navigation-menu > summary { min-height: 52px; flex-direction: column; justify-content: center; gap: 5px; padding: 6px 1px; font-size: .62rem; border-radius: 7px; }
+  .app-shell .app-navigation-primary > .desktop-navigation-item { display: none; }
+  .app-shell .navigation-menu.mobile-secondary-active > summary { color: var(--ui-accent); background: var(--ui-accent-soft); }
+  .app-shell .navigation-menu { position: static; grid-column: auto; margin: 0; padding: 0; border: 0; }
+  .app-shell .navigation-menu > summary > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .app-shell .navigation-popover { position: absolute; inset: auto 8px calc(100% + 8px); width: auto; max-height: min(65vh, 540px); overflow-y: auto; margin: 0; padding: 12px; border: 1px solid var(--ui-line); border-radius: 12px; box-shadow: 0 12px 40px #0003; }
+  .app-shell .navigation-popover button { font-size: .85rem; }
+  .mobile-navigation-items { display: block; }
+  .app-shell .app-header { min-height: 64px; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; }
+  .mobile-app-brand { display: grid; flex: none; place-items: center; width: 30px; height: 32px; padding: 0; border: 0; border-radius: 5px 5px 10px 5px; background: var(--ui-accent); color: var(--ui-on-accent); font-size: .7rem; font-weight: 600; }
+  .workspace-location { flex: 1; gap: 0; font-size: .76rem; }
+  .workspace-location > span { display: none; }
+  .app-shell .app-header-tools { gap: 8px; }
+  .app-shell .account-summary { display: none; }
+  .app-shell .theme-switch select { max-width: 110px; font-size: .7rem; }
+  .app-shell .app-content { padding: 22px 16px 0; }
+  .app-shell > .install-app-prompt { margin-inline: 16px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 40; }
+  .app-shell .home-opening { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .app-shell .dashboard-hero { padding: 0; gap: 16px; }
+  .app-shell .dashboard-hero h1 { font-size: clamp(1.5rem, 6.5vw, 1.9rem); margin: 10px 0 12px; }
+  .app-shell .dashboard-search input { font-size: 16px; }
+  .app-shell .dashboard-search button { padding-inline: 12px; }
+  .app-shell .continue-panel { padding: 14px; }
+  .app-shell .continue-card { grid-template-columns: 90px minmax(0, 1fr); gap: 14px; }
+  .app-shell .continue-stage > .book-jacket { width: 90px; }
+  .app-shell .reading-stats-panel { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 0; }
+  .app-shell .reading-stat, .app-shell .reading-stat.primary-stat { padding: 0 10px; min-height: 45px; }
+  .app-shell .reading-stat strong { font-size: 1rem; }
+  .app-shell .reading-stat span { font-size: .62rem; }
+  .app-shell .book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 14px; }
+  .app-shell .book-shelf { grid-auto-columns: minmax(138px, 42vw); gap: 14px; }
+  .app-shell .book-card .book-cover-mat { padding: 12px 8px; }
+  .app-shell .category-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .app-shell .category-tile { min-height: 100px; padding: 10px; gap: 8px; }
+  .app-shell .category-cover-stack { width: 44px; }
+  .app-shell .category-tile b { display: none; }
+  .app-shell .catalog-controls { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell .catalog-search-field { grid-column: 1/-1; }
+  .app-shell .catalog-controls select:last-child { grid-column: auto; }
+  .app-shell .catalog-controls :is(input, select) { font-size: 16px; }
+  .app-shell .page-heading { gap: 12px; }
+  .app-shell .page-heading h1 { font-size: 1.7rem; }
+  .app-shell .book-detail-hero { padding: 18px; }
+  .app-shell .admin-workspace { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .app-shell .admin-section-navigation { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 370px) {
+  .app-shell .app-header { gap: 8px; padding-inline: 12px; }
+  .app-shell .app-content { padding-inline: 12px; }
+  .app-shell .theme-switch select { max-width: 94px; }
+  .app-shell .workspace-location { font-size: .7rem; }
+  .app-shell .continue-card { grid-template-columns: 74px minmax(0, 1fr); gap: 12px; }
+  .app-shell .continue-stage > .book-jacket { width: 74px; }
+  .app-shell .continue-stage .jacket-title { font-size: .9rem; }
+  .app-shell .continue-description .continue-actions .primary { padding-inline: 12px; font-size: .75rem; }
+  .app-shell .continue-description .continue-actions .quiet { font-size: .7rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reader-shell *, .reader-shell *::before, .reader-shell *::after { transition: none !important; }
+}

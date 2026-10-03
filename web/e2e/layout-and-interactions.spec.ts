@@ -19,8 +19,9 @@ test.beforeEach(async ({ page }) => login(page))
 
 test('primary navigation stays usable and ordered', async ({ page }, testInfo) => {
   const navigation = page.getByRole('navigation', { name: '主导航' })
-  const names = ['首页', '推荐', '收藏', '全部书籍', '分类', '阅读统计']
-  for (const name of names) await expect(navigation.getByRole('button', { name, exact: true })).toBeVisible()
+  const names = ['首页', '全部书籍', '推荐', '收藏', '分类', '阅读统计']
+  const isMobile = testInfo.project.name === 'mobile-chromium'
+  for (const name of isMobile ? names.slice(0, 4) : names) await expect(navigation.getByRole('button', { name, exact: true })).toBeVisible()
   const visibleOrder = await navigation.locator('.app-navigation-primary > button').allTextContents()
   expect(visibleOrder).toEqual(names)
 
@@ -42,13 +43,15 @@ test('primary navigation stays usable and ordered', async ({ page }, testInfo) =
   await expect(page.getByRole('heading', { name: '我的收藏' })).toBeVisible()
   await navigation.getByRole('button', { name: '全部书籍', exact: true }).click()
   await expect(page.getByRole('heading', { name: '全部书籍' })).toBeVisible()
-  await navigation.getByRole('button', { name: '分类', exact: true }).click()
+  if (isMobile) await navigation.locator('details.navigation-menu > summary').click()
+  await navigation.getByRole('button', { name: isMobile ? /^分类/ : '分类', exact: !isMobile }).filter({ visible: true }).click()
   await expect(page.getByRole('heading', { name: '书籍分类' })).toBeVisible()
-  await navigation.getByRole('button', { name: '阅读统计', exact: true }).click()
+  if (isMobile) await navigation.locator('details.navigation-menu > summary').click()
+  await navigation.getByRole('button', { name: isMobile ? /^阅读统计/ : '阅读统计', exact: !isMobile }).filter({ visible: true }).click()
   await expect(page.getByRole('heading', { name: '阅读统计', exact: true })).toBeVisible()
   const more = navigation.locator('details.navigation-menu > summary')
   await expect(more).toHaveText('更多')
-  await expect(more.locator('[aria-hidden="true"]')).toHaveCount(0)
+  await expect(more.locator('svg[aria-hidden="true"]')).toHaveCount(1)
   await expectNoPageOverflow(page)
   await capture(page, testInfo, 'primary-navigation')
 })

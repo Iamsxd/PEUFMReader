@@ -77,7 +77,7 @@ export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategor
         <section className="dashboard-hero">
           <div className="home-editorial-copy">
             <p className="eyebrow">欢迎回来，{username}</p>
-            <h1>{theme === 'night' ? <>今夜，<br />在书里<em>远行。</em></> : <>把时间，<br />还给<em>好书。</em></>}</h1>
+            <h1>{theme === 'night' ? <>今晚，读点<em>喜欢的。</em></> : <>留一点时间，<em>给好书。</em></>}</h1>
             <p>从上次的位置继续，或者在共享书库中发现下一本书。</p>
           </div>
           <form className="dashboard-search" role="search" onSubmit={search}>
@@ -90,7 +90,7 @@ export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategor
         <section className="continue-panel">
           <SectionHeading eyebrow="个人书架" title="继续阅读" actionLabel="查看全部" onAction={() => onBrowse({ status: 'reading', sort: 'newest' })} />
           {!summary ? summaryError ? <SectionFailure message={summaryError} /> : <SectionLoading label="正在加载最近阅读…" compact /> : primaryReading ? (
-            <ContinueCard item={primaryReading} companion={otherReading[0]?.book} onOpen={onOpenBook} onDetails={onViewBook} />
+            <ContinueCard item={primaryReading} onOpen={onOpenBook} onDetails={onViewBook} />
           ) : (
             <div className="continue-empty">
               <strong>还没有正在阅读的书</strong>
@@ -104,10 +104,6 @@ export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategor
       {summaryError && <div className="notice error dashboard-section-error" role="alert">{summaryError} 其他书库内容仍会继续加载。</div>}
       <ReadingStats stats={summary?.stats} error={summaryError} onFavorites={onFavorites} />
 
-      {otherReading.length > 0 && (
-        <BookShelf title="最近阅读" eyebrow="继续你的节奏" items={otherReading} onOpen={onOpenBook} onDetails={onViewBook} />
-      )}
-
       {recommendations === null && !recommendationsError && <LoadingBookSection eyebrow="你的阅读偏好" title="为你推荐" label="正在准备个性化推荐…" />}
       {recommendationsError && <FailedSection eyebrow="你的阅读偏好" title="为你推荐" message={recommendationsError} />}
       {recommendations && recommendations.length > 0 && (
@@ -117,6 +113,10 @@ export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategor
             {recommendations.map((item) => <BookCard key={item.book.id} book={item.book} onOpen={onOpenBook} onDetails={onViewBook} recommendationReason={item.reason} compact />)}
           </div>
         </section>
+      )}
+
+      {otherReading.length > 0 && (
+        <BookShelf title="最近阅读" eyebrow="继续你的节奏" items={otherReading} onOpen={onOpenBook} onDetails={onViewBook} />
       )}
 
       <section className="dashboard-section">
@@ -144,13 +144,11 @@ export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategor
   )
 }
 
-function ContinueCard({ item, companion, onOpen, onDetails }: { item: HomeBook; companion?: BookFile; onOpen: (book: BookFile) => void; onDetails: (book: BookFile) => void }) {
+function ContinueCard({ item, onOpen, onDetails }: { item: HomeBook; onOpen: (book: BookFile) => void; onDetails: (book: BookFile) => void }) {
   const progress = Math.round((item.overallProgress ?? 0) * 100)
   return (
     <article className="continue-card">
       <div className="continue-stage">
-        <span className="continue-orbit" aria-hidden="true" />
-        {companion && <span className="continue-companion"><BookCover book={companion} featured /></span>}
         <BookCover book={item.book} featured />
       </div>
       <div className="continue-description">

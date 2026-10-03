@@ -12,6 +12,7 @@ import { DeviceSyncPage } from './DeviceSyncPage'
 import { OfflineBooksPage } from './OfflineBooksPage'
 import { InstallAppPrompt } from './InstallAppPrompt'
 import { ThemeSwitch } from './ThemeProvider'
+import { NavigationIcon } from './NavigationIcon'
 
 interface Props {
   session: Session
@@ -53,7 +54,7 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
         setMobileHeaderHidden(false)
         return
       }
-      if (document.querySelector('.app-header details[open]')) return
+      if (document.querySelector('.app-header details[open], .library-sidebar details[open]')) return
       if (movement > 12) setMobileHeaderHidden(true)
       else if (movement < -8) setMobileHeaderHidden(false)
     }
@@ -77,7 +78,7 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
 
   useEffect(() => {
     const closeMenus = (event: PointerEvent) => {
-      document.querySelectorAll<HTMLDetailsElement>('.app-header details[open]').forEach((menu) => {
+      document.querySelectorAll<HTMLDetailsElement>('.app-header details[open], .library-sidebar details[open]').forEach((menu) => {
         if (!menu.contains(event.target as Node)) menu.removeAttribute('open')
       })
     }
@@ -104,6 +105,7 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
   const activeView = offlineMode ? 'offline' : requestedView
   const secondaryLabel = activeView === 'offline' ? '离线书籍' : activeView === 'devices' ? '设备同步' : activeView === 'admin' ? '管理后台' : '更多'
   const secondaryActive = activeView === 'offline' || activeView === 'devices' || activeView === 'admin'
+  const pageLabel = { home: '我的书房', books: '全部书籍', recommendations: '为你推荐', favorites: '我的收藏', categories: '书籍分类', statistics: '阅读统计', offline: '离线书籍', devices: '设备同步', book: '书籍详情', admin: '管理后台' }[activeView]
 
   function navigateFromMenu(event: MouseEvent<HTMLButtonElement>, view: NavigationView) {
     event.currentTarget.closest('details')?.removeAttribute('open')
@@ -112,21 +114,27 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
 
   return (
     <main className="app-shell">
-      <header className={`app-header${mobileHeaderHidden ? ' is-mobile-hidden' : ''}`} onFocusCapture={() => setMobileHeaderHidden(false)}>
+      <a className="workspace-skip-link" href="#workspace-content" onClick={(event) => { event.preventDefault(); document.getElementById('workspace-content')?.focus() }}>跳到主要内容</a>
+      <aside className="library-sidebar" aria-label="书房导航">
         <button className="app-brand" onClick={() => navigate('home')} aria-label="返回首页">
           <span>PR</span><strong>PEUFMReader</strong>
         </button>
+        <p className="sidebar-caption">你的私人书房</p>
         <nav className="app-navigation" aria-label="主导航">
           <div className="app-navigation-primary">
-            <button className={activeView === 'home' ? 'active' : ''} onClick={() => navigate('home')}>首页</button>
-            <button className={activeView === 'recommendations' ? 'active' : ''} onClick={() => navigate('recommendations')}>推荐</button>
-            <button className={activeView === 'favorites' ? 'active' : ''} onClick={() => navigate('favorites')}>收藏</button>
-            <button className={activeView === 'books' ? 'active' : ''} onClick={() => navigate('books')}>全部书籍</button>
-            <button className={activeView === 'categories' ? 'active' : ''} onClick={() => navigate('categories')}>分类</button>
-            <button className={activeView === 'statistics' ? 'active' : ''} onClick={() => navigate('statistics')}>阅读统计</button>
-            <details className={`navigation-menu${secondaryActive ? ' active' : ''}`}>
-              <summary>{secondaryLabel}</summary>
+            {(['home', 'books', 'recommendations', 'favorites', 'categories', 'statistics'] as const).map((view) => (
+              <button key={view} className={`${activeView === view ? 'active' : ''}${view === 'categories' || view === 'statistics' ? ' desktop-navigation-item' : ''}`} aria-current={activeView === view ? 'page' : undefined} onClick={() => navigate(view)}>
+                <NavigationIcon name={view} /><span>{{ home: '首页', books: '全部书籍', recommendations: '推荐', favorites: '收藏', categories: '分类', statistics: '阅读统计' }[view]}</span>
+              </button>
+            ))}
+            <details className={`navigation-menu${secondaryActive ? ' active' : ''}${activeView === 'categories' || activeView === 'statistics' ? ' mobile-secondary-active' : ''}`}>
+              <summary><NavigationIcon name="more" /><span>{secondaryLabel}</span></summary>
               <div className="navigation-popover">
+                <div className="mobile-navigation-items">
+                  <p>浏览与记录</p>
+                  <button className={activeView === 'categories' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'categories')}><span>分类</span><small>按题材浏览书库</small></button>
+                  <button className={activeView === 'statistics' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'statistics')}><span>阅读统计</span><small>查看个人阅读记录</small></button>
+                </div>
                 <p>本机阅读</p>
                 <button className={activeView === 'offline' ? 'active' : ''} onClick={(event) => navigateFromMenu(event, 'offline')}><span>离线书籍</span><small>保存在当前浏览器的设备副本</small></button>
                 <p>阅读设备</p>
@@ -136,6 +144,11 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
             </details>
           </div>
         </nav>
+        <div className="sidebar-footer"><span className="sidebar-status-dot" /><span>NAS 私人书库<small>好书，随时在身边。</small></span></div>
+      </aside>
+      <header className={`app-header${mobileHeaderHidden ? ' is-mobile-hidden' : ''}`} onFocusCapture={() => setMobileHeaderHidden(false)}>
+        <button className="mobile-app-brand" onClick={() => navigate('home')} aria-label="返回首页">PR</button>
+        <div className="workspace-location"><span>书房</span><span aria-hidden="true">/</span><strong>{pageLabel}</strong></div>
         <div className="app-header-tools">
           <ThemeSwitch />
           <details className="account-menu">
@@ -147,7 +160,7 @@ export function Library({ session, offlineMode, onOpenBook, onLogout }: Props) {
 
       <InstallAppPrompt />
 
-      <div className="app-content">
+      <div className="app-content" id="workspace-content" tabIndex={-1}>
         {activeView === 'home' && (
           <HomePage
             username={session.user.username}

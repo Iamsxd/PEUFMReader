@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import './styles.css'
 import './themes.css'
+import './workspace.css'
 import { ThemeProvider } from './components/ThemeProvider'
 import { applyTheme, loadTheme } from './theme'
 
