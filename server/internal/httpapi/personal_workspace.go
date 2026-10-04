@@ -8,7 +8,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgconn"
-	"peufmreader/internal/store"
 )
 
 const maxPersonalShelfBatchSize = 100
@@ -107,19 +106,11 @@ func (a *API) searchNotebook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_pagination", err.Error())
 		return
 	}
-	values := r.URL.Query()
-	query := store.NotebookQuery{Query: strings.TrimSpace(values.Get("q")), Kind: values.Get("kind"), Color: values.Get("color"), Page: page, PageSize: size}
-	if utf8.RuneCountInString(query.Query) > 200 || (query.Kind != "" && query.Kind != "note" && query.Kind != "highlight" && query.Kind != "bookmark") || (query.Color != "" && !validHighlightColor(query.Color)) {
-		writeError(w, 400, "invalid_notebook_query", "invalid query, kind or color")
+	query, ok := parseNotebookFilters(w, r)
+	if !ok {
 		return
 	}
-	if value := values.Get("bookId"); value != "" {
-		var ok bool
-		query.BookFileID, ok = parseID(w, value)
-		if !ok {
-			return
-		}
-	}
+	query.Page, query.PageSize = page, size
 	result, err := a.store.SearchNotebook(r.Context(), sessionFromContext(r.Context()).User.ID, query)
 	if err != nil {
 		a.internalError(w, err)

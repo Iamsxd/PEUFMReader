@@ -187,6 +187,7 @@ func (a *API) routes() {
 	a.mux.Handle("GET /api/v1/reading-statistics", a.requireAuth(http.HandlerFunc(a.readingStatistics), "", false))
 	a.mux.Handle("GET /api/v1/favorites", a.requireAuth(http.HandlerFunc(a.listFavorites), "", false))
 	a.mux.Handle("GET /api/v1/notebook", a.requireAuth(http.HandlerFunc(a.searchNotebook), "", false))
+	a.mux.Handle("GET /api/v1/notebook/export", a.requireAuth(http.HandlerFunc(a.exportNotebook), "", false))
 	a.mux.Handle("GET /api/v1/shelves", a.requireAuth(http.HandlerFunc(a.listPersonalShelves), "", false))
 	a.mux.Handle("POST /api/v1/shelves", a.requireAuth(http.HandlerFunc(a.savePersonalShelf), "", true))
 	a.mux.Handle("PATCH /api/v1/shelves/{id}", a.requireAuth(http.HandlerFunc(a.savePersonalShelf), "", true))
