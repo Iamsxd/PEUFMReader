@@ -2,6 +2,10 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { login } from './support/auth'
 import { minimalPDF } from './support/pdf'
 
+// These scenarios intercept API requests; a controlling service worker can
+// bypass Playwright routing. PWA registration is covered separately.
+test.use({ serviceWorkers: 'block' })
+
 async function expectNoPageOverflow(page: Page) {
   const overflow = await page.evaluate(() => ({
     body: document.body.scrollWidth - document.body.clientWidth,
