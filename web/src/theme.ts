@@ -2,6 +2,12 @@ export type AppTheme = 'edition' | 'night'
 export const THEME_STORAGE_KEY = 'peufmreader.app-theme'
 export const DEFAULT_THEME: AppTheme = 'edition'
 
+// Keep the persisted IDs stable when the visual design and display names evolve.
+export const APP_THEMES = {
+  edition: { label: '青竹书院', themeColor: '#F2F3EA' },
+  night: { label: '墨蓝星图', themeColor: '#101E2A' },
+} as const satisfies Record<AppTheme, { label: string; themeColor: string }>
+
 export function parseTheme(value: string | null): AppTheme {
   return value === 'night' ? 'night' : DEFAULT_THEME
 }
@@ -17,5 +23,5 @@ export function saveTheme(theme: AppTheme): void {
 
 export function applyTheme(theme: AppTheme): void {
   document.documentElement.dataset.appTheme = theme
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'night' ? '#171a17' : '#f5f2e9')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', APP_THEMES[theme].themeColor)
 }

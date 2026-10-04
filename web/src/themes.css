@@ -1,18 +1,33 @@
 /* Application themes are scoped away from PDF/EPUB content and reader controls.
    styles.css keeps original color fallbacks for those independent surfaces. */
-:root[data-app-theme='edition'] { background: #f5f2e9; color: #222522; }
-:root[data-app-theme='night'] { background: #171a17; color: #eeeede; }
+:root[data-app-theme='edition'] { background: #f2f3ea; color: #20352b; }
+:root[data-app-theme='night'] { background: #101e2a; color: #ecf4f8; }
 :is(.app-shell, .login-page) {
   color-scheme: light;
-  --ui-page: #f5f2e9;
-  --ui-surface: #faf8f1;
-  --ui-surface-alt: #ebe8df;
-  --ui-ink: #222522;
-  --ui-muted: #63675f;
-  --ui-line: #cecec3;
-  --ui-accent: #2948cf;
-  --ui-accent-soft: #dfe5fc;
+  --ui-page: #f2f3ea;
+  --ui-surface: #fcfdf9;
+  --ui-surface-alt: #e7ebdf;
+  --ui-ink: #20352b;
+  --ui-muted: #51655a;
+  --ui-line: #d9dfd3;
+  --ui-accent: #2d6a4f;
+  --ui-accent-soft: #e0eadf;
   --ui-on-accent: #fff;
+  --ui-feature: #244838;
+  --ui-feature-ink: #f2f5e6;
+  --ui-feature-muted: #d4e0d0;
+  --ui-feature-soft: #335b46;
+  --ui-feature-action: #ecedce;
+  --ui-feature-on-action: #20352b;
+  --ui-feature-decor: #aebb80;
+  --ui-cover-0: #2d6a4f;
+  --ui-cover-0-ink: #fff4de;
+  --ui-cover-1: #d6ae8b;
+  --ui-cover-1-ink: #402d24;
+  --ui-cover-2: #cacdb0;
+  --ui-cover-2-ink: #344235;
+  --ui-cover-3: #825e4a;
+  --ui-cover-3-ink: #fbf0db;
   --ui-danger: #9a342d;
   --ui-danger-soft: #f8e6e1;
   --ui-danger-line: #d3a39d;
@@ -23,21 +38,35 @@
   --ui-info-soft: #e4ebfa;
   --ui-info-line: #a8bada;
   --ui-serif: 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', Georgia, serif;
+  --ui-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --ui-display: var(--ui-serif);
   background: var(--ui-page);
   color: var(--ui-ink);
   accent-color: var(--ui-accent);
 }
 [data-app-theme='night'] :is(.app-shell, .login-page) {
   color-scheme: dark;
-  --ui-page: #171a17;
-  --ui-surface: #20261f;
-  --ui-surface-alt: #293026;
-  --ui-ink: #eeeede;
-  --ui-muted: #afb7a5;
-  --ui-line: #424b3c;
-  --ui-accent: #dfed98;
-  --ui-accent-soft: #465437;
-  --ui-on-accent: #202914;
+  --ui-page: #101e2a;
+  --ui-surface: #1a2c3b;
+  --ui-surface-alt: #243b4c;
+  --ui-ink: #ecf4f8;
+  --ui-muted: #aec0cc;
+  --ui-line: #304657;
+  --ui-accent: #8fc9ee;
+  --ui-accent-soft: #294357;
+  --ui-on-accent: #10263a;
+  --ui-feature: #132c40;
+  --ui-feature-ink: #ecf4f8;
+  --ui-feature-muted: #b8d1df;
+  --ui-feature-soft: #1a3b52;
+  --ui-feature-action: #8fc9ee;
+  --ui-feature-on-action: #10263a;
+  --ui-feature-decor: #8fc9ee;
+  --ui-cover-0: #2a4e63;
+  --ui-cover-0-ink: #e7f4ef;
+  --ui-cover-2: #a8bacb;
+  --ui-cover-2-ink: #162637;
+  --ui-display: var(--ui-sans);
   --ui-danger: #ffb2a5;
   --ui-danger-soft: #442a27;
   --ui-danger-line: #8f554c;
@@ -120,10 +149,10 @@
 .book-jacket::after { position: absolute; inset: 0 auto 0 5px; width: 1px; background: #fff4; content: ''; pointer-events: none; }
 .book-jacket .book-cover, .book-jacket .cover-placeholder, .book-card.compact .book-jacket .book-cover, .book-card.compact .book-jacket .cover-placeholder { display: block; width: 100%; height: 100%; min-height: 0; border-radius: inherit; object-fit: contain; }
 .book-jacket .book-cover { background: var(--ui-surface); }
-.book-jacket .cover-placeholder { position: relative; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; overflow: hidden; padding: 18px 12px; background: #2948cf; color: #fff8e4; }
-.jacket-tone-1 .cover-placeholder { background: #df997e; color: #3d2d24; }
-.jacket-tone-2 .cover-placeholder { background: #d8df88; color: #303923; }
-.jacket-tone-3 .cover-placeholder { background: #835749; color: #fff0d4; }
+.book-jacket .cover-placeholder { position: relative; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; overflow: hidden; padding: 18px 12px; background: var(--ui-cover-0); color: var(--ui-cover-0-ink); }
+.jacket-tone-1 .cover-placeholder { background: var(--ui-cover-1); color: var(--ui-cover-1-ink); }
+.jacket-tone-2 .cover-placeholder { background: var(--ui-cover-2); color: var(--ui-cover-2-ink); }
+.jacket-tone-3 .cover-placeholder { background: var(--ui-cover-3); color: var(--ui-cover-3-ink); }
 .cover-placeholder::before { position: absolute; width: 125%; aspect-ratio: 1; top: 35%; left: 30%; border: 1px solid currentColor; border-radius: 50%; opacity: .3; box-shadow: 0 0 0 10px #ffffff0d, 0 0 0 20px #ffffff0d; content: ''; }
 .jacket-title { position: relative; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; font: 500 1.35rem/1.5 var(--ui-serif); overflow-wrap: anywhere; text-align: center; }
 .jacket-author { position: relative; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 .7rem/1.5 var(--ui-serif); }
@@ -173,7 +202,7 @@
 [data-app-theme='night'] .continue-card { background: none; }
 [data-app-theme='night'] .continue-card > .continue-stage { min-height: 290px; background: radial-gradient(ellipse at center,#c8d69920,transparent 70%); }
 [data-app-theme='night'] .continue-stage > .book-jacket { transform: rotate(-11deg) translateX(-22px); z-index: 2; box-shadow: 14px 20px 25px #0006; }
-[data-app-theme='night'] .continue-stage > .book-jacket .cover-placeholder { background: #ece5cc; color: #293d31; }
+[data-app-theme='night'] .continue-stage > .book-jacket .cover-placeholder { background: var(--ui-cover-0); color: var(--ui-cover-0-ink); }
 [data-app-theme='night'] .continue-companion { display: block; position: absolute; top: 40px; left: 52%; transform: rotate(14deg); }
 [data-app-theme='night'] .continue-companion .book-jacket { width: 136px; }
 [data-app-theme='night'] .continue-orbit { position: absolute; display: block; width: 260px; aspect-ratio: 1; border: 1px solid #92a16e24; border-radius: 50%; box-shadow: 0 0 0 16px #92a16e07; }
@@ -181,8 +210,6 @@
 [data-app-theme='night'] .continue-description .continue-actions .primary { border-color: transparent; background: var(--ui-accent); color: var(--ui-on-accent); }
 [data-app-theme='night'] .continue-description .continue-progress i { background: var(--ui-accent); }
 [data-app-theme='night'] .book-cover-mat { border: 1px solid var(--ui-line); border-radius: 12px; background: linear-gradient(135deg,var(--ui-surface),var(--ui-page)); }
-[data-app-theme='night'] .book-card .jacket-tone-0 .cover-placeholder { background: #365244; }
-[data-app-theme='night'] .book-card .jacket-tone-2 .cover-placeholder { background: #81958a; color: #192b25; }
 @media (max-width: 1200px) {
   .app-header { grid-template-columns: auto 1fr; gap: 18px; }
   .app-brand strong { display: block; }

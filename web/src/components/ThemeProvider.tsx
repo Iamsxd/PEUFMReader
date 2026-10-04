@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
-import { applyTheme, loadTheme, parseTheme, saveTheme, THEME_STORAGE_KEY, type AppTheme } from '../theme'
+import { APP_THEMES, applyTheme, loadTheme, parseTheme, saveTheme, THEME_STORAGE_KEY, type AppTheme } from '../theme'
 
 const ThemeContext = createContext<{ theme: AppTheme; setTheme: (theme: AppTheme) => void }>({ theme: 'edition', setTheme: () => {} })
 
@@ -24,5 +24,5 @@ export const useAppTheme = () => useContext(ThemeContext)
 
 export function ThemeSwitch() {
   const { theme, setTheme } = useAppTheme()
-  return <label className="theme-switch"><span>界面主题</span><select aria-label="界面主题" value={theme} onChange={(event) => setTheme(parseTheme(event.target.value))}><option value="edition">文学杂志</option><option value="night">深夜书房</option></select></label>
+  return <label className="theme-switch"><span>界面主题</span><select aria-label="界面主题" title="只影响应用界面，阅读器配色可在阅读工具中独立设置" value={theme} onChange={(event) => setTheme(parseTheme(event.target.value))}><option value="edition">{APP_THEMES.edition.label}</option><option value="night">{APP_THEMES.night.label}</option></select></label>
 }

@@ -1,4 +1,4 @@
-/* Reading workspace v1. Shared chrome uses application theme tokens;
+/* Bamboo Academy / Ocean Atlas. Shared chrome uses application theme tokens;
    reader chrome stays neutral and never overrides ebook/PDF page colors. */
 .app-shell {
   --sidebar-width: 220px;
@@ -8,6 +8,7 @@
 .workspace-skip-link { position: fixed; top: -80px; left: 16px; z-index: 100; padding: 12px 18px; border-radius: 8px; background: var(--ui-accent); color: var(--ui-on-accent); }
 .workspace-skip-link:focus { top: 12px; }
 .library-sidebar { position: fixed; inset: 0 auto 0 0; z-index: 30; display: flex; flex-direction: column; width: var(--sidebar-width); padding: 28px 16px 20px; border-right: 1px solid var(--ui-line); background: var(--ui-surface); }
+.library-sidebar .app-brand span { border-radius: 10px 3px 10px 3px; }
 .library-sidebar .app-brand { padding: 0 8px; gap: 10px; }
 .library-sidebar .app-brand strong { display: block; font-size: .95rem; letter-spacing: -.035em; }
 .library-sidebar .app-brand span { width: 32px; height: 36px; font-size: .8rem; }
@@ -40,50 +41,58 @@
 .app-shell > .install-app-prompt { margin: 16px 36px 0; }
 .app-shell :is(.primary, .secondary, .quiet, .upload-button) { border-radius: 7px; font-weight: 500; }
 .app-shell :is(input, select, textarea) { border-radius: 7px; }
+:is(.app-shell, .login-page) :is(input, textarea)::placeholder { color: var(--ui-muted); opacity: 1; }
 .app-shell .page-heading { margin-bottom: 24px; }
-.app-shell .page-heading h1 { font: 600 clamp(1.65rem, 2.4vw, 2.1rem)/1.4 var(--ui-serif); letter-spacing: -.035em; }
+.app-shell .page-heading h1 { font: 600 clamp(1.65rem, 2.4vw, 2.1rem)/1.4 var(--ui-display); letter-spacing: -.035em; }
 .app-shell .page-heading .muted { font-size: .82rem; }
 .app-shell .page-heading > strong { padding: 8px 12px; border: 1px solid var(--ui-line); border-radius: 8px; color: var(--ui-muted); background: var(--ui-surface); font-size: .8rem; font-weight: 500; }
 .app-shell .dashboard-page { gap: 30px; }
-.app-shell .home-opening { grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); gap: 32px; align-items: center; }
+.app-shell .home-opening { position: relative; isolation: isolate; grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); gap: 32px; align-items: center; padding: 28px; border-radius: 18px; background: var(--ui-feature); color: var(--ui-feature-ink); }
+.app-shell .home-opening::before { position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: radial-gradient(ellipse at 95% 15%, color-mix(in srgb, var(--ui-feature-decor) 12%, transparent), transparent 60%); content: ''; pointer-events: none; }
 .app-shell .dashboard-hero { padding: 8px 0; gap: 24px; }
-.app-shell .dashboard-hero h1 { margin: 14px 0 16px; font-size: clamp(1.7rem, 2.6vw, 2.5rem); line-height: 1.5; letter-spacing: -.05em; }
-.app-shell .dashboard-hero p:not(.eyebrow) { font-size: .82rem; line-height: 1.7; }
+.app-shell .dashboard-hero h1 { margin: 14px 0 16px; color: var(--ui-feature-ink); font-family: var(--ui-display); font-size: clamp(1.7rem, 2.6vw, 2.5rem); line-height: 1.5; letter-spacing: -.05em; }
+.app-shell .dashboard-hero h1 em { color: var(--ui-feature-action); }
+.app-shell .dashboard-hero .eyebrow { color: var(--ui-feature-muted); }
+.app-shell .dashboard-hero p:not(.eyebrow) { color: var(--ui-feature-muted); font-size: .82rem; line-height: 1.7; }
 .app-shell .dashboard-search { padding: 6px 8px 6px 14px; border: 1px solid var(--ui-line); border-radius: 9px; background: var(--ui-surface); }
 .app-shell .dashboard-search input { padding-block: 10px; }
 .app-shell .dashboard-search button { padding: 10px 16px; }
-.app-shell .continue-panel { padding: 16px; border: 1px solid var(--ui-line); border-radius: 12px; background: var(--ui-surface); }
+.app-shell .continue-panel { position: relative; padding: 18px; border: 1px solid color-mix(in srgb, var(--ui-feature-ink) 16%, transparent); border-radius: 12px; background: var(--ui-feature-soft); color: var(--ui-feature-ink); }
+.app-shell .continue-panel :is(button, a):focus-visible { outline-color: var(--ui-feature-action); }
+.app-shell .continue-panel :is(.home-section-loading, .home-section-failure, .continue-empty) { color: var(--ui-feature-muted); }
+.app-shell .continue-panel .continue-empty { min-height: 170px; border-color: color-mix(in srgb, var(--ui-feature-ink) 24%, transparent); }
+.app-shell .continue-panel .continue-empty strong { color: var(--ui-feature-ink); }
 .app-shell .continue-panel .dashboard-section-heading { padding-top: 0; margin-bottom: 14px; }
-.app-shell .continue-panel .dashboard-section-heading h2 { font-family: inherit; font-size: .8rem; color: var(--ui-muted); }
-.app-shell .continue-panel .dashboard-section-heading .quiet { padding: 2px; font-size: .7rem; }
+.app-shell .continue-panel .dashboard-section-heading h2 { font-family: inherit; font-size: .8rem; color: var(--ui-feature-muted); }
+.app-shell .continue-panel .dashboard-section-heading .quiet { padding: 2px; color: var(--ui-feature-muted); font-size: .7rem; }
 .app-shell .continue-card { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 18px; background: none; }
 .app-shell .continue-card > .continue-stage { min-height: 0; padding: 0; background: none; align-items: start; }
-.app-shell .continue-stage > .book-jacket { width: 104px; transform: none; box-shadow: 3px 7px 14px #0002; }
+.app-shell .continue-stage > .book-jacket { width: 104px; transform: rotate(-5deg); box-shadow: 6px 10px 18px #0003; }
 .app-shell .continue-stage .jacket-title { font-size: 1.05rem; }
 .app-shell .continue-stage .jacket-author { font-size: .55rem; }
-.app-shell .continue-card > .continue-description { display: flex; flex-direction: column; align-items: start; min-width: 0; gap: 7px; padding: 0; background: none; color: var(--ui-ink); }
+.app-shell .continue-card > .continue-description { display: flex; flex-direction: column; align-items: start; min-width: 0; gap: 7px; padding: 0; background: none; color: var(--ui-feature-ink); }
 .app-shell .continue-description h3 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-family: inherit; font-size: 1.05rem; font-weight: 600; }
-.app-shell .continue-description p { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; color: var(--ui-muted); font-size: .75rem; }
+.app-shell .continue-description p { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; color: var(--ui-feature-muted); font-size: .75rem; }
 .app-shell .continue-description .continue-progress { width: 100%; margin: 2px 0; }
-.app-shell .continue-description .continue-progress > span { background: var(--ui-surface-alt); }
-.app-shell .continue-description .continue-progress i { background: var(--ui-accent); }
-.app-shell .continue-description small { color: var(--ui-muted); font-size: .67rem; }
+.app-shell .continue-description .continue-progress > span { background: color-mix(in srgb, var(--ui-feature-ink) 18%, transparent); }
+.app-shell .continue-description .continue-progress i { background: var(--ui-feature-action); }
+.app-shell .continue-description small { color: var(--ui-feature-muted); font-size: .67rem; }
 .app-shell .continue-description .continue-actions { flex-direction: row; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
-.app-shell .continue-description .continue-actions .primary { border: 0; border-radius: 7px; padding: 9px 16px; background: var(--ui-accent); color: var(--ui-on-accent); }
-.app-shell .continue-description .continue-actions .quiet { color: var(--ui-muted); padding: 8px 0; }
-.app-shell .reading-stats-panel { gap: 0; padding: 18px 0; border: 1px solid var(--ui-line); border-radius: 10px; background: var(--ui-surface); }
+.app-shell .continue-description .continue-actions .primary { border: 0; border-radius: 7px; padding: 9px 16px; background: var(--ui-feature-action); color: var(--ui-feature-on-action); }
+.app-shell .continue-description .continue-actions .quiet { color: var(--ui-feature-muted); padding: 8px 0; }
+.app-shell .reading-stats-panel { gap: 0; padding: 18px 0; border: 0; border-block: 1px solid var(--ui-line); border-radius: 0; background: transparent; }
 .app-shell .reading-stats-panel > div:first-child { margin: 0 18px 10px; }
 .app-shell .reading-stats-panel h2 { font-size: .72rem; }
 .app-shell .reading-stat, .app-shell .reading-stat.primary-stat { min-height: 54px; padding: 4px 18px; border-radius: 0; }
 .app-shell .reading-stat strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
 .app-shell .reading-stat span { font-size: .7rem; }
 .app-shell .dashboard-section-heading { margin-bottom: 16px; }
-.app-shell .dashboard-section-heading h2 { font-family: inherit; font-size: 1.12rem; font-weight: 600; letter-spacing: -.025em; }
+.app-shell .dashboard-section-heading h2 { font-family: var(--ui-display); font-size: 1.12rem; font-weight: 600; letter-spacing: -.025em; }
 .app-shell .dashboard-section-heading .eyebrow { margin-bottom: 5px; font-size: .63rem; letter-spacing: .08em; }
 .app-shell .book-shelf { grid-auto-columns: minmax(150px, 172px); gap: 20px; padding: 2px 2px 12px; }
 .app-shell .book-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 28px 22px; }
 .app-shell .book-card { overflow: visible; transform: none; }
-.app-shell .book-card .book-cover-mat { padding: 14px 10px; border: 1px solid var(--ui-line); border-radius: 9px; background: var(--ui-surface-alt); }
+.app-shell .book-card .book-cover-mat { padding: 18px 10px; border: 1px solid transparent; border-radius: 9px; background: transparent; }
 .app-shell .book-card .book-jacket { width: min(100%, 128px); transition: transform .18s ease; }
 .app-shell .book-card:hover .book-jacket { transform: translateY(-3px); }
 .app-shell .book-card .book-card-content { gap: 6px; padding: 12px 2px 10px; }
@@ -105,13 +114,27 @@
 .app-shell .catalog-controls { top: 76px; grid-template-columns: minmax(0, 1fr) repeat(4, minmax(100px, 130px)); padding: 10px; border-radius: 9px; gap: 8px; background: var(--ui-surface); backdrop-filter: none; }
 .app-shell .catalog-controls :is(input, select) { min-width: 0; padding-block: 10px; font-size: .78rem; }
 .app-shell .book-detail-hero { padding: 28px; border: 1px solid var(--ui-line); border-radius: 12px; background: var(--ui-surface); }
-.app-shell .book-detail-hero h1 { font-family: var(--ui-serif); font-weight: 600; }
+.app-shell .book-detail-hero h1 { font-family: var(--ui-display); font-weight: 600; }
 .app-shell .admin-workspace { grid-template-columns: 180px minmax(0, 1fr); gap: 22px; }
 .app-shell .admin-section-navigation { top: 96px; padding: 6px; border-radius: 9px; box-shadow: none; }
 .app-shell .admin-section-navigation button { padding: 12px 9px; border-radius: 6px; }
 .app-shell .admin-section-navigation button.active { box-shadow: none; }
 .app-shell .admin-section-heading h2 { font-family: inherit; font-size: 1.35rem; font-weight: 600; }
 .app-shell :is(.integration-panel, .jobs-panel, .user-management-panel, .review-panel, .compact-admin-panel, .upload-drop-zone) { border-radius: 10px; box-shadow: none; }
+
+/* Fixed theme details stay in the app shell, never in the reading surface. */
+[data-app-theme='edition'] .app-shell .home-opening::after { position: absolute; right: 16px; top: 8px; width: 20px; height: 36px; border-radius: 100% 0 100% 0; background: var(--ui-feature-decor); transform: rotate(16deg); content: ''; pointer-events: none; }
+[data-app-theme='night'] .app-shell .library-sidebar { background: #142431; }
+[data-app-theme='night'] .app-shell .library-sidebar .app-brand span { border-radius: 50%; background: var(--ui-accent-soft); color: var(--ui-accent); }
+[data-app-theme='night'] .app-shell .home-opening::before { background: radial-gradient(ellipse at 85% 45%, #25527180, transparent 65%); }
+[data-app-theme='night'] .app-shell .continue-panel { background: color-mix(in srgb, var(--ui-feature-soft) 75%, var(--ui-feature)); }
+[data-app-theme='night'] .app-shell .continue-card > .continue-stage { position: relative; isolation: isolate; }
+[data-app-theme='night'] .app-shell .continue-stage::before { position: absolute; z-index: -1; left: 50%; top: 48%; width: 136px; aspect-ratio: 1; border: 1px solid color-mix(in srgb, var(--ui-accent) 24%, transparent); border-radius: 50%; box-shadow: 0 0 0 12px color-mix(in srgb, var(--ui-accent) 5%, transparent); transform: translate(-50%, -50%); content: ''; pointer-events: none; }
+[data-app-theme='night'] .app-shell .continue-stage > .book-jacket { transform: rotate(5deg); }
+[data-app-theme='night'] .app-shell .book-card .book-cover-mat { border-color: var(--ui-line); background: linear-gradient(135deg, var(--ui-surface), var(--ui-page)); }
+.login-page { background: radial-gradient(ellipse at 90% 0, var(--ui-accent-soft), transparent 60%), var(--ui-page); }
+.login-card { border-radius: 16px; box-shadow: 0 22px 70px #00000014; }
+.login-card h1 { font-family: var(--ui-display); letter-spacing: -.04em; }
 
 /* Cosmetic reader changes only: offsets, visibility, page sizing and theme
    controls intentionally remain in styles.css. */
@@ -134,7 +157,7 @@
   .library-sidebar .app-brand strong { font-size: .82rem; }
   .app-shell .app-content { padding-inline: 24px; }
   .app-shell .app-header { padding-inline: 24px; }
-  .app-shell .home-opening { gap: 20px; }
+  .app-shell .home-opening { gap: 20px; padding: 24px; }
   .app-shell .catalog-controls { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .app-shell .catalog-search-field { grid-column: 1/-1; }
   .app-shell .reading-stat { padding-inline: 12px; }
@@ -169,7 +192,7 @@
   .app-shell .theme-switch select { max-width: 110px; font-size: .7rem; }
   .app-shell .app-content { padding: 22px 16px 0; }
   .app-shell > .install-app-prompt { margin-inline: 16px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 40; }
-  .app-shell .home-opening { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .app-shell .home-opening { grid-template-columns: minmax(0, 1fr); gap: 20px; padding: 20px 16px; border-radius: 14px; }
   .app-shell .dashboard-hero { padding: 0; gap: 16px; }
   .app-shell .dashboard-hero h1 { font-size: clamp(1.5rem, 6.5vw, 1.9rem); margin: 10px 0 12px; }
   .app-shell .dashboard-search input { font-size: 16px; }
@@ -206,6 +229,9 @@
   .app-shell .continue-card { grid-template-columns: 74px minmax(0, 1fr); gap: 12px; }
   .app-shell .continue-stage > .book-jacket { width: 74px; }
   .app-shell .continue-stage .jacket-title { font-size: .9rem; }
+  .app-shell .home-opening { padding: 18px 12px; }
+  .app-shell .continue-panel { padding: 12px; }
+  [data-app-theme='night'] .app-shell .continue-stage::before { width: 96px; }
   .app-shell .continue-description .continue-actions .primary { padding-inline: 12px; font-size: .75rem; }
   .app-shell .continue-description .continue-actions .quiet { font-size: .7rem; }
 }

@@ -14,8 +14,10 @@ test('publishes the site icon and mobile application metadata', async ({ page, r
 
   const manifest = await request.get('/site.webmanifest')
   expect(manifest.ok()).toBeTruthy()
-  const manifestBody = await manifest.json() as { short_name: string; icons: Array<{ src: string; sizes: string }> }
+  const manifestBody = await manifest.json() as { short_name: string; theme_color: string; background_color: string; icons: Array<{ src: string; sizes: string }> }
   expect(manifestBody.short_name).toBe('PEUFMReader')
+  expect(manifestBody.theme_color).toBe('#F2F3EA')
+  expect(manifestBody.background_color).toBe('#F2F3EA')
   expect(manifestBody.icons).toEqual(expect.arrayContaining([
     expect.objectContaining({ src: '/icons/icon-192.png', sizes: '192x192' }),
     expect.objectContaining({ src: '/icons/icon-512.png', sizes: '512x512' }),

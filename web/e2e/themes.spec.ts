@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 import { minimalPDF } from './support/pdf'
 import { minimalEPUB } from './support/epub'
+import { APP_THEMES, THEME_STORAGE_KEY } from '../src/theme'
+import { EPUB_PREFERENCES_KEY } from '../src/epub'
+import { PDF_PREFERENCES_KEY } from '../src/pdf'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -19,6 +22,25 @@ const summary = {
   recentlyAdded: books,
   stats: { totalBooks: 4, readingBooks: 2, finishedBooks: 12, favoriteBooks: 8, weekActiveSeconds: 2520, totalActiveSeconds: 66240 },
 }
+
+const themePalettes = {
+  edition: {
+    '--ui-page': '#f2f3ea', '--ui-surface': '#fcfdf9', '--ui-surface-alt': '#e7ebdf',
+    '--ui-ink': '#20352b', '--ui-muted': '#51655a', '--ui-line': '#d9dfd3',
+    '--ui-accent': '#2d6a4f', '--ui-accent-soft': '#e0eadf', '--ui-on-accent': '#fff',
+    '--ui-feature': '#244838', '--ui-feature-ink': '#f2f5e6', '--ui-feature-muted': '#d4e0d0',
+    '--ui-feature-soft': '#335b46', '--ui-feature-action': '#ecedce', '--ui-feature-on-action': '#20352b',
+    '--ui-feature-decor': '#aebb80',
+  },
+  night: {
+    '--ui-page': '#101e2a', '--ui-surface': '#1a2c3b', '--ui-surface-alt': '#243b4c',
+    '--ui-ink': '#ecf4f8', '--ui-muted': '#aec0cc', '--ui-line': '#304657',
+    '--ui-accent': '#8fc9ee', '--ui-accent-soft': '#294357', '--ui-on-accent': '#10263a',
+    '--ui-feature': '#132c40', '--ui-feature-ink': '#ecf4f8', '--ui-feature-muted': '#b8d1df',
+    '--ui-feature-soft': '#1a3b52', '--ui-feature-action': '#8fc9ee', '--ui-feature-on-action': '#10263a',
+    '--ui-feature-decor': '#8fc9ee',
+  },
+} as const
 
 async function mockLibrary(page: Page, options: { empty?: boolean; error?: boolean; signedOut?: boolean; long?: boolean; epub?: boolean } = {}) {
   const requests: string[] = []
@@ -67,6 +89,9 @@ test('EPUB reader keeps independent themes, typography and chapter navigation', 
   await page.locator('.detail-actions .primary').click()
   const toolbar = page.locator('.epub-toolbar[role="toolbar"]')
   await expect(page.locator('.epub-host iframe').first()).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('data-app-theme', 'night')
+  await expect(page.locator('.epub-reader')).toHaveClass(/theme-paper/)
+  await expect(page.locator('.epub-reader')).toHaveCSS('background-color', 'rgb(248, 245, 237)')
   // Loading may exceed the normal chrome auto-hide timer on a busy runner.
   if (await toolbar.getAttribute('aria-hidden') === 'true') {
     if (info.project.name === 'mobile-chromium') await page.locator('.epub-host').click()
@@ -94,6 +119,129 @@ test('EPUB reader keeps independent themes, typography and chapter navigation', 
   await noOverflow(page)
   await page.screenshot({ path: info.outputPath('workspace-epub-reader.png') })
 })
+
+test('both theme palettes preserve readable text on actual local surfaces', async ({ page }) => {
+  await mockLibrary(page)
+  await page.goto('/#/home')
+  await expect(page.locator('.continue-description h3')).toHaveText('瓦尔登湖')
+  for (const theme of ['edition', 'night'] as const) {
+    await page.getByRole('combobox', { name: '界面主题' }).selectOption(theme)
+    const expectedBackground = theme === 'edition' ? 'rgb(242, 243, 234)' : 'rgb(16, 30, 42)'
+    await expect(page.locator('html')).toHaveCSS('background-color', expectedBackground)
+    await expect(page.locator('.app-shell')).toHaveCSS('background-color', expectedBackground)
+    const expectedPalette = themePalettes[theme]
+    expect(await page.locator('.app-shell').evaluate((element, names) => {
+      const style = getComputedStyle(element)
+      return Object.fromEntries(names.map(name => [name, style.getPropertyValue(name).trim().toLowerCase()]))
+    }, Object.keys(expectedPalette))).toEqual(expectedPalette)
+    const placeholder = await page.locator('.dashboard-search input').evaluate(element => {
+      const style = getComputedStyle(element, '::placeholder')
+      return { color: style.color, opacity: style.opacity }
+    })
+    expect(placeholder).toEqual({ color: theme === 'edition' ? 'rgb(81, 101, 90)' : 'rgb(174, 192, 204)', opacity: '1' })
+    for (const tone of [0, 1, 2, 3]) await expect(page.locator(`.dashboard-page > .dashboard-section:last-child .jacket-tone-${tone} .jacket-title`)).toBeAttached()
+
+    // Ordinary actions and the feature card intentionally use different tokens.
+    // Check their rendered colors, not merely --ui-accent or their shadows.
+    const contrasts = await minimumTextContrasts(page, [
+      '.dashboard-search .primary',
+      '.continue-actions .primary',
+      '.dashboard-hero h1',
+      '.dashboard-hero h1 em',
+      '.home-editorial-copy .eyebrow',
+      '.home-editorial-copy > p:not(.eyebrow)',
+      '.continue-description h3',
+      '.continue-description p',
+      '.continue-description small',
+      { selector: '.dashboard-search input', pseudo: '::placeholder' },
+      ...[0, 1, 2, 3].flatMap(tone => [
+        `.dashboard-page > .dashboard-section:last-child .jacket-tone-${tone} .cover-placeholder .jacket-title`,
+        `.dashboard-page > .dashboard-section:last-child .jacket-tone-${tone} .cover-placeholder .jacket-author`,
+      ]),
+    ])
+    for (const { selector, ratio, foreground, backgrounds } of contrasts) {
+      expect(ratio, `${theme}: ${selector}; foreground ${foreground}; backgrounds ${JSON.stringify(backgrounds)}`).toBeGreaterThanOrEqual(4.5)
+    }
+    // Establish keyboard modality before programmatic focus, so this checks the
+    // actual :focus-visible rule rather than a mouse-only focus appearance.
+    await page.keyboard.press('Tab')
+    const continueButton = page.locator('.continue-actions .primary')
+    await continueButton.focus()
+    await expect(continueButton).toBeFocused()
+    expect(await continueButton.evaluate(element => element.matches(':focus-visible'))).toBe(true)
+    await expect(continueButton).toHaveCSS('outline-style', 'solid')
+    await expect(continueButton).toHaveCSS('outline-width', '2px')
+    const [focusRing] = await minimumTextContrasts(page, [{ selector: '.continue-actions .primary', colorProperty: 'outline-color', backgroundSelector: '.continue-panel' }])
+    expect(focusRing.ratio, `${theme}: feature-panel focus ring`).toBeGreaterThanOrEqual(3)
+  }
+})
+
+type ContrastTarget = string | { selector: string; pseudo?: '::placeholder'; colorProperty?: 'outline-color'; backgroundSelector?: string }
+
+async function minimumTextContrasts(page: Page, selectors: ContrastTarget[]) {
+  return page.evaluate((selectors) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 1
+    const context = canvas.getContext('2d', { willReadFrequently: true })!
+    const colorChannels = (color: string): number[] => {
+      if (!CSS.supports('color', color)) throw new Error(`Unsupported contrast color: ${color}`)
+      context.clearRect(0, 0, 1, 1)
+      context.fillStyle = color
+      context.fillRect(0, 0, 1, 1)
+      return Array.from(context.getImageData(0, 0, 1, 1).data)
+    }
+    const blend = (foreground: number[], background: number[]) => {
+      const alpha = foreground[3] / 255
+      return background.map((channel, index) => foreground[index] * alpha + channel * (1 - alpha))
+    }
+    const luminance = (channels: number[]) => channels.reduce((result, channel, index) => {
+      const srgb = channel / 255
+      const linear = srgb <= .04045 ? srgb / 12.92 : ((srgb + .055) / 1.055) ** 2.4
+      return result + linear * [.2126, .7152, .0722][index]
+    }, 0)
+
+    return selectors.map(target => {
+      const { selector, pseudo, colorProperty, backgroundSelector } = typeof target === 'string' ? { selector: target } : target
+      const element = document.querySelector<HTMLElement>(selector)
+      if (!element) throw new Error(`Missing contrast target: ${selector}`)
+      const backgroundElement = backgroundSelector ? document.querySelector<HTMLElement>(backgroundSelector) : element
+      if (!backgroundElement) throw new Error(`Missing contrast background: ${backgroundSelector}`)
+      const ancestors: HTMLElement[] = []
+      for (let ancestor: HTMLElement | null = backgroundElement; ancestor; ancestor = ancestor.parentElement) {
+        ancestors.unshift(ancestor)
+        // An opaque input/cover/panel is the real local backdrop. Decorations
+        // and gradients behind that surface cannot affect its text or outline.
+        if (colorChannels(getComputedStyle(ancestor).backgroundColor)[3] === 255) break
+      }
+      let backgrounds = [[255, 255, 255]]
+      for (const ancestor of ancestors) {
+        const style = getComputedStyle(ancestor)
+        if (ancestor !== element && Number(style.opacity) !== 1) throw new Error(`Group opacity needs explicit contrast handling: ${selector}`)
+        if (style.backgroundImage !== 'none') throw new Error(`Unaccounted background image behind ${selector}`)
+        backgrounds = backgrounds.map(background => blend(colorChannels(style.backgroundColor), background))
+        if (ancestor.matches('.home-opening')) {
+          // The decorative radial gradient is behind all hero content. Use both
+          // the real base and every maximum-opacity stop as conservative bounds,
+          // then composite child surfaces (e.g. the continue panel) over them.
+          const gradient = getComputedStyle(ancestor, '::before').backgroundImage
+          const stops = gradient.match(/(?:rgba?\([^)]*\)|color\([^)]*\)|#[\da-f]+)/gi) ?? []
+          if (gradient !== 'none' && !stops.length) throw new Error(`Unaccounted hero gradient: ${gradient}`)
+          backgrounds = backgrounds.flatMap(background => [background, ...stops.map(stop => blend(colorChannels(stop), background))])
+        }
+      }
+      const style = getComputedStyle(element, pseudo)
+      const foregroundColor = style.getPropertyValue(colorProperty ?? 'color')
+      const foreground = colorChannels(foregroundColor)
+      foreground[3] *= Number(style.opacity)
+      const ratio = Math.min(...backgrounds.map(background => {
+        const ink = luminance(blend(foreground, background))
+        const surface = luminance(background)
+        return (Math.max(ink, surface) + .05) / (Math.min(ink, surface) + .05)
+      }))
+      return { selector: `${selector}${pseudo ?? ''}${colorProperty ? ` [${colorProperty}]` : ''}`, ratio, foreground: foregroundColor, backgrounds }
+    })
+  }, selectors)
+}
 
 test('workspace navigation adapts without losing any destination', async ({ page }, info) => {
   await mockLibrary(page)
@@ -182,14 +330,46 @@ test('a selection synchronizes to other open tabs', async ({ page, context }) =>
   await second.goto('/')
   await page.getByRole('combobox', { name: '界面主题' }).selectOption('night')
   await expect(second.getByRole('combobox', { name: '界面主题' })).toHaveValue('night')
+  await expect(second.locator('html')).toHaveAttribute('data-app-theme', 'night')
+  await expect(second.locator('meta[name="theme-color"]')).toHaveAttribute('content', APP_THEMES.night.themeColor)
+  await second.evaluate((key) => window.dispatchEvent(new StorageEvent('storage', { key, newValue: '{"theme":"paper"}' })), EPUB_PREFERENCES_KEY)
+  await expect(second.getByRole('combobox', { name: '界面主题' })).toHaveValue('night')
   await second.close()
 })
+
+for (const theme of ['edition', 'night'] as const) {
+  test(`${theme}: restores the existing preference and keeps reader settings isolated`, async ({ page }) => {
+    await mockLibrary(page)
+    const epub = JSON.stringify({ flow: 'continuous', layout: 'single', fontSize: 125, theme: 'sepia' })
+    const pdf = JSON.stringify({ flow: 'paged', layout: 'spread', zoomMode: 'custom', zoomPercent: 150 })
+    await page.addInitScript(({ key, theme, epubKey, pdfKey, epub, pdf }) => {
+      // Seed only once so later reloads exercise persisted user changes.
+      if (window.localStorage.getItem(key) === null) {
+        window.localStorage.setItem(key, theme)
+        window.localStorage.setItem(epubKey, epub)
+        window.localStorage.setItem(pdfKey, pdf)
+      }
+    }, { key: THEME_STORAGE_KEY, theme, epubKey: EPUB_PREFERENCES_KEY, pdfKey: PDF_PREFERENCES_KEY, epub, pdf })
+    await page.goto('/')
+    const switcher = page.getByRole('combobox', { name: '界面主题' })
+    await expect(switcher).toHaveValue(theme)
+    await expect(switcher.locator('option:checked')).toHaveText(APP_THEMES[theme].label)
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', APP_THEMES[theme].themeColor)
+    const next = theme === 'night' ? 'edition' : 'night'
+    await switcher.selectOption(next)
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', APP_THEMES[next].themeColor)
+    await page.reload()
+    await expect(switcher).toHaveValue(next)
+    await expect(switcher.locator('option:checked')).toHaveText(APP_THEMES[next].label)
+    expect(await page.evaluate(({ epubKey, pdfKey }) => ({ epub: localStorage.getItem(epubKey), pdf: localStorage.getItem(pdfKey) }), { epubKey: EPUB_PREFERENCES_KEY, pdfKey: PDF_PREFERENCES_KEY })).toEqual({ epub, pdf })
+  })
+}
 
 async function noOverflow(page: Page) {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
 }
 
-for (const theme of ['edition', 'night']) {
+for (const theme of ['edition', 'night'] as const) {
   test(`${theme}: persists selection, preserves search, navigation and reader`, async ({ page }, info) => {
     const errors: string[] = []
     page.on('pageerror', error => errors.push(error.message))
@@ -198,6 +378,7 @@ for (const theme of ['edition', 'night']) {
     await expect(page.locator('.continue-description h3')).toHaveText('瓦尔登湖')
     await page.getByRole('combobox', { name: '界面主题' }).selectOption(theme)
     await expect(page.locator('html')).toHaveAttribute('data-app-theme', theme)
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', APP_THEMES[theme].themeColor)
     await expect(page.locator('.continue-progress strong')).toHaveText('42%')
     await noOverflow(page)
     await page.screenshot({ path: info.outputPath(`${theme}-workspace-preview.png`), fullPage: false })
