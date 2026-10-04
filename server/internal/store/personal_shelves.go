@@ -18,6 +18,110 @@ type PersonalShelf struct {
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
+type PersonalShelfBatchResult struct {
+	AddedBookIDs          []int64 `json:"addedBookIds"`
+	AlreadyPresentBookIDs []int64 `json:"alreadyPresentBookIds"`
+}
+
+// PersonalShelfMemberships reads only the requested, currently accessible books
+// on a shelf owned by this user. A missing shelf is indistinguishable from one
+// owned by somebody else.
+func (s *Store) PersonalShelfMemberships(ctx context.Context, userID, id int64, bookIDs []int64) ([]int64, bool, error) {
+	rows, err := s.pool.Query(ctx, `SELECT ps.id,membership.book_file_id
+        FROM personal_shelves ps LEFT JOIN LATERAL (
+            SELECT requested.book_file_id,requested.position
+            FROM unnest($3::bigint[]) WITH ORDINALITY requested(book_file_id,position)
+            JOIN personal_shelf_books sb ON sb.book_file_id=requested.book_file_id AND sb.shelf_id=ps.id
+            JOIN accessible_book_ids($1) allowed ON allowed.book_file_id=requested.book_file_id
+            ORDER BY requested.position
+        ) membership ON true WHERE ps.user_id=$1 AND ps.id=$2 ORDER BY membership.position`, userID, id, bookIDs)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	items := make([]int64, 0)
+	found := false
+	for rows.Next() {
+		var shelfID int64
+		var bookID *int64
+		if err := rows.Scan(&shelfID, &bookID); err != nil {
+			return nil, false, err
+		}
+		found = true
+		if bookID != nil {
+			items = append(items, *bookID)
+		}
+	}
+	return items, found, rows.Err()
+}
+
+// AddPersonalShelfBooks uses the same parent lock as single-book append and
+// reordering. Access validation and all inserts use one statement snapshot:
+// an inaccessible or missing book rejects the whole batch without writes.
+// bookIDs must be nonempty, positive, and deduplicated by the API boundary.
+func (s *Store) AddPersonalShelfBooks(ctx context.Context, userID, id int64, bookIDs []int64) (PersonalShelfBatchResult, bool, error) {
+	result := PersonalShelfBatchResult{AddedBookIDs: make([]int64, 0), AlreadyPresentBookIDs: make([]int64, 0)}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return result, false, err
+	}
+	defer tx.Rollback(ctx)
+	var lockedID int64
+	err = tx.QueryRow(ctx, `SELECT id FROM personal_shelves WHERE user_id=$1 AND id=$2 FOR UPDATE`, userID, id).Scan(&lockedID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return result, false, nil
+	}
+	if err != nil {
+		return result, false, err
+	}
+	rows, err := tx.Query(ctx, `WITH requested AS MATERIALIZED (
+            SELECT book_file_id,position FROM unnest($3::bigint[]) WITH ORDINALITY requested(book_file_id,position)
+        ), allowed AS MATERIALIZED (SELECT book_file_id FROM accessible_book_ids($1)),
+        validated AS MATERIALIZED (
+            SELECT COUNT(*)=cardinality($3::bigint[]) AS can_add FROM requested JOIN allowed USING(book_file_id)
+        ), existing AS MATERIALIZED (
+            SELECT requested.book_file_id FROM requested JOIN personal_shelf_books sb USING(book_file_id) WHERE sb.shelf_id=$2
+        ), inserted AS (
+            INSERT INTO personal_shelf_books(shelf_id,book_file_id,position)
+            SELECT $2,requested.book_file_id,
+                COALESCE((SELECT MAX(position) FROM personal_shelf_books WHERE shelf_id=$2),0)+ROW_NUMBER() OVER(ORDER BY requested.position)
+            FROM requested CROSS JOIN validated
+            WHERE validated.can_add AND NOT EXISTS(SELECT 1 FROM existing WHERE existing.book_file_id=requested.book_file_id)
+            ON CONFLICT(shelf_id,book_file_id) DO NOTHING RETURNING book_file_id
+        ) SELECT validated.can_add,requested.book_file_id,inserted.book_file_id IS NOT NULL
+        FROM requested CROSS JOIN validated LEFT JOIN inserted USING(book_file_id)
+        ORDER BY requested.position`, userID, id, bookIDs)
+	if err != nil {
+		return result, false, err
+	}
+	valid := true
+	for rows.Next() {
+		var canAdd, added bool
+		var bookID int64
+		if err := rows.Scan(&canAdd, &bookID, &added); err != nil {
+			rows.Close()
+			return result, false, err
+		}
+		if !canAdd {
+			valid = false
+			continue
+		}
+		if added {
+			result.AddedBookIDs = append(result.AddedBookIDs, bookID)
+		} else {
+			result.AlreadyPresentBookIDs = append(result.AlreadyPresentBookIDs, bookID)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return result, false, err
+	}
+	if !valid {
+		return result, false, nil
+	}
+	return result, true, tx.Commit(ctx)
+}
+
 func (s *Store) ListPersonalShelves(ctx context.Context, userID, bookID int64) ([]PersonalShelf, error) {
 	rows, err := s.pool.Query(ctx, `WITH allowed AS MATERIALIZED (SELECT book_file_id FROM accessible_book_ids($1))
         SELECT ps.id,ps.name,ps.description,ps.created_at,

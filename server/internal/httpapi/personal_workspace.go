@@ -3,12 +3,103 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"peufmreader/internal/store"
 )
+
+const maxPersonalShelfBatchSize = 100
+
+func normalizePersonalShelfBookIDs(ids []int64) ([]int64, bool) {
+	if len(ids) == 0 || len(ids) > maxPersonalShelfBatchSize {
+		return nil, false
+	}
+	result := make([]int64, 0, len(ids))
+	seen := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return nil, false
+		}
+		if !seen[id] {
+			seen[id] = true
+			result = append(result, id)
+		}
+	}
+	return result, true
+}
+
+func (a *API) personalShelfMemberships(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	values := r.URL.Query()["ids"]
+	if len(values) != 1 {
+		writeError(w, 400, "invalid_shelf_book_ids", "ids must contain 1–100 positive integers separated by commas")
+		return
+	}
+	parts := strings.Split(values[0], ",")
+	if len(parts) > maxPersonalShelfBatchSize {
+		writeError(w, 400, "invalid_shelf_book_ids", "ids must contain 1–100 positive integers separated by commas")
+		return
+	}
+	bookIDs := make([]int64, len(parts))
+	for index, part := range parts {
+		value, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64)
+		if err != nil {
+			writeError(w, 400, "invalid_shelf_book_ids", "ids must contain 1–100 positive integers separated by commas")
+			return
+		}
+		bookIDs[index] = value
+	}
+	bookIDs, ok = normalizePersonalShelfBookIDs(bookIDs)
+	if !ok {
+		writeError(w, 400, "invalid_shelf_book_ids", "ids must contain 1–100 positive integers separated by commas")
+		return
+	}
+	items, found, err := a.store.PersonalShelfMemberships(r.Context(), sessionFromContext(r.Context()).User.ID, id, bookIDs)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, 404, "shelf_not_found", "书架不存在。")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"bookIds": items})
+}
+
+func (a *API) addPersonalShelfBooks(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	var input struct {
+		BookIDs []int64 `json:"bookIds"`
+	}
+	if err := readJSON(w, r, &input, 4<<10); err != nil {
+		writeError(w, 400, "invalid_shelf_book_ids", err.Error())
+		return
+	}
+	bookIDs, ok := normalizePersonalShelfBookIDs(input.BookIDs)
+	if !ok {
+		writeError(w, 400, "invalid_shelf_book_ids", "bookIds must contain 1–100 positive integers")
+		return
+	}
+	result, found, err := a.store.AddPersonalShelfBooks(r.Context(), sessionFromContext(r.Context()).User.ID, id, bookIDs)
+	if err != nil {
+		a.internalError(w, err)
+		return
+	}
+	if !found {
+		writeError(w, 404, "shelf_book_not_found", "书架或书籍不存在。")
+		return
+	}
+	writeJSON(w, 200, result)
+}
 
 func (a *API) searchNotebook(w http.ResponseWriter, r *http.Request) {
 	page, size, err := parsePagination(r, 24, 100)
