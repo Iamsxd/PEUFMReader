@@ -6,6 +6,7 @@
 
 - [后续开发计划与当前完成状态](./product/development-roadmap.md)
 - [GitHub 同类项目调研](./discovery/github-project-comparison.md)
+- [开源阅读器体验对照与下一步改进](./discovery/reader-experience-gap-analysis.md)
 - [NAS 多用户 Web 实现方案](./product/nas-web-implementation-proposal.md)
 - [M0 技术验证记录](./validation/m0-technical-validation.md)
 - [M1 导入分类验证记录](./validation/m1-import-classification-validation.md)
@@ -15,6 +16,7 @@
 - [阅读器真实语料与自动化回归](./validation/reader-corpus-regression.md)
 - [桌面与移动浏览器系统测试](./validation/browser-system-test.md)
 - [阅读工作台 UI 第一版与版本边界](./validation/reading-workspace-ui.md)
+- [青竹书院／墨蓝星图主题升级与验证](./validation/bamboo-ocean-themes.md)
 - [个人书架、跨书笔记与阅读流程增强](./validation/personal-reading-workspace.md)
 - [工作台流程打磨：书架批量添加与笔记草稿保护](./validation/reading-workspace-polish.md)
 - [笔记导出与书架拖拽：部署版本及隔离回归](./validation/workspace-export-sort.md)

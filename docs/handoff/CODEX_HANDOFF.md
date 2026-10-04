@@ -47,6 +47,8 @@ PEUFMReader 是面向 NAS 的多用户电子书管理与 Web 阅读应用。它�
 
 发布补记（2026-10-04）：用户已批准合并和推送，上述最新 UI、私人书架／笔记、流程打磨和排序／导出已通过快进合并纳入 `master`，保留全部功能提交历史。前文“未合并／未推送”是开发阶段快照；后续继续开发以 `master`／`origin/master` 的最新提交为基线。主分支推送自动触发 CI 与 GHCR `edge` 镜像发布，目前仅 `linux/amd64`，结果以 GitHub Actions 为准。本次 Git 发布不替换本机 8080，运行版本仍为 `ce8423c`。
 
+主题补记（2026-10-04）：经用户确认，从 `f4f90a9` 新建 `codex/bamboo-ocean-themes`，将应用日间／夜间外观升级为青竹书院／墨蓝星图，保留旧偏好 ID 与阅读器正文隔离，没有业务功能或迁移改动。验证见 `docs/validation/bamboo-ocean-themes.md`；Readest／Foliate-js／Kavita／KOReader 的阅读器改进候选见 `docs/discovery/reader-experience-gap-analysis.md`，这些候选尚未实施。本轮不推送、不合并或替换 8080；运行版本仍为 `ce8423c`。
+
 后续路线在 `docs/product/development-roadmap.md`，但不要自行假定优先级。P2 的公开候选方向是：外部告警通知、跨书库全文检索与 AI、听书、阅读目标/导出/隐私等统计增强。开始新功能前先向项目负责人确认本次目标。
 
 ## 代码地图
