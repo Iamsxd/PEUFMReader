@@ -128,10 +128,11 @@ P1 用户体验优化已经完成实现与自动化验证，可以进入 NAS 更
 
 验证和版本边界见 [个人阅读工作台验证](../validation/personal-reading-workspace.md)、[工作台流程打磨](../validation/reading-workspace-polish.md) 与 [笔记导出与书架拖拽](../validation/workspace-export-sort.md)。下一步优先真机／PWA 验收与真实 NAS 大书库性能；智能书架、跨页拖拽／自动滚屏、全站离开页草稿保护、笔记离线编辑、导入与外部笔记同步仍未实现。
 
-## 阅读外观与阅读器体验候选（2026-10-04）
+## 阅读外观与阅读器体验增强（2026-10-04）
 
 - 主题升级在 `codex/bamboo-ocean-themes`：青竹书院（日间）／墨蓝星图（夜间），保留 `edition`／`night` 偏好兼容、导航和全部业务流程；只改变应用外壳，不接管 PDF／EPUB 正文主题。验证和运行版本边界见 [主题升级记录](../validation/bamboo-ocean-themes.md)。
-- 对照 Readest、Foliate-js、Kavita、KOReader 后，建议下一轮优先 EPUB 字体／行距／留白设置、当前章节反馈与跳转返回、PDF 页内位置恢复。它们目前只是候选，尚未实施；现有目录、搜索、单双页、批注、自动连续朗读和常亮不需要重做。
+- 对照 Readest、Foliate-js、Kavita、KOReader 后，经用户确认在 `codex/reader-experience-refinements` 接续双主题版本：EPUB 字体／行段距／留白／行宽、尊重原书与重置；当前章节反馈及目录／搜索／批注／百分比跳转的会话内返回／前进；PDF 页内比例保存恢复、缩放／方向变化锚点和高亮矩形定位。沿用原阅读引擎、进度接口和旧偏好，没有新增迁移。
+- 当前实现仅提供浏览器全局排版默认；本书覆盖、目录折叠、脚注回退、固定版式专项排版、PDF 搜索的精确命中坐标仍未实现。真实 NAS 语料与 iPhone／Android 真机验收仍需独立执行，验证和运行版本边界见 [阅读器增强记录](../validation/reader-experience-refinements.md)。
 - 大 PDF 的在线 Range 加载、渐进搜索与临时命中高亮、离线批注和段落级朗读分别需要独立验证，不作为主题改版附带功能。保留私有书籍权限和正文不默认外发的边界。
 - 一手来源、现状证据、范围和验收要求见 [阅读器体验对照](../discovery/reader-experience-gap-analysis.md)。本轮没有更换阅读引擎，也没有部署至本机 8080。
 

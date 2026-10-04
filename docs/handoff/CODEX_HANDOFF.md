@@ -49,6 +49,8 @@ PEUFMReader 是面向 NAS 的多用户电子书管理与 Web 阅读应用。它�
 
 主题补记（2026-10-04）：经用户确认，从 `f4f90a9` 新建 `codex/bamboo-ocean-themes`，将应用日间／夜间外观升级为青竹书院／墨蓝星图，保留旧偏好 ID 与阅读器正文隔离，没有业务功能或迁移改动。验证见 `docs/validation/bamboo-ocean-themes.md`；Readest／Foliate-js／Kavita／KOReader 的阅读器改进候选见 `docs/discovery/reader-experience-gap-analysis.md`，这些候选尚未实施。本轮不推送、不合并或替换 8080；运行版本仍为 `ce8423c`。
 
+阅读器补记（2026-10-04）：用户要求继续开发后，从双主题与调研提交 `90e7063` 新建 `codex/reader-experience-refinements`，实现 EPUB 排版默认／尊重原书／重置、当前章节反馈与跳转返回／前进、百分比确认跳转，以及 PDF 页内恢复与高亮矩形定位；兼容旧主题／阅读器偏好与旧页码记录，无后端或迁移改动。实现与隔离回归提交为 `3df25f7`；127 项单测、34 项阅读器浏览器回归、30 项主题回归及生产构建通过。前文“候选尚未实施”为调研阶段快照；当前范围、隔离测试及未完成的真机／真实语料验收见 `docs/validation/reader-experience-refinements.md`。没有合并、推送或替换 8080，运行版本仍为 `ce8423c`。
+
 后续路线在 `docs/product/development-roadmap.md`，但不要自行假定优先级。P2 的公开候选方向是：外部告警通知、跨书库全文检索与 AI、听书、阅读目标/导出/隐私等统计增强。开始新功能前先向项目负责人确认本次目标。
 
 ## 代码地图

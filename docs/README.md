@@ -7,6 +7,7 @@
 - [后续开发计划与当前完成状态](./product/development-roadmap.md)
 - [GitHub 同类项目调研](./discovery/github-project-comparison.md)
 - [开源阅读器体验对照与下一步改进](./discovery/reader-experience-gap-analysis.md)
+- [阅读器排版、跳转历史与 PDF 页内定位验证](./validation/reader-experience-refinements.md)
 - [NAS 多用户 Web 实现方案](./product/nas-web-implementation-proposal.md)
 - [M0 技术验证记录](./validation/m0-technical-validation.md)
 - [M1 导入分类验证记录](./validation/m1-import-classification-validation.md)
