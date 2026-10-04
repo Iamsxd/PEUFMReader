@@ -17,6 +17,7 @@
 - [阅读工作台 UI 第一版与版本边界](./validation/reading-workspace-ui.md)
 - [个人书架、跨书笔记与阅读流程增强](./validation/personal-reading-workspace.md)
 - [工作台流程打磨：书架批量添加与笔记草稿保护](./validation/reading-workspace-polish.md)
+- [笔记导出与书架拖拽：部署版本及隔离回归](./validation/workspace-export-sort.md)
 - [依赖安全与发布加固验证](./validation/security-release-hardening.md)
 - [早期桌面方案（已废弃）](./product/implementation-proposal.md)
 - [领域术语表](./domain/glossary.md)
