@@ -17,6 +17,12 @@ declare module 'epubjs' {
     sectionIndex: number
   }
 
+  export interface RenditionLocation {
+    start?: { cfi: string; href?: string; index?: number; percentage?: number }
+    atStart?: boolean
+    atEnd?: boolean
+  }
+
   export interface Hook {
     register(callback: (contents: Contents) => void): void
     deregister(callback: (contents: Contents) => void): void
@@ -35,6 +41,8 @@ declare module 'epubjs' {
     flow(flow: 'paginated' | 'scrolled-continuous'): void
     spread(spread: 'none' | 'auto', minWidth?: number): void
     getContents(): Contents[]
+    currentLocation(): RenditionLocation | undefined
+    reportLocation(): Promise<unknown>
     on<TArgs extends unknown[]>(event: string, callback: (...args: TArgs) => void): void
     off<TArgs extends unknown[]>(event: string, callback: (...args: TArgs) => void): void
     destroy(): void

@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   calculatePDFScale,
+  calculatePDFAnchorScrollTop,
+  calculatePDFPageScrollLeft,
+  calculatePDFYRatio,
+  clampPDFYRatio,
   createPDFSearchSnippet,
   describePDFError,
   fetchPDFBytes,
   getPDFJSAssetOptions,
   getPDFViewPages,
+  getPDFReadingAnchor,
   isPDFRenderingCancellation,
   movePDFPage,
   normalizePDFWheelDelta,
@@ -14,6 +19,58 @@ import {
 } from './pdf'
 
 describe('PDF reading model', () => {
+  it('restores page-only records and sanitizes normalized anchors', () => {
+    expect(getPDFReadingAnchor({ pageIndex: 4 }, 20)).toEqual({ page: 5, yRatio: 0 })
+    expect(getPDFReadingAnchor({ pageIndex: 40, yRatio: .65 }, 20)).toEqual({ page: 20, yRatio: .65 })
+    expect(getPDFReadingAnchor({ pageIndex: -2, yRatio: 4 }, 20)).toEqual({ page: 1, yRatio: 1 })
+    expect(getPDFReadingAnchor({ pageIndex: Number.NaN, yRatio: '0.5' }, 20)).toEqual({ page: 1, yRatio: 0 })
+    expect(clampPDFYRatio(Number.POSITIVE_INFINITY)).toBe(0)
+    expect(clampPDFYRatio(-.3)).toBe(0)
+  })
+
+  it('locates the first valid highlight rectangle without changing old marks', () => {
+    const position = { pageIndex: 2, rects: [null, { x: 0, y: -.1, width: .2, height: .03 }, { x: .1, y: .7, width: .3, height: .02 }] }
+    expect(getPDFReadingAnchor(position, 10)).toEqual({ page: 3, yRatio: .7 })
+    expect(getPDFReadingAnchor({ pageIndex: 2, yRatio: .4, rects: [{ x: 0, y: .8, width: 0, height: .02 }] }, 10)).toEqual({ page: 3, yRatio: .4 })
+  })
+
+  it('preserves the same page point when the PDF scale changes', () => {
+    const ratio = calculatePDFYRatio(-976, 2000, 0)
+    expect(ratio).toBe(.5)
+    expect(calculatePDFAnchorScrollTop(1000, 0, -976, 3000, ratio)).toBe(1500)
+    expect(calculatePDFYRatio(-1476, 3000, 0)).toBe(ratio)
+    expect(calculatePDFYRatio(50, 0, 0)).toBe(0)
+    expect(calculatePDFAnchorScrollTop(0, 0, 24, 2000, 0)).toBe(0)
+    expect(calculatePDFAnchorScrollTop(20, 0, 24, 0, .5)).toBe(20)
+  })
+
+  it('reveals a zoomed right-hand spread page before committing its position', () => {
+    expect(calculatePDFPageScrollLeft(0, 0, 1024, 1242, 1200)).toBe(1218)
+    // A partly visible oversized page also moves into its own reading area.
+    expect(calculatePDFPageScrollLeft(700, 0, 1024, 542, 1200)).toBe(1218)
+  })
+
+  it('reveals the nearest edge of a target that fits within the viewport', () => {
+    expect(calculatePDFPageScrollLeft(300, 0, 1000, -100, 600)).toBe(176)
+    expect(calculatePDFPageScrollLeft(0, 0, 1000, 700, 400)).toBe(124)
+    expect(calculatePDFPageScrollLeft(40, 100, 1000, 800, 400)).toBe(164)
+  })
+
+  it('preserves horizontal pan when the target already occupies the reading area', () => {
+    expect(calculatePDFPageScrollLeft(300, 0, 1000, 100, 600)).toBe(300)
+    expect(calculatePDFPageScrollLeft(300, 0, 1000, -276, 1600)).toBe(300)
+    // Return from a right page to its oversized left peer, aligning near edge.
+    expect(calculatePDFPageScrollLeft(1250, 0, 1024, -1200, 1200)).toBe(250)
+  })
+
+  it('bounds horizontal restoration without changing vertical anchor semantics', () => {
+    expect(calculatePDFPageScrollLeft(0, 0, 1000, -100, 600)).toBe(0)
+    expect(calculatePDFPageScrollLeft(30, 0, 0, 100, 600)).toBe(30)
+    expect(calculatePDFPageScrollLeft(30, 0, 1000, 100, NaN)).toBe(30)
+    expect(calculatePDFPageScrollLeft(Infinity, 0, 1000, 100, 600)).toBe(0)
+    expect(calculatePDFYRatio(-976, 2000, 0)).toBe(.5)
+  })
+
   it('points PDF.js at the bundled decoder and font assets', () => {
     expect(getPDFJSAssetOptions('/reader')).toEqual({
       cMapUrl: '/reader/pdfjs/cmaps/',

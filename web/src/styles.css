@@ -752,6 +752,7 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .reader-toc-list { display: grid; align-content: start; padding: 7px 0 14px; }
 .reader-toc-list > button { min-height: 39px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 8px; padding-right: 14px; padding-bottom: 8px; border: 0; border-bottom: 1px solid #e4e6e1; background: transparent; color: #304239; font-size: .8rem; text-align: left; }
 .reader-toc-list > button:hover:not(:disabled) { background: #e4ebe3; }
+.reader-toc-list > button[aria-current='location'] { background: #e4ebe3; font-weight: 700; box-shadow: inset 3px 0 #3e4653; }
 .reader-toc-list > button:disabled { color: #8b958e; }
 .reader-toc-list small { flex: 0 0 auto; color: #758078; font-size: .7rem; font-variant-numeric: tabular-nums; }
 .reader-panel-empty { padding: 24px 18px; color: #758078; font-size: .82rem; text-align: center; }
@@ -823,7 +824,8 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #acc7b380; border
 .pdf-pages.continuous { display: flex; flex-direction: column; align-items: center; gap: 22px; }
 .pdf-pages.continuous.spread { display: grid; grid-template-columns: repeat(2, max-content); align-content: start; align-items: start; justify-content: center; gap: 22px 18px; }
 .pdf-pages.continuous.spread > :first-child { grid-column: 1 / -1; justify-self: center; }
-.pdf-page-shell { position: relative; flex: 0 0 auto; overflow: hidden; background: #fff; box-shadow: 0 14px 42px #0008; transition: width .16s ease, height .16s ease; }
+/* Page geometry must settle synchronously for normalized reading anchors. */
+.pdf-page-shell { position: relative; flex: 0 0 auto; overflow: hidden; background: #fff; box-shadow: 0 14px 42px #0008; }
 .pdf-page-canvas { position: absolute; inset: 0; display: block; opacity: 0; background: white; transition: opacity .12s ease; }
 .pdf-page-shell.rendered .pdf-page-canvas { opacity: 1; }
 .pdf-text-layer { --min-font-size: 1; --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv: calc(1 / var(--min-font-size)); position: absolute; z-index: 3; inset: 0; overflow: clip; color: transparent; line-height: 1; transform-origin: 0 0; -webkit-text-size-adjust: none; text-size-adjust: none; }

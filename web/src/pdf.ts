@@ -24,6 +24,60 @@ export const DEFAULT_PDF_PREFERENCES: PDFReaderPreferences = {
   zoomPercent: 100,
 }
 
+export interface PDFReadingAnchor {
+  page: number
+  yRatio: number
+}
+
+// A stable point in the page, aligned 24px below the viewport's top edge.
+// It is independent of zoom, page dimensions and transient reader chrome.
+export const PDF_READING_ANCHOR_INSET = 24
+
+export function clampPDFYRatio(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0
+}
+
+export function getPDFReadingAnchor(position: Record<string, unknown>, pageCount: number): PDFReadingAnchor {
+  const index = position.pageIndex
+  const page = typeof index === 'number' && Number.isInteger(index) && index >= 0 ? index + 1 : 1
+  // Existing highlights store rectangles, rather than an explicit yRatio.
+  const rects = Array.isArray(position.rects) ? position.rects : []
+  const firstRect = rects.find((rect) => {
+    if (!rect || typeof rect !== 'object') return false
+    const value = rect as Record<string, unknown>
+    return [value.x, value.y, value.width, value.height].every(item => typeof item === 'number' && Number.isFinite(item))
+      && Number(value.x) >= 0 && Number(value.x) <= 1 && Number(value.y) >= 0 && Number(value.y) <= 1
+      && Number(value.width) > 0 && Number(value.width) <= 1 && Number(value.height) > 0 && Number(value.height) <= 1
+  }) as { y: number } | undefined
+  return { page: clampPDFPage(page, pageCount), yRatio: clampPDFYRatio(firstRect?.y ?? position.yRatio) }
+}
+
+export function calculatePDFYRatio(pageTop: number, pageHeight: number, viewportTop: number): number {
+  if (!Number.isFinite(pageHeight) || pageHeight <= 0) return 0
+  return clampPDFYRatio((viewportTop + PDF_READING_ANCHOR_INSET - pageTop) / pageHeight)
+}
+
+export function calculatePDFAnchorScrollTop(scrollTop: number, viewportTop: number, pageTop: number, pageHeight: number, yRatio: number): number {
+  if (![scrollTop, viewportTop, pageTop, pageHeight].every(Number.isFinite) || pageHeight <= 0) return Number.isFinite(scrollTop) ? Math.max(0, scrollTop) : 0
+  return Math.max(0, scrollTop + pageTop - viewportTop + pageHeight * clampPDFYRatio(yRatio) - PDF_READING_ANCHOR_INSET)
+}
+
+/** Reveal a spread's target page without storing or resetting horizontal pan. */
+export function calculatePDFPageScrollLeft(scrollLeft: number, viewportLeft: number, viewportWidth: number, pageLeft: number, pageWidth: number): number {
+  const current = Number.isFinite(scrollLeft) ? Math.max(0, scrollLeft) : 0
+  if (![scrollLeft, viewportLeft, viewportWidth, pageLeft, pageWidth].every(Number.isFinite) || viewportWidth <= 0 || pageWidth <= 0) return current
+  const inset = Math.min(PDF_READING_ANCHOR_INSET, viewportWidth / 4)
+  const left = viewportLeft + inset
+  const right = viewportLeft + viewportWidth - inset
+  const pageRight = pageLeft + pageWidth
+  // Like inline:nearest, retain the pan if the page is fully visible, or if
+  // an oversized page already covers the viewport instead of showing its peer.
+  if ((pageLeft >= left && pageRight <= right) || (pageLeft <= left && pageRight >= right)) return current
+  const pageFits = pageWidth <= right - left
+  const alignLeft = pageLeft < left ? pageFits : !pageFits
+  return Math.max(0, current + (alignLeft ? pageLeft - left : pageRight - right))
+}
+
 export function isPDFRenderingCancellation(reason: unknown): boolean {
   return reason instanceof Error && (reason.name === 'RenderingCancelledException' || reason.name === 'AbortException')
 }

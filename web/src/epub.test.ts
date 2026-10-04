@@ -2,10 +2,16 @@ import ePub from 'epubjs'
 import { describe, expect, it, vi } from 'vitest'
 import {
   clampEPUBFontSize,
+  DEFAULT_EPUB_TYPOGRAPHY,
+  EPUB_PREFERENCES_KEY,
+  EPUB_TYPOGRAPHY_KEY,
+  findCurrentEPUBTOCEntry,
   flattenEPUBNavigation,
+  getEPUBTypographyRules,
   getEPUBRestoreTargets,
   normalizeEPUBWheelDelta,
   parseEPUBPreferences,
+  parseEPUBTypography,
   resolveEPUBOpenAs,
   resolveEPUBProgress,
 } from './epub'
@@ -71,5 +77,52 @@ describe('EPUB reading preferences', () => {
     expect(getEPUBRestoreTargets({ cfi: 'epubcfi(/6/2)', href: 'chapter.xhtml', chapterIndex: 4 }))
       .toEqual(['epubcfi(/6/2)', 'chapter.xhtml', 4])
     expect(getEPUBRestoreTargets({ cfi: '', href: 'chapter.xhtml', chapterIndex: -1 })).toEqual(['chapter.xhtml'])
+  })
+
+  it('stores typography separately without changing the original preference shape', () => {
+    expect(EPUB_TYPOGRAPHY_KEY).not.toBe(EPUB_PREFERENCES_KEY)
+    expect(parseEPUBPreferences(JSON.stringify({ fontFamily: 'sans', lineHeight: 2 })))
+      .toEqual({ flow: 'paged', layout: 'single', fontSize: 100, theme: 'paper' })
+    expect(parseEPUBTypography(null)).toEqual(DEFAULT_EPUB_TYPOGRAPHY)
+    expect(parseEPUBTypography(null)).not.toBe(DEFAULT_EPUB_TYPOGRAPHY)
+  })
+
+  it('rejects corrupt, primitive, and obsolete typography data', () => {
+    for (const value of ['{', 'null', '[]', 'false', '4', '"sans"']) expect(parseEPUBTypography(value)).toEqual(DEFAULT_EPUB_TYPOGRAPHY)
+    expect(parseEPUBTypography(JSON.stringify({ fontFamily: 'remote-font', lineHeight: '1.8', respectBookStyles: 'true' })))
+      .toEqual(DEFAULT_EPUB_TYPOGRAPHY)
+  })
+
+  it('restores and clamps typography without accepting CSS or remote fonts', () => {
+    expect(parseEPUBTypography(JSON.stringify({ fontFamily: 'sans', lineHeight: 1.93, paragraphSpacing: 1.24, sideMargin: 6.2, maxLineWidth: 61, respectBookStyles: true })))
+      .toEqual({ fontFamily: 'sans', lineHeight: 1.9, paragraphSpacing: 1.2, sideMargin: 6, maxLineWidth: 62, respectBookStyles: true })
+    expect(parseEPUBTypography(JSON.stringify({ fontFamily: 'system', lineHeight: 99, paragraphSpacing: -4, sideMargin: 80, maxLineWidth: 4 })))
+      .toEqual({ fontFamily: 'system', lineHeight: 2.4, paragraphSpacing: 0, sideMargin: 12, maxLineWidth: 36, respectBookStyles: false })
+  })
+
+  it('leaves author typography intact when requested, keeping only reader safety rules', () => {
+    const rules = getEPUBTypographyRules({ ...DEFAULT_EPUB_TYPOGRAPHY, respectBookStyles: true })
+    expect(Object.keys(rules)).toEqual(['html, body', 'img'])
+    expect(JSON.stringify(rules)).not.toMatch(/font-family|line-height|margin|padding|max-width.*ch/)
+  })
+
+  it('limits text blocks without overriding EPUB.js column or body geometry', () => {
+    const rules = getEPUBTypographyRules({ ...DEFAULT_EPUB_TYPOGRAPHY, sideMargin: 6, maxLineWidth: 60 })
+    expect(rules['p, h1, h2, h3, h4, h5, h6, blockquote, ul, ol']['max-width']).toBe('min(60ch, 88%) !important')
+    expect(rules['body, p, li, dt, dd, blockquote']['font-family']).toContain('Songti SC')
+    expect(JSON.stringify(rules)).not.toMatch(/https?:|@import|column-width|padding/)
+  })
+
+  it('finds the current chapter without misidentifying its nested fragments', () => {
+    const entries = flattenEPUBNavigation([
+      { id: 'one', href: 'one.xhtml', label: '第一章', subitems: [{ id: 'sub', href: 'one.xhtml#part', label: '第一节' }] },
+      { id: 'two', href: 'two.xhtml', label: '第二章' },
+    ])
+    expect(findCurrentEPUBTOCEntry(entries, 'one.xhtml')?.id).toBe('one')
+    expect(findCurrentEPUBTOCEntry(entries, 'one.xhtml#part')?.id).toBe('sub')
+    expect(findCurrentEPUBTOCEntry(entries, 'OEBPS/one.xhtml')?.id).toBe('one')
+    expect(findCurrentEPUBTOCEntry(entries, './two.xhtml')?.id).toBe('two')
+    expect(findCurrentEPUBTOCEntry(entries, 'unknown.xhtml')).toBeUndefined()
+    expect(findCurrentEPUBTOCEntry(entries, '')).toBeUndefined()
   })
 })

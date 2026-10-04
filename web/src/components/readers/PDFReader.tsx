@@ -1,9 +1,12 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 import workerURL from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 import { api } from '../../api'
 import {
   calculatePDFScale,
+  calculatePDFYRatio,
+  calculatePDFAnchorScrollTop,
+  calculatePDFPageScrollLeft,
   clampPDFPage,
   clampPDFZoom,
   createPDFSearchSnippet,
@@ -11,12 +14,14 @@ import {
   fetchPDFBytes,
   getPDFJSAssetOptions,
   getPDFViewPages,
+  getPDFReadingAnchor,
   movePDFPage,
   normalizePDFWheelDelta,
   parsePDFPreferences,
   PDF_PREFERENCES_KEY,
+  PDF_READING_ANCHOR_INSET,
 } from '../../pdf'
-import type { PDFPageFlow, PDFPageLayout, PDFReaderPreferences } from '../../pdf'
+import type { PDFPageFlow, PDFPageLayout, PDFReaderPreferences, PDFReadingAnchor } from '../../pdf'
 import type { BookFile, HighlightColor, ReadingMark, ReadingState } from '../../types'
 import { clampProgress } from '../../utils'
 import { createPDFHighlightLocation, createPDFReadingMarkLocation, getReadingMarkNavigationTarget, upsertReadingMark } from '../../readingMarks'
@@ -28,6 +33,7 @@ import { ScreenWakeLockControl } from './ScreenWakeLockControl'
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis'
 import { useReadingProgressPersistence } from '../../hooks/useReadingProgressPersistence'
 import { isInteractiveReaderTarget, isReaderCenterTap, MOBILE_READER_CHROME_QUERY } from '../../readerChrome'
+import { createReaderNavigationHistory } from '../../readerNavigation'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerURL
 
@@ -62,9 +68,19 @@ interface PDFSearchResult {
 
 type PDFSidePanel = 'toc' | 'search' | 'marks' | 'speech' | null
 
-async function resolvePDFOutline(document: pdfjs.PDFDocumentProxy, nodes: PDFOutlineNode[], depth = 0): Promise<PDFOutlineEntry[]> {
+interface PendingPDFAnchor {
+  target: PDFReadingAnchor
+  persist: boolean
+  source?: PDFReadingAnchor
+  history?: 'record' | 'back' | 'forward'
+}
+
+const samePDFAnchor = (left: PDFReadingAnchor, right: PDFReadingAnchor) => left.page === right.page && Math.abs(left.yRatio - right.yRatio) < .001
+
+async function resolvePDFOutline(document: pdfjs.PDFDocumentProxy, nodes: PDFOutlineNode[], depth = 0, ancestry = ''): Promise<PDFOutlineEntry[]> {
   const entries: PDFOutlineEntry[] = []
   for (const [index, node] of nodes.entries()) {
+    const path = ancestry ? `${ancestry}.${index}` : String(index)
     let destination = node.dest
     if (typeof destination === 'string') destination = await document.getDestination(destination)
     let page: number | null = null
@@ -75,8 +91,8 @@ async function resolvePDFOutline(document: pdfjs.PDFDocumentProxy, nodes: PDFOut
         // Some documents contain stale or external outline destinations.
       }
     }
-    entries.push({ id: `${depth}-${index}-${node.title}`, title: node.title || `第 ${page ?? '?'} 页`, page, depth })
-    if (node.items?.length) entries.push(...await resolvePDFOutline(document, node.items, depth + 1))
+    entries.push({ id: path, title: node.title || `第 ${page ?? '?'} 页`, page, depth })
+    if (node.items?.length) entries.push(...await resolvePDFOutline(document, node.items, depth + 1, path))
   }
   return entries
 }
@@ -97,7 +113,18 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   const wheelZoomAccumulatorRef = useRef(0)
   const wheelZoomResetTimerRef = useRef<number | null>(null)
   const contentPointerStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null)
-  const initialPage = typeof initialState.position.pageIndex === 'number' ? Number(initialState.position.pageIndex) + 1 : 1
+  const initialAnchor = getPDFReadingAnchor(initialState.position, Number.MAX_SAFE_INTEGER)
+  const initialPage = initialAnchor.page
+  const currentAnchorRef = useRef<PDFReadingAnchor>(initialAnchor)
+  const pendingAnchorRef = useRef<PendingPDFAnchor | null>({ target: initialAnchor, persist: false })
+  const positionFrameRef = useRef<number | null>(null)
+  const lastViewportSizeRef = useRef({ width: 0, height: 0 })
+  const navigationRef = useRef(createReaderNavigationHistory<PDFReadingAnchor>({
+    equals: samePDFAnchor,
+    isValid: anchor => Number.isInteger(anchor.page) && anchor.page >= 1 && Number.isFinite(anchor.yRatio) && anchor.yRatio >= 0 && anchor.yRatio <= 1,
+  }))
+  const [navigationState, setNavigationState] = useState({ canBack: false, canForward: false })
+  const [restoreRevision, setRestoreRevision] = useState(0)
   const [pdfDocument, setPDFDocument] = useState<pdfjs.PDFDocumentProxy | null>(null)
   const [pageNumber, setPageNumber] = useState(Math.max(1, initialPage))
   const [basePageSize, setBasePageSize] = useState({ width: 612, height: 792 })
@@ -125,6 +152,8 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   })
 
   const pageCount = pdfDocument?.numPages ?? 0
+  const pageCountRef = useRef(pageCount)
+  pageCountRef.current = pageCount
   const effectiveLayout: PDFPageLayout = isNarrow ? 'single' : preferences.layout
   const scale = useMemo(() => calculatePDFScale({
     zoomMode: preferences.zoomMode,
@@ -147,6 +176,12 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
       ? getPDFViewPages(pageNumber, pageCount, effectiveLayout)
       : [pageNumber]
   }, [effectiveLayout, pageCount, pageNumber, preferences.flow])
+  const requestAnchor = useCallback((target: PDFReadingAnchor, options: Omit<PendingPDFAnchor, 'target'>) => {
+    const safeTarget = { page: clampPDFPage(target.page, pageCount), yRatio: target.yRatio }
+    pendingAnchorRef.current = { ...options, target: safeTarget }
+    setPageNumber(safeTarget.page)
+    setRestoreRevision(revision => revision + 1)
+  }, [pageCount])
   const loadSpeechPages = useCallback(async (targetPages: number[]) => {
     if (!pdfDocument || targetPages.length === 0) return { text: '', label: '当前 PDF 页面' }
     const pageTexts: string[] = []
@@ -180,25 +215,107 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
       source: nextSource,
       sourceKey: `${book.id}:${nextPages.join('-')}`,
       activate: () => {
-        setPageNumber(nextPages[0])
-        if (preferences.flow === 'continuous') {
-          window.requestAnimationFrame(() => {
-            globalThis.document.querySelector<HTMLElement>(`[data-pdf-page="${nextPages[0]}"]`)?.scrollIntoView({ block: 'start' })
-          })
-        }
+        requestAnchor({ page: nextPages[0], yRatio: 0 }, { persist: true })
       },
     }
-  }, [book.id, effectiveLayout, loadSpeechPages, pageCount, pageNumber, pdfDocument, preferences.flow, speechPages])
+  }, [book.id, effectiveLayout, loadSpeechPages, pageCount, pageNumber, pdfDocument, preferences.flow, requestAnchor, speechPages])
   const speech = useSpeechSynthesis({
     loadSource: loadSpeechSource,
     loadNextSource: loadNextSpeechSource,
     sourceKey: `${book.id}:${speechPages.join('-')}`,
   })
 
+  const readVisibleAnchor = useCallback((): PDFReadingAnchor => {
+    const viewport = viewportRef.current
+    if (!viewport) return currentAnchorRef.current
+    const bounds = viewport.getBoundingClientRect()
+    const line = bounds.top + PDF_READING_ANCHOR_INSET
+    const visibleNumbers = new Set([...visiblePagesRef.current.keys(), currentAnchorRef.current.page])
+    let candidates = [...visibleNumbers].flatMap(number => {
+      const element = viewport.querySelector<HTMLElement>(`[data-pdf-page="${number}"]`)
+      return element ? [{ number, bounds: element.getBoundingClientRect() }] : []
+    }).filter(item => item.bounds.bottom > line && item.bounds.top < bounds.bottom && item.bounds.right > bounds.left && item.bounds.left < bounds.right)
+    // A fast scrollbar jump can precede IntersectionObserver delivery.
+    if (!candidates.length) candidates = Array.from(viewport.querySelectorAll<HTMLElement>('[data-pdf-page]')).map(element => ({
+      number: Number(element.dataset.pdfPage), bounds: element.getBoundingClientRect(),
+    })).filter(item => item.bounds.bottom > line && item.bounds.top < bounds.bottom && item.bounds.right > bounds.left && item.bounds.left < bounds.right)
+    candidates.sort((left, right) => Math.max(0, left.bounds.top - line) - Math.max(0, right.bounds.top - line)
+      || (left.number === currentAnchorRef.current.page ? -1 : right.number === currentAnchorRef.current.page ? 1 : left.number - right.number))
+    const selected = candidates[0]
+    return selected ? { page: selected.number, yRatio: calculatePDFYRatio(selected.bounds.top, selected.bounds.height, bounds.top) } : currentAnchorRef.current
+  }, [])
+
+  const applyPendingAnchor = useCallback(() => {
+    const pending = pendingAnchorRef.current
+    const viewport = viewportRef.current
+    if (!pending || !viewport) return
+    const page = viewport.querySelector<HTMLElement>(`[data-pdf-page="${pending.target.page}"]`)
+    if (!page) return
+    const viewportBounds = viewport.getBoundingClientRect()
+    const bounds = page.getBoundingClientRect()
+    // A spread's right page can be wholly outside a zoomed viewport. Reveal
+    // the placeholder too, so horizontal lazy visibility can load real size.
+    viewport.scrollLeft = calculatePDFPageScrollLeft(viewport.scrollLeft, viewportBounds.left, viewport.clientWidth, bounds.left, bounds.width)
+    viewport.scrollTop = calculatePDFAnchorScrollTop(viewport.scrollTop, viewportBounds.top, bounds.top, bounds.height, pending.target.yRatio)
+    currentAnchorRef.current = pending.target
+    // Lazy placeholders may have the first page's size. Keep the pending
+    // request until this page's intrinsic dimensions have reached the DOM.
+    if (page.dataset.geometryReady !== 'true') return
+    const finalBounds = page.getBoundingClientRect()
+    if (finalBounds.right <= viewportBounds.left || finalBounds.left >= viewportBounds.left + viewport.clientWidth) return
+    const actual = { page: pending.target.page, yRatio: calculatePDFYRatio(finalBounds.top, finalBounds.height, viewportBounds.top) }
+    currentAnchorRef.current = actual
+    pendingAnchorRef.current = null
+    if (pending.source && pending.history) {
+      const history = navigationRef.current
+      if (pending.history === 'record') history.record(pending.source, actual)
+      else if (pending.history === 'back') history.goBack(pending.source)
+      else history.goForward(pending.source)
+    }
+    setNavigationState({ canBack: navigationRef.current.canBack, canForward: navigationRef.current.canForward })
+    if (pending.persist) scheduleProgress({ position: { pageIndex: actual.page - 1, yRatio: actual.yRatio }, overallProgress: clampProgress(actual.page / pageCount) }, 600)
+  }, [pageCount, scheduleProgress])
+
+  const captureVisiblePosition = useCallback(() => {
+    if (!pageCount || pendingAnchorRef.current) return
+    const anchor = readVisibleAnchor()
+    if (samePDFAnchor(anchor, currentAnchorRef.current)) return
+    currentAnchorRef.current = anchor
+    setPageNumber(anchor.page)
+    scheduleProgress({ position: { pageIndex: anchor.page - 1, yRatio: anchor.yRatio }, overallProgress: clampProgress(anchor.page / pageCount) }, 600)
+  }, [pageCount, readVisibleAnchor, scheduleProgress])
+
+  const schedulePositionCapture = useCallback(() => {
+    if (positionFrameRef.current !== null) return
+    positionFrameRef.current = window.requestAnimationFrame(() => {
+      positionFrameRef.current = null
+      if (pendingAnchorRef.current) applyPendingAnchor()
+      else captureVisiblePosition()
+    })
+  }, [applyPendingAnchor, captureVisiblePosition])
+
+  const handleGeometryReady = useCallback(() => {
+    schedulePositionCapture()
+  }, [schedulePositionCapture])
+
+  useLayoutEffect(() => {
+    if (!pdfDocument) return
+    if (!pendingAnchorRef.current) pendingAnchorRef.current = { target: currentAnchorRef.current, persist: false }
+    applyPendingAnchor()
+  }, [applyPendingAnchor, containerWidth, effectiveLayout, pdfDocument, preferences.flow, restoreRevision, scale, availableHeight])
+
+  useEffect(() => () => {
+    if (positionFrameRef.current !== null) window.cancelAnimationFrame(positionFrameRef.current)
+  }, [])
+
   useEffect(() => {
     let disposed = false
     const controller = new AbortController()
     visiblePagesRef.current.clear()
+    currentAnchorRef.current = initialAnchor
+    pendingAnchorRef.current = { target: initialAnchor, persist: false }
+    navigationRef.current.clear()
+    setNavigationState({ canBack: false, canForward: false })
     searchRunRef.current += 1
     setError('')
     setWarning('')
@@ -232,6 +349,9 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
       if (disposed) return
       const viewport = firstPage.getViewport({ scale: 1 })
       setBasePageSize({ width: viewport.width, height: viewport.height })
+      const restoredAnchor = getPDFReadingAnchor(initialState.position, document.numPages)
+      currentAnchorRef.current = restoredAnchor
+      pendingAnchorRef.current = { target: restoredAnchor, persist: false }
       setPageNumber(clampPDFPage(initialPage, document.numPages))
       setPDFDocument(document)
       setLoadingStatus('')
@@ -250,6 +370,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
       disposed = true
       searchRunRef.current += 1
       controller.abort()
+      pendingAnchorRef.current = null
       const document = loadingTaskRef.current
       loadingTaskRef.current = null
       void document?.destroy()
@@ -308,8 +429,15 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     const viewport = viewportRef.current
     if (!viewport) return
     const measure = () => {
-      setContainerWidth(viewport.clientWidth || window.innerWidth)
-      setAvailableHeight(Math.max(320, window.innerHeight - 96))
+      const width = viewport.clientWidth || window.innerWidth
+      const height = Math.max(320, window.innerHeight - 96)
+      const previous = lastViewportSizeRef.current
+      if (pageCountRef.current && (previous.width !== width || previous.height !== height) && !pendingAnchorRef.current) {
+        pendingAnchorRef.current = { target: currentAnchorRef.current, persist: false }
+      }
+      lastViewportSizeRef.current = { width, height }
+      setContainerWidth(width)
+      setAvailableHeight(height)
       setIsNarrow(window.innerWidth <= 720)
     }
     measure()
@@ -330,45 +458,39 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     }
   }, [preferences])
 
-  const goToPage = useCallback((requestedPage: number) => {
+  const goToPage = useCallback((requestedPage: number, yRatio = 0, remember = false) => {
     speech.stop()
-    const requestedTarget = clampPDFPage(requestedPage, pageCount)
-    const target = preferences.flow === 'paged' && effectiveLayout === 'spread'
-      ? getPDFViewPages(requestedTarget, pageCount, effectiveLayout)[0]
-      : requestedTarget
-    setPageNumber(target)
-    if (preferences.flow === 'continuous') {
-      window.requestAnimationFrame(() => {
-        globalThis.document.querySelector<HTMLElement>(`[data-pdf-page="${target}"]`)?.scrollIntoView({ block: 'start' })
-      })
-    }
-  }, [effectiveLayout, pageCount, preferences.flow, speech.stop])
+    const source = pendingAnchorRef.current?.source ?? readVisibleAnchor()
+    requestAnchor({ page: requestedPage, yRatio }, { persist: true, ...(remember ? { source, history: 'record' as const } : {}) })
+  }, [readVisibleAnchor, requestAnchor, speech.stop])
+
+  const navigateHistory = useCallback((direction: 'back' | 'forward') => {
+    if (pendingAnchorRef.current) return
+    const source = readVisibleAnchor()
+    const target = direction === 'back' ? navigationRef.current.peekBack(source) : navigationRef.current.peekForward(source)
+    if (!target) return
+    speech.stop()
+    requestAnchor(target, { persist: true, source, history: direction })
+  }, [readVisibleAnchor, requestAnchor, speech.stop])
 
   const movePage = useCallback((direction: -1 | 1) => {
     goToPage(movePDFPage(pageNumber, pageCount, effectiveLayout, direction))
   }, [effectiveLayout, goToPage, pageCount, pageNumber])
 
-  useEffect(() => {
-    if (!pdfDocument || preferences.flow !== 'continuous') return
-    const timer = window.setTimeout(() => goToPage(pageNumber), 0)
-    return () => window.clearTimeout(timer)
-  }, [effectiveLayout, pdfDocument, preferences.flow])
-
-  useEffect(() => {
-    if (pageCount === 0) return
-    scheduleProgress({
-      position: { pageIndex: pageNumber - 1, yRatio: 0 },
-      overallProgress: clampProgress(pageNumber / pageCount),
-    }, 600)
-  }, [pageCount, pageNumber, scheduleProgress])
+  const changePreferences = useCallback((update: (current: PDFReaderPreferences) => PDFReaderPreferences) => {
+    const next = update(preferences)
+    if (next.flow === preferences.flow && next.layout === preferences.layout && next.zoomMode === preferences.zoomMode && next.zoomPercent === preferences.zoomPercent) return
+    if (!pendingAnchorRef.current) pendingAnchorRef.current = { target: readVisibleAnchor(), persist: false }
+    setPreferences(next)
+  }, [preferences, readVisibleAnchor])
 
   const updateZoom = useCallback((delta: number) => {
-    setPreferences((current) => ({
+    changePreferences((current) => ({
       ...current,
       zoomMode: 'custom',
       zoomPercent: clampPDFZoom((current.zoomMode === 'custom' ? current.zoomPercent : Math.round(scale * 100)) + delta),
     }))
-  }, [scale])
+  }, [changePreferences, scale])
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -427,10 +549,8 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   const handleVisibilityChange = useCallback((visiblePage: number, ratio: number) => {
     if (ratio > 0) visiblePagesRef.current.set(visiblePage, ratio)
     else visiblePagesRef.current.delete(visiblePage)
-    if (preferences.flow !== 'continuous' || visiblePagesRef.current.size === 0) return
-    const [bestPage] = [...visiblePagesRef.current.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]
-    setPageNumber((current) => current === bestPage ? current : bestPage)
-  }, [preferences.flow])
+    if (visiblePagesRef.current.size > 0) schedulePositionCapture()
+  }, [schedulePositionCapture])
 
   const handleRenderError = useCallback((message: string) => {
     setError(`PDF 页面渲染失败（${message}）。`)
@@ -469,14 +589,11 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   }, [onToggleChrome])
 
   function setFlow(flow: PDFPageFlow) {
-    setPreferences((current) => ({ ...current, flow }))
+    changePreferences((current) => ({ ...current, flow }))
   }
 
   function setLayout(layout: PDFPageLayout) {
-    setPreferences((current) => ({ ...current, layout }))
-    if (layout === 'spread' && pageCount > 0) {
-      setPageNumber(getPDFViewPages(pageNumber, pageCount, 'spread')[0])
-    }
+    changePreferences((current) => ({ ...current, layout }))
   }
 
   function toggleSidePanel(panel: Exclude<PDFSidePanel, null>) {
@@ -485,9 +602,15 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   }
 
   function selectPage(page: number) {
-    goToPage(page)
+    goToPage(page, 0, true)
     setSidePanel(null)
   }
+
+  const currentOutlineID = [...outline].reverse().find(entry => entry.page !== null && entry.page <= pageNumber)?.id
+  useEffect(() => {
+    if (sidePanel !== 'toc') return
+    viewportRef.current?.parentElement?.querySelector<HTMLElement>('.reader-toc-list [aria-current="location"]')?.scrollIntoView({ block: 'nearest' })
+  }, [currentOutlineID, sidePanel])
 
   async function searchPDF(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -539,6 +662,10 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
           <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} disabled={offlineMode} title={offlineMode ? '离线状态下书签与高亮只读' : undefined} onClick={() => toggleSidePanel('marks')}>书签/高亮</button>
           <button className={sidePanel === 'speech' || speech.status === 'speaking' || speech.status === 'paused' ? 'active' : ''} aria-pressed={sidePanel === 'speech'} onClick={() => toggleSidePanel('speech')}>朗读</button>
         </div>
+        <div className="reader-tool-group" aria-label="阅读位置">
+          <button aria-label="返回刚才位置" title="返回上一次跳转前的位置，不是退出阅读器" disabled={!navigationState.canBack || Boolean(pendingAnchorRef.current)} onClick={() => navigateHistory('back')}>返回刚才</button>
+          <button aria-label="前进到跳转位置" disabled={!navigationState.canForward || Boolean(pendingAnchorRef.current)} onClick={() => navigateHistory('forward')}>前进</button>
+        </div>
         <ScreenWakeLockControl onChromeActivity={onChromeActivity} />
         <span className="reader-toolbar-divider" />
         <div className="reader-tool-group" aria-label="阅读方式">
@@ -560,10 +687,10 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
         <span className="reader-toolbar-divider" />
         <div className="reader-tool-group reader-zoom-tools" aria-label="页面缩放">
           <button title="缩小（-）" aria-label="缩小" onClick={() => updateZoom(-10)}>−</button>
-          <button className="reader-zoom-value" title="恢复 100%" onClick={() => setPreferences((current) => ({ ...current, zoomMode: 'custom', zoomPercent: 100 }))}>{displayedZoom}%</button>
+          <button className="reader-zoom-value" title="恢复 100%" onClick={() => changePreferences((current) => ({ ...current, zoomMode: 'custom', zoomPercent: 100 }))}>{displayedZoom}%</button>
           <button title="放大（+）" aria-label="放大" onClick={() => updateZoom(10)}>＋</button>
-          <button className={preferences.zoomMode === 'fit-width' ? 'active' : ''} aria-pressed={preferences.zoomMode === 'fit-width'} onClick={() => setPreferences((current) => ({ ...current, zoomMode: 'fit-width' }))}>适宽</button>
-          <button className={preferences.zoomMode === 'fit-page' ? 'active' : ''} aria-pressed={preferences.zoomMode === 'fit-page'} onClick={() => setPreferences((current) => ({ ...current, zoomMode: 'fit-page' }))}>适页</button>
+          <button className={preferences.zoomMode === 'fit-width' ? 'active' : ''} aria-pressed={preferences.zoomMode === 'fit-width'} onClick={() => changePreferences((current) => ({ ...current, zoomMode: 'fit-width' }))}>适宽</button>
+          <button className={preferences.zoomMode === 'fit-page' ? 'active' : ''} aria-pressed={preferences.zoomMode === 'fit-page'} onClick={() => changePreferences((current) => ({ ...current, zoomMode: 'fit-page' }))}>适页</button>
         </div>
         <span className="reader-shortcuts">← → 翻页 · + − / Ctrl+滚轮缩放</span>
       </div>
@@ -578,11 +705,12 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
       ) : sidePanel === 'marks' ? (
         !offlineMode && <ReadingMarksPanel
           bookFileID={book.id}
-          current={createPDFReadingMarkLocation(pageNumber, pageCount)}
+          current={createPDFReadingMarkLocation(pageNumber, pageCount, currentAnchorRef.current.yRatio)}
           onNavigate={(position) => {
             const target = getReadingMarkNavigationTarget(book.format, position)
             if (typeof target === 'number') {
-              goToPage(target)
+              const anchor = getPDFReadingAnchor(position, pageCount)
+              goToPage(anchor.page, anchor.yRatio, true)
               setSidePanel(null)
             }
           }}
@@ -600,7 +728,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
             <div className="reader-toc-list">
               {outline.length === 0 && <p className="reader-panel-empty">这份 PDF 没有可用目录。</p>}
               {outline.map((entry) => (
-                <button key={entry.id} disabled={entry.page === null} style={{ paddingLeft: `${14 + entry.depth * 16}px` }} onClick={() => entry.page && selectPage(entry.page)}>
+                <button key={entry.id} aria-current={entry.id === currentOutlineID ? 'location' : undefined} disabled={entry.page === null} style={{ paddingLeft: `${14 + entry.depth * 16}px` }} onClick={() => entry.page && selectPage(entry.page)}>
                   <span>{entry.title}</span>{entry.page && <small>{entry.page}</small>}
                 </button>
               ))}
@@ -636,6 +764,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
       <div
         ref={viewportRef}
         className="pdf-reader-viewport"
+        onScroll={schedulePositionCapture}
         onPointerDown={handleContentPointerDown}
         onPointerUp={handleContentPointerUp}
         onPointerCancel={() => { contentPointerStartRef.current = null }}
@@ -652,6 +781,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
                 observerRoot={viewportRef.current}
                 fallbackSize={basePageSize}
                 onVisibilityChange={handleVisibilityChange}
+                onGeometryReady={handleGeometryReady}
                 onRenderError={handleRenderError}
                 onTextLayerError={handleTextLayerError}
                 highlights={highlights.filter((mark) => Number(mark.position.pageIndex) === number - 1)}
@@ -672,7 +802,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
               min={1}
               max={pageCount}
               value={pageNumber}
-              onChange={(event) => goToPage(Number(event.target.value))}
+              onChange={(event) => goToPage(Number(event.target.value), 0, true)}
               aria-label="当前页码"
             />
             <span>/ {pageCount}</span>

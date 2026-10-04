@@ -45,11 +45,11 @@ function clampProgress(value: number): number {
   return Math.min(1, Math.max(0, value))
 }
 
-export function createPDFReadingMarkLocation(pageNumber: number, pageCount: number): ReadingMarkLocation {
+export function createPDFReadingMarkLocation(pageNumber: number, pageCount: number, yRatio = 0): ReadingMarkLocation {
   const safePageCount = Math.max(1, Math.round(Number.isFinite(pageCount) ? pageCount : 1))
   const safePage = Math.min(safePageCount, Math.max(1, Math.round(Number.isFinite(pageNumber) ? pageNumber : 1)))
   return {
-    position: { pageIndex: safePage - 1, yRatio: 0 },
+    position: { pageIndex: safePage - 1, yRatio: clampProgress(yRatio) },
     overallProgress: safePage / safePageCount,
     label: `第 ${safePage} 页`,
   }

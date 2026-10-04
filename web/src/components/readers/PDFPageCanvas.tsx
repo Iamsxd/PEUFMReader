@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { ReadingMark } from '../../types'
 import { isPDFRenderingCancellation } from '../../pdf'
@@ -11,6 +11,7 @@ interface Props {
   observerRoot: Element | null
   fallbackSize: { width: number; height: number }
   onVisibilityChange: (pageNumber: number, ratio: number) => void
+  onGeometryReady: (pageNumber: number) => void
   onRenderError: (message: string) => void
   onTextLayerError: (pageNumber: number, message: string) => void
   highlights: ReadingMark[]
@@ -25,6 +26,7 @@ export function PDFPageCanvas({
   observerRoot,
   fallbackSize,
   onVisibilityChange,
+  onGeometryReady,
   onRenderError,
   onTextLayerError,
   highlights,
@@ -38,6 +40,11 @@ export function PDFPageCanvas({
   const [isNearViewport, setIsNearViewport] = useState(!lazy)
   const [rendered, setRendered] = useState(false)
   const [pageSize, setPageSize] = useState(fallbackSize)
+  const [geometryReady, setGeometryReady] = useState(false)
+
+  useLayoutEffect(() => {
+    if (geometryReady) onGeometryReady(pageNumber)
+  }, [geometryReady, onGeometryReady, pageNumber, pageSize, scale])
 
   useEffect(() => {
     if (!lazy) {
@@ -89,6 +96,7 @@ export function PDFPageCanvas({
       if (disposed) return
       const baseViewport = page.getViewport({ scale: 1 })
       setPageSize({ width: baseViewport.width, height: baseViewport.height })
+      setGeometryReady(true)
       const viewport = page.getViewport({ scale })
       const pixelRatio = Math.min(window.devicePixelRatio || 1, Math.max(1, 2 / scale))
       const context = canvas.getContext('2d', { alpha: false })
@@ -169,6 +177,7 @@ export function PDFPageCanvas({
       ref={shellRef}
       className={`pdf-page-shell${rendered ? ' rendered' : ''}`}
       data-pdf-page={pageNumber}
+      data-geometry-ready={geometryReady ? 'true' : 'false'}
       style={{ width, height }}
       aria-label={`第 ${pageNumber} 页`}
       onPointerUp={handlePointerUp}

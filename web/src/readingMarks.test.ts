@@ -27,6 +27,11 @@ describe('reading mark position model', () => {
     })
   })
 
+  it('keeps the current page point in new PDF bookmarks while accepting old callers', () => {
+    expect(createPDFReadingMarkLocation(5, 100, .65).position).toEqual({ pageIndex: 4, yRatio: .65 })
+    expect(createPDFReadingMarkLocation(5, 100, Number.NaN).position).toEqual({ pageIndex: 4, yRatio: 0 })
+  })
+
   it('stores an EPUB location with resilient restore fallbacks', () => {
     expect(createEPUBReadingMarkLocation({
       cfi: 'epubcfi(/6/8!/4/2)',

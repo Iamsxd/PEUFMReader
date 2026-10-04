@@ -100,6 +100,9 @@ export function Reader({ book, initialMark, contentData, userID, offlineMode, on
       if (event.clientY <= 120) showReaderChrome()
     }
     const handleKeyDown = (event: KeyboardEvent) => {
+      // The EPUB reader owns Escape while a panel is open, so closing it can
+      // restore focus without the outer listener hiding that focused control.
+      if (event.defaultPrevented || (event.key === 'Escape' && document.querySelector('.epub-reader .reader-side-panel'))) return
       if (event.key === 'Escape') hideReaderChrome()
       else if (event.key === 'Tab') showReaderChrome()
     }
