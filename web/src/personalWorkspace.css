@@ -6,6 +6,22 @@
 .personal-workspace .page-heading {
   margin: 0;
 }
+.workspace-feedback {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid var(--ui-line);
+  border-radius: 9px;
+  background: var(--ui-accent-soft);
+  color: var(--ui-ink);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+.workspace-feedback:empty {
+  display: none;
+}
 .personal-workspace :is(h2, h3, p) {
   overflow-wrap: anywhere;
 }
@@ -201,6 +217,10 @@
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 .shelf-navigation small {
   flex: none;
@@ -219,6 +239,10 @@
 .shelf-heading h2 {
   margin: 0;
   font: 1.5rem/1.5 var(--ui-serif);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
 }
 .shelf-heading p {
   margin: 8px 0;
@@ -250,6 +274,69 @@
   min-width: 0;
   flex: 1;
   overflow-wrap: anywhere;
+}
+.shelf-candidate-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+  cursor: pointer;
+}
+.shelf-candidate-choice input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--ui-accent);
+}
+.shelf-selection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ui-line);
+  color: var(--ui-muted);
+  font-size: 0.8rem;
+}
+.shelf-selection-bar button {
+  font-size: 0.8rem;
+}
+.shelf-search-summary {
+  color: var(--ui-muted);
+  font-size: 0.75rem;
+  line-height: 1.8;
+}
+.shelf-selected-books {
+  margin-top: 12px;
+  font-size: 0.8rem;
+}
+.shelf-selected-books ul {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.shelf-selected-books li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.shelf-selected-books span {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.shelf-selected-books button {
+  flex: none;
+}
+.shelf-add-books .personal-pagination {
+  margin-top: 16px;
 }
 .shelf-candidates small {
   display: block;
@@ -494,6 +581,13 @@
   }
   .shelf-order-actions button {
     min-height: 44px;
+  }
+  .shelf-add-books :is(button, .shelf-candidate-choice),
+  .workspace-feedback button {
+    min-height: 44px;
+  }
+  .shelf-selection-bar .personal-actions {
+    width: 100%;
   }
   .device-onboarding {
     padding: 16px;

@@ -253,6 +253,9 @@ test('book detail and reader controls remain reachable', async ({ page }, testIn
   }
   await expect(page.getByText('应用托管副本（删除副本，不动来源）')).toBeVisible()
   await page.getByRole('button', { name: /开始阅读|继续阅读|重新阅读/ }).click()
+  // Wait for PDF parsing before checking controls: loading can outlast the
+  // normal 3.5-second toolbar auto-hide interval on slower test hosts.
+  await expect(page.locator('.pdf-page-shell.rendered').first()).toBeVisible()
   const readerToolbar = page.locator('[role="toolbar"][aria-label$="阅读工具"]')
   const readerViewport = page.locator('.pdf-reader-viewport')
   const readerChromeButton = page.getByRole('button', { name: /显示 (PDF|EPUB) 阅读工具/ })
@@ -271,6 +274,8 @@ test('book detail and reader controls remain reachable', async ({ page }, testIn
   }
   await revealReaderChrome()
   await expect(readerToolbar).toBeVisible()
+  // A real pointer interaction starts a fresh activity interval for assertions.
+  await readerToolbar.click({ position: { x: 4, y: 4 } })
   if (isMobile) {
     await expect(readerChromeButton).toBeHidden()
     await expect.poll(() => readerToolbar.evaluate((element) => getComputedStyle(element).flexWrap)).toBe('wrap')

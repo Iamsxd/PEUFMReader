@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { api, APIError } from '../api'
 import type { BookFile, NotebookEntry, NotebookPage as NotebookResult, NotebookQuery, ReadingMark } from '../types'
 import { formatRelativeTime } from '../utils'
@@ -16,16 +16,32 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
   const [result, setResult] = useState<NotebookResult | null>(null)
   const [revision, setRevision] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [loadError, setLoadError] = useState('')
+  const [actionError, setActionError] = useState('')
+  const [feedback, setFeedback] = useState('')
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState<NotebookEntry | null>(null)
   const [body, setBody] = useState('')
+  const busyRef = useRef(false)
+  const mountedRef = useRef(false)
+  const requestedQueryRef = useRef('')
+  const hasFilters = Boolean(query.q?.trim() || query.kind || query.color)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     let disposed = false
+    const requestKey = JSON.stringify({ ...query, bookId: bookID })
     setLoading(true)
-    setResult(null)
-    setError('')
+    // A same-query refresh should not unmount an editor or erase its draft if loading fails.
+    if (requestedQueryRef.current !== requestKey) setResult(null)
+    requestedQueryRef.current = requestKey
+    setLoadError('')
     void api
       .searchNotebook({ ...query, bookId: bookID })
       .then((next) => {
@@ -36,7 +52,7 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
       })
       .catch((reason) => {
         if (!disposed) {
-          setError(reason instanceof APIError ? reason.message : '笔记加载失败，请重试。')
+          setLoadError(reason instanceof APIError ? reason.message : '笔记加载失败，请重试。')
           setLoading(false)
         }
       })
@@ -45,32 +61,67 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
     }
   }, [bookID, query, revision])
 
-  async function perform(action: () => Promise<void>) {
+  async function perform<T>(action: () => Promise<T>, onSuccess: (value: T) => void, message = '') {
+    if (busyRef.current || loading) return
+    busyRef.current = true
     setBusy(true)
-    setError('')
+    setActionError('')
+    setFeedback('')
     try {
-      await action()
+      const value = await action()
+      if (mountedRef.current) {
+        onSuccess(value)
+        setFeedback(message)
+      }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '操作失败，请重试。')
+      if (mountedRef.current) {
+        setActionError(reason instanceof Error ? reason.message : '操作失败，请重试。')
+      }
     } finally {
-      setBusy(false)
+      busyRef.current = false
+      if (mountedRef.current) setBusy(false)
     }
+  }
+
+  function canLeaveEditor() {
+    if (busyRef.current) return false
+    if (editing && body !== editing.body && !window.confirm('批注有未保存的修改，确定放弃吗？')) return false
+    return true
+  }
+
+  function leaveEditor() {
+    if (!canLeaveEditor()) return false
+    setEditing(null)
+    setActionError('')
+    setFeedback('')
+    return true
   }
 
   function search(event: FormEvent) {
     event.preventDefault()
-    setEditing(null)
+    if (!leaveEditor()) return
     setQuery((current) => ({ ...current, q: draft.trim(), page: 1 }))
   }
 
+  function clearFilters() {
+    if (!leaveEditor()) return
+    setDraft('')
+    setQuery({})
+  }
+
   async function remove(mark: NotebookEntry) {
+    if (busyRef.current) return
     if (!window.confirm(`删除这条${markKindLabel(mark.kind)}？书籍不会被删除。`)) return
-    await perform(async () => {
-      await api.deleteReadingMark(mark.id)
-      setQuery((current) => ({ ...current, page: 1 }))
-      setRevision((value) => value + 1)
-      setEditing(null)
-    })
+    if (editing && editing.id !== mark.id && !canLeaveEditor()) return
+    await perform(
+      () => api.deleteReadingMark(mark.id),
+      () => {
+        setQuery((current) => ({ ...current, page: 1 }))
+        setRevision((value) => value + 1)
+        setEditing(null)
+      },
+      `${markKindLabel(mark.kind)}已删除。`,
+    )
   }
 
   return (
@@ -86,7 +137,13 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
       {bookID && (
         <div className="workspace-scope">
           <span>正在查看单本书的记录</span>
-          <button className="quiet" onClick={onAllNotes}>
+          <button
+            className="quiet"
+            disabled={busy}
+            onClick={() => {
+              if (leaveEditor()) onAllNotes()
+            }}
+          >
             查看全部笔记
           </button>
           <a href={api.readingMarksExportURL(bookID, 'markdown')} download>
@@ -101,16 +158,20 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
             aria-label="搜索笔记"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
+            disabled={busy}
             maxLength={200}
             placeholder="搜索书名、摘录或想法…"
           />
-          <button className="primary">搜索</button>
+          <button className="primary" disabled={busy}>
+            搜索
+          </button>
         </label>
         <select
           aria-label="记录类型"
           value={query.kind ?? ''}
+          disabled={busy}
           onChange={(event) => {
-            setEditing(null)
+            if (!leaveEditor()) return
             setQuery((current) => ({
               ...current,
               kind: event.target.value as NotebookQuery['kind'],
@@ -126,8 +187,9 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
         <select
           aria-label="高亮颜色"
           value={query.color ?? ''}
+          disabled={busy}
           onChange={(event) => {
-            setEditing(null)
+            if (!leaveEditor()) return
             setQuery((current) => ({
               ...current,
               color: event.target.value as NotebookQuery['color'],
@@ -142,25 +204,42 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
             </option>
           ))}
         </select>
+        {hasFilters && (
+          <button type="button" className="quiet" disabled={busy} onClick={clearFilters}>
+            清空筛选
+          </button>
+        )}
       </form>
-      {error && (
+      <div className={feedback ? 'workspace-feedback' : 'sr-only'} role="status" aria-live="polite" aria-atomic="true">
+        {feedback}
+      </div>
+      {actionError && (
         <div className="notice error" role="alert">
-          {error}{' '}
-          <button className="quiet" onClick={() => setRevision((value) => value + 1)}>
+          {actionError} 请检查后重新执行。{editing && '未保存的编辑内容仍保留在下方。'}
+        </div>
+      )}
+      {loadError && (
+        <div className="notice error" role="alert">
+          {loadError}{' '}
+          <button className="quiet" disabled={busy} onClick={() => setRevision((value) => value + 1)}>
             重试加载
           </button>
         </div>
       )}
       {loading ? (
         <p role="status">正在整理你的阅读记录…</p>
-      ) : !error && result?.items.length === 0 ? (
+      ) : !loadError && result?.items.length === 0 ? (
         <section className="empty-state">
-          <h2>还没有符合条件的记录</h2>
-          <p>阅读时添加高亮、笔记或书签，它们会出现在这里。</p>
+          <h2>{hasFilters ? '还没有符合条件的记录' : '还没有阅读记录'}</h2>
+          <p>
+            {hasFilters
+              ? '试试其他关键词、记录类型或颜色，也可以清空筛选查看全部记录。'
+              : '阅读时添加高亮、笔记或书签，它们会出现在这里。'}
+          </p>
         </section>
       ) : null}
-      {!loading && result && (
-        <div className="notebook-grid">
+      {result && (
+        <div className="notebook-grid" aria-busy={loading || busy}>
           {result?.items.map((mark) => (
             <article className="notebook-card" key={mark.id}>
               <header>
@@ -179,30 +258,34 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
                 <form
                   onSubmit={(event) => {
                     event.preventDefault()
-                    void perform(async () => {
-                      await api.updateReadingMark(mark.id, {
+                    void perform(
+                      () => api.updateReadingMark(mark.id, {
                         label: mark.label,
                         body: body.trim(),
                         color: mark.color,
-                      })
-                      setEditing(null)
-                      setRevision((value) => value + 1)
-                    })
+                      }),
+                      () => {
+                        setEditing(null)
+                        setRevision((value) => value + 1)
+                      },
+                      '笔记已保存。',
+                    )
                   }}
                 >
                   <textarea
                     aria-label="编辑笔记内容"
                     value={body}
                     onChange={(event) => setBody(event.target.value)}
+                    disabled={busy}
                     rows={4}
                     maxLength={10000}
                     autoFocus
                   />
                   <div className="personal-actions">
-                    <button type="button" className="quiet" disabled={busy} onClick={() => setEditing(null)}>
+                    <button type="button" className="quiet" disabled={busy} onClick={leaveEditor}>
                       取消
                     </button>
-                    <button className="primary" disabled={busy || (mark.kind === 'note' && !body.trim())}>
+                    <button className="primary" disabled={busy || loading || (mark.kind === 'note' && !body.trim())}>
                       保存笔记
                     </button>
                   </div>
@@ -213,21 +296,26 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
               <footer>
                 <button
                   className="secondary"
-                  disabled={busy}
-                  onClick={() =>
-                    void perform(async () => {
-                      const detail = await api.getBookDetail(mark.bookFileId)
-                      onOpenBook(detail.book, mark)
-                    })
-                  }
+                  disabled={busy || loading}
+                  onClick={() => {
+                    if (!canLeaveEditor()) return
+                    void perform(
+                      () => api.getBookDetail(mark.bookFileId),
+                      (detail) => {
+                        setEditing(null)
+                        onOpenBook(detail.book, mark)
+                      },
+                    )
+                  }}
                 >
                   回到原文
                 </button>
                 {mark.kind !== 'bookmark' && (
                   <button
                     className="quiet"
-                    disabled={busy}
+                    disabled={busy || loading}
                     onClick={() => {
+                      if (editing?.id === mark.id || !leaveEditor()) return
                       setEditing(mark)
                       setBody(mark.body)
                     }}
@@ -235,7 +323,7 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
                     编辑批注
                   </button>
                 )}
-                <button className="quiet" disabled={busy} onClick={() => void remove(mark)}>
+                <button className="quiet" disabled={busy || loading} onClick={() => void remove(mark)}>
                   删除
                 </button>
               </footer>
@@ -243,12 +331,14 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
           ))}
         </div>
       )}
-      {!loading && result && result.totalPages > 1 && (
+      {result && result.totalPages > 1 && (
         <nav className="personal-pagination" aria-label="笔记分页">
           <button
             className="secondary"
-            disabled={result.page <= 1}
-            onClick={() => setQuery((current) => ({ ...current, page: result.page - 1 }))}
+            disabled={busy || loading || result.page <= 1}
+            onClick={() => {
+              if (leaveEditor()) setQuery((current) => ({ ...current, page: result.page - 1 }))
+            }}
           >
             上一页
           </button>
@@ -257,8 +347,10 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
           </span>
           <button
             className="secondary"
-            disabled={result.page >= result.totalPages}
-            onClick={() => setQuery((current) => ({ ...current, page: result.page + 1 }))}
+            disabled={busy || loading || result.page >= result.totalPages}
+            onClick={() => {
+              if (leaveEditor()) setQuery((current) => ({ ...current, page: result.page + 1 }))
+            }}
           >
             下一页
           </button>

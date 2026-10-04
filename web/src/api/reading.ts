@@ -18,6 +18,14 @@ export const readingAPI = {
   shelfBooks(id: number, page = 1): Promise<CatalogPage> {
     return transport.request(`/api/v1/shelves/${id}/books?page=${page}`)
   },
+  async shelfMemberships(id: number, bookIds: number[]): Promise<number[]> {
+    if (bookIds.length === 0) return []
+    const result = await transport.request<{ bookIds: number[] }>(`/api/v1/shelves/${id}/memberships${querySuffix({ ids: bookIds.join(',') })}`)
+    return result.bookIds
+  },
+  addShelfBooks(id: number, bookIds: number[]): Promise<{ addedBookIds: number[]; alreadyPresentBookIds: number[] }> {
+    return transport.request(`/api/v1/shelves/${id}/books`, { method: 'POST', body: JSON.stringify({ bookIds }), headers: { 'Content-Type': 'application/json' } })
+  },
   setShelfBook(id: number, bookId: number, included: boolean): Promise<void> {
     return transport.request(`/api/v1/shelves/${id}/books/${bookId}`, { method: included ? 'PUT' : 'DELETE' })
   },

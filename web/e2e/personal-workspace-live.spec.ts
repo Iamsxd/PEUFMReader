@@ -69,6 +69,32 @@ test('scratch instance persists shelves and notes through real browser/API round
   await page.goto(`/#/shelves?shelf=${shelf.id}`)
   await page.reload()
   await expect(page.locator('.shelf-book')).toHaveCount(1)
+  const secondUpload = await page.request.post('/api/v1/book-files', {
+    headers,
+    multipart: {
+      file: {
+        name: `${key}-batch.pdf`,
+        mimeType: 'application/pdf',
+        buffer: minimalPDF([`Original scratch batch candidate ${key}`]),
+      },
+    },
+  })
+  expect(secondUpload.ok()).toBe(true)
+  const { bookFile: secondBook } = await secondUpload.json()
+  await page.locator('.shelf-add-books > summary').click()
+  await page.getByRole('textbox', { name: '搜索要添加的书籍' }).fill(secondBook.title)
+  await page.getByRole('button', { name: '查找书籍', exact: true }).click()
+  await page.getByRole('checkbox', { name: `勾选《${secondBook.title}》`, exact: true }).check()
+  await page.getByRole('button', { name: '添加已选（1）', exact: true }).click()
+  await expect(page.locator('.shelf-book')).toHaveCount(2)
+  await expect(page.locator('.workspace-feedback')).toContainText('已添加 1 本书')
+  await page.reload()
+  await expect(page.locator('.shelf-book')).toHaveCount(2)
+  const membership = await page.request.get(`/api/v1/shelves/${shelf.id}/memberships?ids=${book.id},${secondBook.id}`)
+  expect(await membership.json()).toEqual({ bookIds: [book.id, secondBook.id] })
+  const repeated = await page.request.post(`/api/v1/shelves/${shelf.id}/books`, { headers, data: { bookIds: [book.id, secondBook.id] } })
+  expect(repeated.status()).toBe(200)
+  expect(await repeated.json()).toEqual({ addedBookIds: [], alreadyPresentBookIds: [book.id, secondBook.id] })
   const removed = await page.request.delete(`/api/v1/shelves/${shelf.id}`, { headers })
   expect(removed.status()).toBe(204)
   expect((await page.request.get(`/api/v1/book-files/${book.id}`)).ok()).toBe(true)

@@ -22,7 +22,24 @@ const books = ['阅读的形状', '漫游指南', '文字的温度'].map((title,
   createdAt: '2026-10-03T00:00:00Z',
 }))
 
-async function mockWorkspace(page: Page, options: { fail?: boolean; long?: boolean; many?: boolean } = {}) {
+async function mockWorkspace(page: Page, options: {
+  fail?: boolean
+  long?: boolean
+  many?: boolean
+  manyBooks?: boolean
+  initialBookCount?: number
+  failBatchOnce?: boolean
+} = {}) {
+  const catalog = options.manyBooks
+    ? [...books, ...Array.from({ length: 39 }, (_, index) => ({
+        ...books[0],
+        id: 920003 + index,
+        workId: 920003 + index,
+        editionId: 920003 + index,
+        title: `原创书架条目 ${String(index + 4).padStart(2, '0')}`,
+        originalFilename: 'original-shelf-fixture.pdf',
+      }))]
+    : books
   let shelves = [
     {
       id: 50,
@@ -31,7 +48,11 @@ async function mockWorkspace(page: Page, options: { fail?: boolean; long?: boole
       createdAt: '2026-10-03T00:00:00Z',
     },
   ]
-  const memberships = new Map<number, number[]>([[50, [books[0].id, books[1].id]]])
+  const memberships = new Map<number, number[]>([[50, catalog.slice(0, options.initialBookCount ?? 2).map((book) => book.id)]])
+  let batchFailures = options.failBatchOnce ? 1 : 0
+  const batchRequests: { shelfID: number; bookIds: number[] }[] = []
+  const membershipRequests: { shelfID: number; bookIds: number[] }[] = []
+  const catalogRequests: { page: number; pageSize: number; q: string }[] = []
   let marks = books.map((book, index) => ({
     id: 60 + index,
     bookFileId: book.id,
@@ -111,6 +132,16 @@ async function mockWorkspace(page: Page, options: { fail?: boolean; long?: boole
           containsBook: memberships.get(shelf.id)?.includes(Number(url.searchParams.get('bookId'))) ?? false,
         })),
       }
+    } else if (/\/shelves\/\d+\/memberships$/.test(path)) {
+      const shelfID = Number(path.split('/')[4])
+      if (!memberships.has(shelfID))
+        return route.fulfill({ status: 404, json: { error: { code: 'shelf_not_found', message: '测试：书架不存在' } } })
+      const requested = (url.searchParams.get('ids') ?? '').split(',').map(Number)
+      if (requested.length > 100 || requested.some((id) => !Number.isInteger(id) || id <= 0))
+        return route.fulfill({ status: 400, json: { error: { code: 'invalid_shelf_book_ids', message: '测试：请选择 1–100 本书' } } })
+      const ids = [...new Set(requested)]
+      membershipRequests.push({ shelfID, bookIds: ids })
+      data = { bookIds: ids.filter((id) => memberships.get(shelfID)!.includes(id)) }
     } else if (/\/shelves\/\d+\/books\/\d+$/.test(path)) {
       const parts = path.split('/'),
         shelfID = Number(parts[4]),
@@ -130,9 +161,28 @@ async function mockWorkspace(page: Page, options: { fail?: boolean; long?: boole
       return route.fulfill({ status: 204 })
     } else if (/\/shelves\/\d+\/books$/.test(path)) {
       const id = Number(path.split('/')[4])
+      if (method === 'POST') {
+        const requested = input().bookIds as number[]
+        if (!Array.isArray(requested) || requested.length === 0 || requested.length > 100 || requested.some((bookID) => !Number.isInteger(bookID) || bookID <= 0))
+          return route.fulfill({ status: 400, json: { error: { code: 'invalid_shelf_book_ids', message: '测试：请选择 1–100 本书' } } })
+        batchRequests.push({ shelfID: id, bookIds: [...requested] })
+        if (batchFailures > 0) {
+          batchFailures -= 1
+          return route.fulfill({ status: 503, json: { error: { code: 'unavailable', message: '测试：批量添加失败，请重试' } } })
+        }
+        if (!memberships.has(id) || requested.some((bookID) => !catalog.some((book) => book.id === bookID)))
+          return route.fulfill({ status: 404, json: { error: { code: 'shelf_book_not_found', message: '测试：书架或书籍不存在' } } })
+        const ids = memberships.get(id)!
+        const unique = [...new Set(requested)]
+        const addedBookIds = unique.filter((bookID) => !ids.includes(bookID))
+        const alreadyPresentBookIds = unique.filter((bookID) => ids.includes(bookID))
+        ids.push(...addedBookIds)
+        return route.fulfill({ status: 200, json: { addedBookIds, alreadyPresentBookIds } })
+      }
       data = respond(
-        (memberships.get(id) ?? []).map((bookID) => books.find((book) => book.id === bookID)),
+        (memberships.get(id) ?? []).map((bookID) => catalog.find((book) => book.id === bookID)),
         Number(url.searchParams.get('page') ?? 1),
+        Number(url.searchParams.get('pageSize') ?? 24),
       )
     } else if (/\/shelves\/\d+$/.test(path)) {
       const id = Number(path.split('/').pop())
@@ -143,10 +193,14 @@ async function mockWorkspace(page: Page, options: { fail?: boolean; long?: boole
       }
       shelves = shelves.map((shelf) => (shelf.id === id ? { ...shelf, ...input() } : shelf))
       data = shelves.find((shelf) => shelf.id === id)
-    } else if (path === '/api/v1/book-files')
-      data = respond(books.filter((book) => book.title.includes(url.searchParams.get('q') ?? '')))
-    else if (/book-files\/\d+$/.test(path)) {
-      const book = books.find((book) => book.id === Number(path.split('/').pop()))!
+    } else if (path === '/api/v1/book-files') {
+      const q = url.searchParams.get('q') ?? ''
+      const pageNumber = Number(url.searchParams.get('page') ?? 1)
+      const pageSize = Number(url.searchParams.get('pageSize') ?? 24)
+      catalogRequests.push({ page: pageNumber, pageSize, q })
+      data = respond(catalog.filter((book) => `${book.title}${book.authors.join(' ')}`.includes(q)), pageNumber, pageSize)
+    } else if (/book-files\/\d+$/.test(path)) {
+      const book = catalog.find((book) => book.id === Number(path.split('/').pop()))!
       data = {
         book,
         description: '原创测试书籍简介',
@@ -184,12 +238,222 @@ async function mockWorkspace(page: Page, options: { fail?: boolean; long?: boole
     else if (path.includes('reading-sessions')) data = { id: 920100, bookFileId: books[0].id, activeSeconds: 0 }
     await route.fulfill({ status: 200, json: data })
   })
-  return { writes }
+  return {
+    writes,
+    batchRequests,
+    membershipRequests,
+    catalogRequests,
+    books: catalog,
+    membershipBookIds: (id = 50) => [...(memberships.get(id) ?? [])],
+  }
 }
 
 async function noOverflow(page: Page) {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
 }
+
+async function openShelfSearch(page: Page, query = '') {
+  await page.locator('.shelf-add-books summary').click()
+  await page.getByRole('textbox', { name: '搜索要添加的书籍' }).fill(query)
+  await page.getByRole('button', { name: '查找书籍', exact: true }).click()
+  await expect(page.locator('.shelf-search-summary')).toBeVisible()
+}
+
+test('shelf candidates paginate, preserve cross-page selections and append one ordered batch', async ({ page }) => {
+  const fixture = await mockWorkspace(page, { manyBooks: true })
+  await page.goto('/#/shelves?shelf=50')
+  await expect(page.locator('.shelf-book')).toHaveCount(2)
+  await openShelfSearch(page)
+  await expect(page.locator('.shelf-candidates > div')).toHaveCount(12)
+  const choice = (index: number) => page.getByRole('checkbox', { name: `勾选《${fixture.books[index].title}》`, exact: true })
+  const pagination = page.getByRole('navigation', { name: '添加书籍搜索分页', exact: true })
+  await expect(choice(0)).toBeDisabled()
+  await choice(3).check()
+  await pagination.getByRole('button', { name: '下一页', exact: true }).click()
+  await expect(pagination).toContainText('2 / 4')
+  await choice(13).check()
+  await expect(page.locator('.shelf-selection-bar')).toContainText('已勾选 2 本（含其他页）')
+  await pagination.getByRole('button', { name: '上一页', exact: true }).click()
+  await expect(choice(3)).toBeChecked()
+  await page.locator('.shelf-selected-books summary').click()
+  await expect(page.locator('.shelf-selected-books li')).toHaveCount(2)
+  await page.getByRole('button', { name: `取消勾选《${fixture.books[13].title}》`, exact: true }).click()
+  await expect(page.locator('.shelf-selection-bar')).toContainText('已勾选 1 本')
+  await expect(choice(3)).toBeChecked()
+  await page.getByRole('button', { name: '清空勾选', exact: true }).click()
+  await expect(choice(3)).not.toBeChecked()
+  await page.getByRole('button', { name: '勾选本页', exact: true }).click()
+  await expect(page.locator('.shelf-selection-bar')).toContainText('已勾选 10 本')
+  await page.getByRole('button', { name: '清空勾选', exact: true }).click()
+  await choice(3).check()
+  await pagination.getByRole('button', { name: '下一页', exact: true }).click()
+  await expect(pagination).toContainText('2 / 4')
+  await choice(13).check()
+  await page.getByRole('button', { name: '添加已选（2）', exact: true }).click()
+  await expect(page.locator('.shelf-book')).toHaveCount(4)
+  await expect(page.locator('.shelf-selection-bar')).toContainText('已勾选 0 本')
+  await expect(choice(13)).toBeDisabled()
+  await expect(choice(13)).not.toBeChecked()
+  expect(fixture.batchRequests).toEqual([{ shelfID: 50, bookIds: [fixture.books[3].id, fixture.books[13].id] }])
+  expect(fixture.membershipBookIds()).toEqual([fixture.books[0].id, fixture.books[1].id, fixture.books[3].id, fixture.books[13].id])
+  expect(fixture.writes.filter((write) => write.startsWith('PUT /api/v1/shelves/'))).toEqual([])
+  expect(fixture.catalogRequests.every((request) => request.pageSize === 12)).toBe(true)
+  expect(fixture.catalogRequests.some((request) => request.page === 2)).toBe(true)
+  expect(fixture.membershipRequests.every((request) => request.bookIds.length <= 12)).toBe(true)
+  await noOverflow(page)
+})
+
+test('shelf candidates recognize existing membership outside the visible shelf page', async ({ page }) => {
+  const fixture = await mockWorkspace(page, { manyBooks: true, initialBookCount: 25 })
+  const book = fixture.books[24]
+  await page.goto('/#/shelves?shelf=50')
+  await expect(page.locator('.shelf-book')).toHaveCount(24)
+  await expect(page.locator('.shelf-book h3').filter({ hasText: book.title })).toHaveCount(0)
+  await openShelfSearch(page, book.title)
+  await expect(page.locator('.shelf-candidates > div')).toHaveCount(1)
+  await expect(page.getByRole('checkbox', { name: `勾选《${book.title}》`, exact: true })).toBeDisabled()
+  await expect(page.locator('.shelf-candidates').getByRole('button', { name: '已在书架', exact: true })).toBeDisabled()
+  expect(fixture.membershipRequests.at(-1)).toEqual({ shelfID: 50, bookIds: [book.id] })
+  expect(fixture.batchRequests).toEqual([])
+  await page.getByRole('navigation', { name: '书架分页', exact: true }).getByRole('button', { name: '下一页', exact: true }).click()
+  await expect(page.locator('.shelf-book')).toHaveCount(1)
+  await expect(page.locator('.shelf-book h3')).toHaveText(book.title)
+  await expect(page.getByRole('navigation', { name: '书架分页', exact: true })).toContainText('2 / 2')
+})
+
+test('failed shelf batch keeps all selections and requires an explicit atomic retry', async ({ page }) => {
+  const fixture = await mockWorkspace(page, { manyBooks: true, failBatchOnce: true })
+  await page.goto('/#/shelves?shelf=50')
+  await expect(page.locator('.shelf-book')).toHaveCount(2)
+  await openShelfSearch(page)
+  for (const index of [3, 4])
+    await page.getByRole('checkbox', { name: `勾选《${fixture.books[index].title}》`, exact: true }).check()
+  await page.getByRole('button', { name: '添加已选（2）', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('测试：批量添加失败，请重试')
+  await expect(page.locator('.shelf-book')).toHaveCount(2)
+  await expect(page.locator('.shelf-selection-bar')).toContainText('已勾选 2 本')
+  for (const index of [3, 4])
+    await expect(page.getByRole('checkbox', { name: `勾选《${fixture.books[index].title}》`, exact: true })).toBeChecked()
+  expect(fixture.batchRequests).toHaveLength(1)
+  expect(fixture.membershipBookIds()).toEqual([fixture.books[0].id, fixture.books[1].id])
+  await page.getByRole('button', { name: '添加已选（2）', exact: true }).click()
+  await expect(page.locator('.shelf-book')).toHaveCount(4)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.locator('.workspace-feedback')).toContainText('已添加 2 本书')
+  await expect(page.locator('.shelf-selection-bar')).toContainText('已勾选 0 本')
+  expect(fixture.batchRequests).toEqual(Array.from({ length: 2 }, () => ({ shelfID: 50, bookIds: [fixture.books[3].id, fixture.books[4].id] })))
+  expect(fixture.membershipBookIds()).toEqual([fixture.books[0].id, fixture.books[1].id, fixture.books[3].id, fixture.books[4].id])
+})
+
+test('undoing shelf removal appends the association without deleting the original book', async ({ page }) => {
+  const fixture = await mockWorkspace(page)
+  await page.goto('/#/shelves?shelf=50')
+  await expect(page.locator('.shelf-book')).toHaveCount(2)
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.locator('.shelf-book').first().getByRole('button', { name: '移除', exact: true }).click()
+  await expect(page.locator('.shelf-book')).toHaveCount(1)
+  await expect(page.locator('.workspace-feedback')).toContainText('书籍、进度和笔记未删除')
+  await page.getByRole('button', { name: '撤销移除（加入末尾）', exact: true }).click()
+  await expect(page.locator('.shelf-book h3')).toHaveText([books[1].title, books[0].title])
+  await expect(page.locator('.workspace-feedback')).toContainText('重新加入书架末尾')
+  expect(fixture.membershipBookIds()).toEqual([books[1].id, books[0].id])
+  expect(fixture.writes).toEqual([
+    `DELETE /api/v1/shelves/50/books/${books[0].id}`,
+    `PUT /api/v1/shelves/50/books/${books[0].id}`,
+  ])
+  await page.goto(`/#/book/${books[0].id}`)
+  await expect(page.getByRole('heading', { name: books[0].title, exact: true })).toBeVisible()
+  await expect(page.locator('.detail-description')).toHaveText('原创测试书籍简介')
+})
+
+test('shelf batch controls and candidate pagination fit 320px in both themes', async ({ page }, info) => {
+  await mockWorkspace(page, { manyBooks: true, long: true })
+  await page.setViewportSize({ width: 320, height: 850 })
+  await page.goto('/#/shelves?shelf=50')
+  await expect(page.locator('.shelf-book')).toHaveCount(2)
+  await openShelfSearch(page)
+  const pagination = page.getByRole('navigation', { name: '添加书籍搜索分页', exact: true })
+  await expect.poll(() => page.locator('.shelf-navigation button').first().evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(110)
+  await expect.poll(() => page.locator('.shelf-heading h2').evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(130)
+  for (const theme of ['edition', 'night']) {
+    await page.getByRole('combobox', { name: '界面主题' }).selectOption(theme)
+    await page.getByRole('button', { name: '勾选本页', exact: true }).click()
+    await expect(page.locator('.shelf-selection-bar')).toContainText('已勾选 10 本')
+    await noOverflow(page)
+    await pagination.getByRole('button', { name: '下一页', exact: true }).click()
+    await expect(pagination).toContainText('2 / 4')
+    await page.getByRole('button', { name: '勾选本页', exact: true }).click()
+    await expect(page.locator('.shelf-selection-bar')).toContainText('已勾选 22 本')
+    await page.locator('.shelf-selected-books summary').click()
+    await expect(page.locator('.shelf-selected-books li')).toHaveCount(22)
+    await noOverflow(page)
+    await page.screenshot({ path: info.outputPath(`${theme}-shelf-batch-320.png`), fullPage: true })
+    await page.getByRole('button', { name: '清空勾选', exact: true }).click()
+    await expect(page.locator('.shelf-selection-bar')).toContainText('已勾选 0 本')
+    await pagination.getByRole('button', { name: '上一页', exact: true }).click()
+    await expect(pagination).toContainText('1 / 4')
+  }
+})
+
+test('candidate membership failures block adding until a successful explicit retry', async ({ page }) => {
+  const fixture = await mockWorkspace(page, { manyBooks: true })
+  let fail = true
+  await page.route('**/api/v1/shelves/50/memberships?*', async (route) => {
+    if (fail) {
+      fail = false
+      return route.fulfill({ status: 503, json: { error: { code: 'unavailable', message: '测试：归属核对失败' } } })
+    }
+    return route.fallback()
+  })
+  await page.goto('/#/shelves?shelf=50')
+  await expect(page.locator('.shelf-book')).toHaveCount(2)
+  await page.locator('.shelf-add-books > summary').click()
+  await page.getByRole('button', { name: '查找书籍', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('测试：归属核对失败')
+  await expect(page.locator('.shelf-candidates > div')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '勾选本页', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: '重试搜索', exact: true }).click()
+  await expect(page.locator('.shelf-candidates > div')).toHaveCount(12)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  expect(fixture.batchRequests).toEqual([])
+})
+
+test('a late candidate search cannot overwrite a newer search', async ({ page }) => {
+  const fixture = await mockWorkspace(page, { manyBooks: true })
+  const oldBook = fixture.books[3], newBook = fixture.books[4]
+  let release = () => {}
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  let started = false
+  await page.route('**/api/v1/book-files?*', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('q') !== oldBook.title) return route.fallback()
+    started = true
+    await gate
+    return route.fulfill({ status: 200, json: { items: [oldBook], total: 1, page: 1, pageSize: 12, totalPages: 1 } })
+  })
+  try {
+    await page.goto('/#/shelves?shelf=50')
+    await expect(page.locator('.shelf-book')).toHaveCount(2)
+    await page.locator('.shelf-add-books > summary').click()
+    const search = page.getByRole('textbox', { name: '搜索要添加的书籍' })
+    await search.fill(oldBook.title)
+    await page.getByRole('button', { name: '查找书籍', exact: true }).click()
+    await expect.poll(() => started).toBe(true)
+    await search.fill(newBook.title)
+    await page.getByRole('button', { name: '查找书籍', exact: true }).click()
+    await expect(page.locator('.shelf-candidates > div')).toHaveCount(1)
+    await expect(page.locator('.shelf-candidates')).toContainText(newBook.title)
+    const oldResponse = page.waitForResponse((response) => new URL(response.url()).searchParams.get('q') === oldBook.title)
+    release()
+    await oldResponse
+    await page.evaluate(() => new Promise(requestAnimationFrame))
+    await expect(page.locator('.shelf-candidates')).toContainText(newBook.title)
+    await expect(page.locator('.shelf-candidates')).not.toContainText(oldBook.title)
+    expect(fixture.membershipRequests.every((request) => !request.bookIds.includes(oldBook.id))).toBe(true)
+    expect(fixture.batchRequests).toEqual([])
+  } finally {
+    release()
+  }
+})
 
 test('personal tools remain reachable in desktop navigation and mobile more menu', async ({ page }, info) => {
   await mockWorkspace(page)
