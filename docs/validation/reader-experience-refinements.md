@@ -80,3 +80,9 @@ PEUFM_IMAGE=peufmreader:before-reader-fe9ee53 docker compose up -d --no-deps --n
 ```
 
 本次本机部署没有合并或推送 Git 分支，不会触发 GitHub Actions；其他机器尚不能通过远端 `edge` 获取本地未发布代码。
+
+## 后续主分支发布补记（2026-10-04）
+
+用户随后批准合并并推送：将 `codex/reader-experience-refinements` 的 `60a207e` 快进合入 `master`，包含此前双主题提交，保留原功能提交历史。应用代码与已部署并验收的 `fe9ee53` 一致，差异仅为验证／交接／发布文档；未引入新迁移、运行数据、真实书籍或构建产物。
+
+推送主分支自动触发 CI 与独立的 GHCR `edge` 镜像发布（`linux/amd64`）；推送完成不等于构建完成，需要分别检查两个工作流结果。此前“未合并／未推送”为阶段快照。本次发布不替换本机容器，8080 的 OCI revision 继续为 `fe9ee53`；其他机器拉取 `edge` 前应确认本次镜像发布成功。
