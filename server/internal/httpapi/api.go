@@ -193,6 +193,7 @@ func (a *API) routes() {
 	a.mux.Handle("DELETE /api/v1/shelves/{id}", a.requireAuth(http.HandlerFunc(a.deletePersonalShelf), "", true))
 	a.mux.Handle("GET /api/v1/shelves/{id}/books", a.requireAuth(http.HandlerFunc(a.personalShelfBooks), "", false))
 	a.mux.Handle("GET /api/v1/shelves/{id}/memberships", a.requireAuth(http.HandlerFunc(a.personalShelfMemberships), "", false))
+	a.mux.Handle("PATCH /api/v1/shelves/{id}/order", a.requireAuth(http.HandlerFunc(a.reorderPersonalShelfBook), "", true))
 	a.mux.Handle("POST /api/v1/shelves/{id}/books", a.requireAuth(http.HandlerFunc(a.addPersonalShelfBooks), "", true))
 	a.mux.Handle("PUT /api/v1/shelves/{id}/books/{bookID}", a.requireAuth(http.HandlerFunc(a.changePersonalShelfBook), "", true))
 	a.mux.Handle("DELETE /api/v1/shelves/{id}/books/{bookID}", a.requireAuth(http.HandlerFunc(a.changePersonalShelfBook), "", true))
