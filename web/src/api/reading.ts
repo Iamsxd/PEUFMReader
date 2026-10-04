@@ -5,6 +5,10 @@ export const readingAPI = {
   searchNotebook(query: NotebookQuery = {}): Promise<NotebookPage> {
     return transport.request(`/api/v1/notebook${querySuffix(query)}`)
   },
+  exportNotebook(query: NotebookQuery, format: 'markdown' | 'json'): Promise<{ blob: Blob; filename: string }> {
+    const { page: _page, ...filters } = query
+    return transport.download(`/api/v1/notebook/export${querySuffix({ ...filters, format })}`, format === 'json' ? 'application/json' : 'text/markdown', format === 'json' ? 'notebook.json' : 'notebook.md')
+  },
   async listShelves(bookId?: number): Promise<PersonalShelf[]> {
     const result = await transport.request<{ items: PersonalShelf[] }>(`/api/v1/shelves${querySuffix({ bookId })}`)
     return result.items
@@ -31,6 +35,9 @@ export const readingAPI = {
   },
   moveShelfBook(id: number, bookId: number, direction: 'earlier' | 'later'): Promise<void> {
     return transport.request(`/api/v1/shelves/${id}/books/${bookId}`, { method: 'PATCH', body: JSON.stringify({ direction }), headers: { 'Content-Type': 'application/json' } })
+  },
+  reorderShelfBook(id: number, bookId: number, targetBookId: number, placement: 'before' | 'after'): Promise<void> {
+    return transport.request(`/api/v1/shelves/${id}/order`, { method: 'PATCH', body: JSON.stringify({ bookId, targetBookId, placement }), headers: { 'Content-Type': 'application/json' } })
   },
   contentURL(bookFileID: number): string {
     return `/api/v1/book-files/${bookFileID}/content`

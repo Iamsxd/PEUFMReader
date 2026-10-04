@@ -348,6 +348,7 @@
   gap: 12px;
 }
 .shelf-book {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -357,6 +358,38 @@
   background: var(--ui-surface);
   min-width: 0;
 }
+.shelf-sort-help {
+  color: var(--ui-muted);
+  font-size: 0.75rem;
+  line-height: 1.7;
+}
+.shelf-drag-handle {
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+  min-width: 44px;
+  min-height: 44px;
+}
+.shelf-reading-list.is-drag-sorting .shelf-drag-handle {
+  cursor: grabbing;
+}
+.shelf-book.is-dragging {
+  opacity: 0.65;
+  border-color: var(--ui-accent);
+}
+.shelf-book.drop-before::before,
+.shelf-book.drop-after::after {
+  content: '';
+  position: absolute;
+  height: 3px;
+  left: 8px;
+  right: 8px;
+  background: var(--ui-accent);
+  border-radius: 3px;
+  pointer-events: none;
+}
+.shelf-book.drop-before::before { top: -8px; }
+.shelf-book.drop-after::after { bottom: -8px; }
 .shelf-order {
   color: var(--ui-muted);
   font-size: 0.75rem;

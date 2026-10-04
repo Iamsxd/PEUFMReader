@@ -3,6 +3,7 @@ import { api, APIError } from '../api'
 import type { BookFile, NotebookEntry, NotebookPage as NotebookResult, NotebookQuery, ReadingMark } from '../types'
 import { formatRelativeTime } from '../utils'
 import { markKindLabel, highlightColorLabels } from '../readingMarks'
+import { downloadNotebookBlob } from '../notebookDownload'
 
 interface Props {
   bookID?: number
@@ -109,6 +110,14 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
     setQuery({})
   }
 
+  function exportNotes(format: 'markdown' | 'json') {
+    void perform(
+      () => api.exportNotebook({ q: query.q, kind: query.kind, color: query.color, bookId: bookID }, format),
+      ({ blob, filename }) => downloadNotebookBlob(blob, filename),
+      '笔记导出已开始下载。文件包含全部符合已提交筛选的记录，而非仅当前页。',
+    )
+  }
+
   async function remove(mark: NotebookEntry) {
     if (busyRef.current) return
     if (!window.confirm(`删除这条${markKindLabel(mark.kind)}？书籍不会被删除。`)) return
@@ -210,6 +219,23 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
           </button>
         )}
       </form>
+      <section className="workspace-scope notebook-export" aria-label="笔记导出">
+        <div>
+          <strong>导出{bookID ? '本书' : '跨书'}笔记</strong>
+          <p className="muted">
+            按当前已提交的搜索、类型和颜色筛选，导出全部 {result?.total ?? '—'} 条记录，不限当前页。
+            搜索框内尚未提交的文字不会影响导出。单次最多 5000 条或 16 MiB，请妥善保管私人笔记文件。
+          </p>
+        </div>
+        <div className="personal-actions">
+          <button className="secondary" disabled={busy || loading || !!loadError || !result || result.total === 0} onClick={() => exportNotes('markdown')}>
+            导出 Markdown
+          </button>
+          <button className="secondary" disabled={busy || loading || !!loadError || !result || result.total === 0} onClick={() => exportNotes('json')}>
+            导出 JSON
+          </button>
+        </div>
+      </section>
       <div className={feedback ? 'workspace-feedback' : 'sr-only'} role="status" aria-live="polite" aria-atomic="true">
         {feedback}
       </div>

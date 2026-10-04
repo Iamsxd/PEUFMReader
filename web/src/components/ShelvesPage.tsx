@@ -3,6 +3,7 @@ import { api } from '../api'
 import type { BookFile, CatalogPage, PersonalShelf } from '../types'
 import { BookCover } from './BookCover'
 import { ShelfBookPicker } from './ShelfBookPicker'
+import { useShelfDragSort } from '../hooks/useShelfDragSort'
 
 interface Props {
   selectedID?: number
@@ -33,9 +34,20 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
   const scope = useRef(selectedID)
   scope.current = selectedID
   const selected = shelves.find((shelf) => shelf.id === selectedID)
-  const pending = busy || loading || !!loadError
+  const basePending = busy || loading || !!loadError
   const showContent = selected && loadedScope?.id === selectedID
   const shelfResult = loadedScope?.id === selectedID && loadedScope?.page === page ? result : null
+  const dragSort = useShelfDragSort(`${selectedID}:${page}:${revision}`, basePending || !!form, shelfResult?.items.map((book) => book.id) ?? [], (drop) => {
+    if (!selectedID) return
+    void perform(async () => {
+      await api.reorderShelfBook(selectedID, drop.bookId, drop.targetBookId, drop.placement)
+      if (!mounted.current || scope.current !== selectedID) return
+      setFeedback('阅读顺序已保存。')
+      dragSort.setStatus('阅读顺序已保存。')
+      refresh()
+    }, () => dragSort.setStatus('保存失败，阅读顺序未改变。请重试。'))
+  })
+  const pending = basePending || dragSort.active
 
   useEffect(() => {
     mounted.current = true
@@ -73,7 +85,7 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
     setError('')
   }, [selectedID])
 
-  async function perform<T>(action: () => Promise<T>): Promise<T | undefined> {
+  async function perform<T>(action: () => Promise<T>, onFailure?: () => void): Promise<T | undefined> {
     if (busyRef.current || loading || loadError) return
     const actionScope = selectedID
     busyRef.current = true
@@ -83,7 +95,10 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
     try {
       return await action()
     } catch (reason) {
-      if (mounted.current && scope.current === actionScope) setError(reason instanceof Error ? reason.message : '操作失败，请重试。')
+      if (mounted.current && scope.current === actionScope) {
+        setError(reason instanceof Error ? reason.message : '操作失败，请重试。')
+        onFailure?.()
+      }
     } finally {
       busyRef.current = false
       if (mounted.current) setBusy(false)
@@ -144,7 +159,7 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
             书架名称
             <input
               value={form.name}
-              disabled={busy}
+              disabled={busy || dragSort.active}
               onChange={(event) => setForm({ ...form, name: event.target.value })}
               required
               maxLength={80}
@@ -180,7 +195,7 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
               title={shelf.name}
               className={selectedID === shelf.id ? 'active' : ''}
               aria-current={selectedID === shelf.id ? 'page' : undefined}
-              disabled={busy}
+              disabled={busy || dragSort.active}
               onClick={() => {
                 setPage(1)
                 setFeedback('')
@@ -256,12 +271,15 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
                   <p>从上方查找并添加，也可以在书籍详情页加入书架。</p>
                 </section>
               )}
-              <div className="shelf-reading-list">
+              {!!shelfResult?.items.length && <p className="shelf-sort-help" id="shelf-sort-help">拖动 ⠿ 握柄调整本页顺序；↑↓ 可跨页逐本移动，也支持键盘操作。</p>}
+              <p className="sr-only shelf-drag-status" role="status" aria-live="polite" aria-atomic="true">{dragSort.status}</p>
+              <div ref={dragSort.listRef} className={`shelf-reading-list${dragSort.active ? ' is-drag-sorting' : ''}`}>
                 {shelfResult?.items.map((book, index) => (
-                  <article className="shelf-book" key={book.id}>
+                  <article className={`shelf-book${dragSort.sourceID === book.id ? ' is-dragging' : ''}${dragSort.target?.targetBookId === book.id ? ` drop-${dragSort.target.placement}` : ''}`} data-book-id={book.id} key={book.id}>
                     <span className="shelf-order">{(page - 1) * shelfResult.pageSize + index + 1}</span>
                     <button
                       className="shelf-cover"
+                      disabled={busy || dragSort.active}
                       onClick={() => onViewBook(book)}
                       aria-label={`查看《${book.title}》详情`}
                     >
@@ -273,15 +291,16 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
                         {book.authors.join('、') || '未知作者'} · {book.format.toUpperCase()}
                       </p>
                       <div className="personal-actions">
-                        <button className="primary" onClick={() => onOpenBook(book)}>
+                        <button className="primary" disabled={busy || dragSort.active} onClick={() => onOpenBook(book)}>
                           阅读
                         </button>
-                        <button className="quiet" onClick={() => onViewBook(book)}>
+                        <button className="quiet" disabled={busy || dragSort.active} onClick={() => onViewBook(book)}>
                           详情
                         </button>
                       </div>
                     </div>
                     <div className="shelf-order-actions">
+                      <button className="secondary shelf-drag-handle" type="button" aria-label={`拖动《${book.title}》排序`} aria-describedby="shelf-sort-help" disabled={basePending || !!form || (dragSort.active && dragSort.sourceID !== book.id)} {...dragSort.handleProps(book.id)}>⠿</button>
                       <button
                         className="secondary"
                         aria-label={`将《${book.title}》提前`}
