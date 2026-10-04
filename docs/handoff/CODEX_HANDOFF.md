@@ -41,6 +41,8 @@ PEUFMReader 是面向 NAS 的多用户电子书管理与 Web 阅读应用。它�
 
 同日继续打磨书架候选分页、跨页勾选／原子批量添加、候选归属查询与笔记草稿／操作反馈。本轮没有新增迁移，也未替换本机运行版本；验证与剩余边界见 `docs/validation/reading-workspace-polish.md`。运行版本与 Git 分支最新代码不一定相同。
 
+后续部署补记（2026-10-04）：`ce8423c` 已按用户要求替换本机 8080 的 `87418c3`，应用健康且登录／新接口／资源烟测通过，书籍与账号／进度聚合数量未变。升级前已创建并校验 `before-polish-20261004-ce8423c`，旧镜像为 `peufmreader:before-polish-ce8423c`。后续开发从 `ce8423c` 新建 `codex/reading-workspace-export-sort`；不要把该分支新代码与 8080 当前运行版本混淆。
+
 后续路线在 `docs/product/development-roadmap.md`，但不要自行假定优先级。P2 的公开候选方向是：外部告警通知、跨书库全文检索与 AI、听书、阅读目标/导出/隐私等统计增强。开始新功能前先向项目负责人确认本次目标。
 
 ## 代码地图

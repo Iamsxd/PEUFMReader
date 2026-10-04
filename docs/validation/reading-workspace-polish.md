@@ -8,6 +8,8 @@
 
 第一版 `87418c3` 已部署到本机 8080；本次仅继续开发与隔离验证，不推送、合并或替换该运行实例。数据库、书库及已有账号保持不变。本轮没有新增迁移。
 
+后续部署补记（2026-10-04）：按用户要求将本篇对应完成提交 `ce8423c` 部署到本机 8080。升级前创建并校验 `before-polish-20261004-ce8423c`，保留原镜像 `peufmreader:before-polish-ce8423c`。采用本机构建、`docker compose up -d --no-deps --no-build --pull never app`，仅替换应用。应用健康检查、登录／退出、目录／首页／书架／笔记接口和 JS／CSS 资源均通过；前后聚合数一致（书籍 4、账号 1、阅读进度 3、批注 0、书架 0）。没有写入真实书架／批注或删除源文件。本文其余“本轮未部署”描述保留为开发阶段的历史边界。
+
 前一次本机部署使用 `scripts/backup.sh`／`scripts/verify-backup.sh` 创建并校验 `before-workspace-20261004-87418c3`；保留旧镜像 `peufmreader:before-workspace-20261004` 和第一版 `peufmreader:workspace-87418c3`。再次升级仍需创建新备份，不能把旧快照当成最新数据。
 
 ## 完成范围
