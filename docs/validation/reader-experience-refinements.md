@@ -56,3 +56,27 @@ E2E_BASE_URL=http://127.0.0.1:5196 E2E_BROWSER_CHANNEL= E2E_DISABLE_GPU=1 E2E_DI
 - 初次调研中的渐进搜索、移动跨页选区、离线批注写入、段落级朗读等仍为后续候选，见 [调研记录](../discovery/reader-experience-gap-analysis.md)。
 
 本轮不增加依赖、不更换引擎、不发送正文给第三方、不复制／提交真实书籍、不触碰 `.env`、数据库、备份或运行数据。无后端改动，因此无需 Go 回归。本轮未合并、推送或部署；8080 仍为 `ce8423c`。
+
+## 后续本机部署补记（2026-10-04）
+
+按用户要求将 `fe9ee53` 部署到本机 `http://localhost:8080`。前文“未部署”及 `ce8423c` 是开发阶段快照；升级前实际运行镜像为 `f66ee03b91d6`，没有源码 revision 标签，不能仅凭旧文档确认其 Git 提交。
+
+- 用户明确要求不备份：本次没有执行备份／验证／恢复脚本，没有复制 PostgreSQL 数据目录、真实电子书或外部书库。
+- 保留实际旧镜像标签 `peufmreader:before-reader-fe9ee53`（`sha256:f66ee03b91d67f40d1e8df1b58a88164d6fe2c399beaf387b30f41b94cb9843f`），仅用于应用代码回退，不是数据备份。
+- 新镜像标签为 `peufmreader:reader-fe9ee53`，本地 Compose 配置的 `ghcr.io/iamsxd/peufmreader:edge` 也指向该构建；没有向 GHCR 推送。OCI revision 为 `fe9ee5306a3bcfef3116aaf57845e23faf5bac6e`，运行镜像 `sha256:51c44b2e969588ba0cf19c37e4fc9cab1478e44b0fb2f71ab8831e5d12388038`。
+- 使用本地 Docker 构建和 `docker compose up -d --no-deps --no-build --pull never app`，只替换应用容器；数据库容器 ID 保持不变，迁移仍为 001–030。没有修改 `.env`、端口、权限、数据挂载或私有书籍。
+- 全包相对旧开发基线也包含已完成的笔记导出／书架排序后端。宿主机没有 Go，本次使用缓存的 server-build 阶段执行 `go test ./... -count=1`，全部通过；前端 17 文件、127 项单测再次通过，Docker 内 `pnpm build` 成功。
+- 容器和 `/healthz` 均健康；登录／当前会话、目录、首页、书架、笔记、运维 GET 烟测通过，最后退出本次检查创建的会话。新导出／排序接口的匿名鉴权与无效输入校验通过，并用不存在的书籍 ID 验证空 JSON 导出，不读取真实笔记正文或执行真实排序。
+- 主 JS／CSS、PDF／EPUB 分包、翻页历史分包、PDF／上传 worker、Service Worker 和 PWA manifest 均有效；线上 offline revision `79435546f74e` 与此前验证构建一致。
+- 直接以部署后的 8080 为目标重跑阅读器／主题／站点外壳隔离套件：67 项通过、1 项按设计跳过（约 2.6 分钟）。使用原创合成 PDF／EPUB、拦截 API 与模拟朗读，不读写真实书库；仍不是 iPhone／Android 真机或真实语料验收。
+- 部署后聚合数与部署前一致：书籍 4、账号 1、阅读进度 3、批注 0、书架 0、书架条目 0；只读检查不保存真实阅读位置。
+
+旧浏览器标签页或已安装 PWA 需要重新加载才显示新版；不要清空整个站点存储，以免删除离线书籍副本。
+
+若只需回退应用代码，可使用保留镜像（不恢复数据库、不撤销期间的数据写入）：
+
+```sh
+PEUFM_IMAGE=peufmreader:before-reader-fe9ee53 docker compose up -d --no-deps --no-build --pull never app
+```
+
+本次本机部署没有合并或推送 Git 分支，不会触发 GitHub Actions；其他机器尚不能通过远端 `edge` 获取本地未发布代码。
