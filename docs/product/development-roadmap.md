@@ -8,7 +8,7 @@
 
 P1 用户体验优化已经完成实现与自动化验证，可以进入 NAS 更新验证。目录查询性能优化、基础运维监控和第一版独立阅读统计中心已完成；P2 后续聚焦告警与外部指标、跨书库全文检索与 AI、听书和统计目标功能。
 
-2026-10-05 用户选择批注、朗读、PDF 与知识工作台（2／3／5／6）后，在 `codex/reader-knowledge-enhancements` 完成第一批：离线批注日志与冲突保护、选区操作、EPUB 段落跟随与睡眠定时、PDF Range／裁边／页文字视图、本地跨书正文检索、智能书架和 JSON 笔记导入。新增迁移 031–033；没有部署、合并或推送。**后台音频、引用 AI 问答和外部同步仍未完成**；后文早期“尚未实现”是历史阶段记录，最新细分范围以[实施计划](./reader-knowledge-enhancements.md)和[验证记录](../validation/reader-knowledge-enhancements.md)为准。
+2026-10-05 用户选择批注、朗读、PDF 与知识工作台（2／3／5／6）后，在 `codex/reader-knowledge-enhancements` 完成第一批：离线批注日志与冲突保护、选区操作、EPUB 段落跟随与睡眠定时、PDF Range／裁边／页文字视图、本地跨书正文检索、智能书架和 JSON 笔记导入。新增迁移 031–033；用户随后批准合并并推送，功能分支截至 `3d640cb` 已快进纳入 `master` 进行 Git 发布，未部署。**后台音频、引用 AI 问答和外部同步仍未完成**；后文早期“尚未实现”是历史阶段记录，最新细分范围以[实施计划](./reader-knowledge-enhancements.md)和[验证记录](../validation/reader-knowledge-enhancements.md)为准。
 
 ## P1：用户体验优化（已完成）
 

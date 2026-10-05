@@ -2,7 +2,14 @@
 
 > 日期：2026-10-05；分支 `codex/reader-knowledge-enhancements`，从 `master@fc398bb` 创建；实现与测试提交 `c087b19`。
 >
-> 本机 8080 未替换，继续运行 `fe9ee53`；没有操作生产数据库、原书、Calibre 目录或备份。没有合并、推送 GitHub 或触发远端自动构建。
+> 本机 8080 未替换，继续运行 `fe9ee53`；没有操作生产数据库、原书、Calibre 目录或备份。开发验收时未合并／推送；后续用户授权的 Git 发布见下节。
+
+## Git 发布（2026-10-05）
+
+- 用户批准合并并推送后，将 `codex/reader-knowledge-enhancements` 截至 `3d640cb` 快进合并到 `master`，保留功能提交 `c087b19` 与原分支历史。发布记录仅修改文档，没有改变已验证的应用源码。
+- 发布前重新获取远端，确认 `master`／`origin/master` 原基线一致、功能分支无冲突；Go 格式、Shell 脚本语法和差异空白检查通过。
+- 主分支推送自动触发 `CI` 与 `Publish container`，后者更新 `ghcr.io/iamsxd/peufmreader:edge`（目前仅 `linux/amd64`）；运行结果以对应提交的 GitHub Actions 为准。
+- 本次 Git 发布不部署本机、不修改运行数据、不执行迁移。新镜像启动会增加 031–033，应按部署约定另行升级，不能把此前单次“不需要备份”当作永久许可。
 
 ## 实现与迁移
 
