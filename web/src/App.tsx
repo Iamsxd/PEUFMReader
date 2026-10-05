@@ -5,6 +5,7 @@ import { Login } from './components/Login'
 import { Reader } from './components/Reader'
 import { clearOfflineUserData, loadOfflineIdentity, offlineBookContent, rememberOfflineIdentity, syncOfflineReading } from './offline'
 import type { BookFile, ReadingMark, Session } from './types'
+import { confirmLeaveDrafts } from './draftGuard'
 
 interface OpenBookState {
   book: BookFile
@@ -62,15 +63,18 @@ export default function App() {
   }
 
   async function open(book: BookFile, mark?: ReadingMark) {
+    if (!confirmLeaveDrafts()) return
     const localContent = session ? await offlineBookContent(session.user.id, book.id).catch(() => undefined) : undefined
     setOpenBook({ book, localContent, mark })
   }
 
   function closeBook() {
+    if (!confirmLeaveDrafts()) return
     setOpenBook(null)
   }
 
   async function logout() {
+    if (!confirmLeaveDrafts()) return
     const userID = session?.user.id
     try {
       if (!offlineMode) await api.logout()

@@ -68,4 +68,12 @@ export interface PersonalShelf {
   bookCount: number
   containsBook: boolean
   createdAt: string
+  kind?: 'manual' | 'smart'
+  rules?: SmartShelfRules
+}
+export interface SmartShelfRules {
+  format: string
+  status: string
+  favorite: boolean
+  categorySlug: string
 }

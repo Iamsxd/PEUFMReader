@@ -588,18 +588,17 @@ test('notebook handles errors and long excerpts at 320px without losing navigati
   }
 })
 
-test('notebook returns to the marked PDF page and reader filters existing annotations', async ({ page }, info) => {
+test('notebook returns to the marked PDF page and reader filters existing annotations', async ({ page }) => {
   await mockWorkspace(page)
   await page.goto(`/#/notebook?bookId=${books[0].id}`)
   await page.getByRole('button', { name: '回到原文' }).click()
   await expect(page.locator('.pdf-page-shell.rendered').first()).toBeVisible()
   const toolbar = page.locator('.pdf-toolbar')
-  if ((await toolbar.getAttribute('aria-hidden')) === 'true') {
-    if (info.project.name === 'mobile-chromium') await page.locator('.pdf-reader-viewport').tap()
-    else await page.getByRole('button', { name: '显示 PDF 阅读工具', exact: true }).click()
-  }
-  await expect(toolbar).not.toHaveAttribute('aria-hidden', 'true')
   await expect(page.getByRole('spinbutton', { name: '当前页码', exact: true })).toHaveValue('2')
+  // Page restoration may finish just before the auto-hide deadline. A normal
+  // keyboard interaction reveals tools and refreshes that deadline before use.
+  await page.keyboard.press('Tab')
+  await expect(toolbar).not.toHaveAttribute('aria-hidden', 'true')
   await toolbar.getByRole('button', { name: '书签/高亮', exact: true }).click()
   await expect(page.locator('.reading-mark-item')).toHaveCount(1)
   await page.getByRole('textbox', { name: '搜索本书批注' }).fill('不存在的摘录')

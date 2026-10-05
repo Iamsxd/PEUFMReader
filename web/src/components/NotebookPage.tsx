@@ -4,6 +4,8 @@ import type { BookFile, NotebookEntry, NotebookPage as NotebookResult, NotebookQ
 import { formatRelativeTime } from '../utils'
 import { markKindLabel, highlightColorLabels } from '../readingMarks'
 import { downloadNotebookBlob } from '../notebookDownload'
+import { useDraftGuard } from '../draftGuard'
+import { NotebookImportPanel } from './NotebookImportPanel'
 
 interface Props {
   bookID?: number
@@ -27,6 +29,7 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
   const mountedRef = useRef(false)
   const requestedQueryRef = useRef('')
   const hasFilters = Boolean(query.q?.trim() || query.kind || query.color)
+  useDraftGuard(Boolean(editing && body !== editing.body))
 
   useEffect(() => {
     mountedRef.current = true
@@ -143,6 +146,7 @@ export function NotebookPage({ bookID, onOpenBook, onAllNotes }: Props) {
         </div>
         <strong>{result?.total ?? '—'} 条记录</strong>
       </section>
+      <NotebookImportPanel onImported={() => setRevision(value => value + 1)} />
       {bookID && (
         <div className="workspace-scope">
           <span>正在查看单本书的记录</span>

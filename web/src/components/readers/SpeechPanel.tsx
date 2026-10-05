@@ -63,6 +63,15 @@ export function SpeechPanel({ controls, sourceDescription, onClose, onChromeActi
           <span>朗读完成后自动翻页并继续</span>
         </label>
 
+        <label>
+          <span>睡眠定时（暂停期间也计时）</span>
+          <select aria-label="朗读睡眠定时" value={controls.sleepMinutes} onChange={event => controls.setSleepMinutes(Number(event.target.value))}>
+            <option value={0}>不定时</option>
+            {[5, 15, 30, 45, 60, 90, 120].map(minutes => <option key={minutes} value={minutes}>{minutes} 分钟后停止</option>)}
+          </select>
+          {controls.sleepRemainingSeconds > 0 && <small role="status">剩余 {Math.ceil(controls.sleepRemainingSeconds / 60)} 分钟</small>}
+        </label>
+
         <div className="reader-speech-actions">
           <button className="primary" disabled={!controls.supported || controls.status === 'loading'} onClick={() => void controls.start()}>
             {controls.status === 'loading' ? '读取中…' : active ? '重新朗读' : '开始朗读'}

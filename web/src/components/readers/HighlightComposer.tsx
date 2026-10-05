@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { HighlightColor } from '../../types'
+import { confirmLeaveDrafts, useDraftGuard } from '../../draftGuard'
 
 export interface PendingHighlight {
   position: Record<string, unknown>
@@ -13,6 +14,7 @@ interface Props {
   busy: boolean
   onSave: (color: HighlightColor, body: string) => void
   onCancel: () => void
+  onSpeak?: () => void
 }
 
 const COLORS: Array<{ value: HighlightColor; label: string }> = [
@@ -23,19 +25,30 @@ const COLORS: Array<{ value: HighlightColor; label: string }> = [
   { value: 'purple', label: '紫色' },
 ]
 
-export function HighlightComposer({ selection, busy, onSave, onCancel }: Props) {
+export function HighlightComposer({ selection, busy, onSave, onCancel, onSpeak }: Props) {
   const [color, setColor] = useState<HighlightColor>('yellow')
   const [body, setBody] = useState('')
+  const [feedback, setFeedback] = useState('')
+  useDraftGuard(Boolean(body.trim()))
 
   useEffect(() => {
     setColor('yellow')
     setBody('')
+    setFeedback('')
   }, [selection])
 
   return (
     <section className="highlight-composer" aria-label="创建文本高亮" role="dialog">
-      <button className="highlight-composer-close" type="button" onClick={onCancel} aria-label="取消高亮">×</button>
+      <button className="highlight-composer-close" type="button" onClick={() => { if (confirmLeaveDrafts()) onCancel() }} aria-label="取消高亮">×</button>
       <blockquote>{selection.quote}</blockquote>
+      <div className="highlight-selection-actions">
+        <button type="button" onClick={() => {
+          void navigator.clipboard?.writeText(selection.quote).then(() => setFeedback('已复制')).catch(() => setFeedback('无法复制，请使用系统选区菜单'))
+          if (!navigator.clipboard) setFeedback('请使用系统选区菜单复制')
+        }}>复制</button>
+        {onSpeak && <button type="button" onClick={() => { if (confirmLeaveDrafts()) onSpeak() }}>朗读选区</button>}
+        {feedback && <small role="status">{feedback}</small>}
+      </div>
       <div className="highlight-color-picker" aria-label="高亮颜色">
         {COLORS.map((item) => (
           <button

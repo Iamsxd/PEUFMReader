@@ -2,11 +2,13 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { ReadingMark } from '../../types'
 import { isPDFRenderingCancellation } from '../../pdf'
+import { fullPDFPageBounds, type PDFCrop } from '../../pdfCrop'
 
 interface Props {
   document: pdfjs.PDFDocumentProxy
   pageNumber: number
   scale: number
+  crop: PDFCrop
   lazy: boolean
   observerRoot: Element | null
   fallbackSize: { width: number; height: number }
@@ -16,12 +18,14 @@ interface Props {
   onTextLayerError: (pageNumber: number, message: string) => void
   highlights: ReadingMark[]
   onTextSelection: (pageNumber: number, pageBounds: DOMRect, selectionRects: DOMRect[], quote: string) => void
+  onHighlightClick: (markID: number) => void
 }
 
 export function PDFPageCanvas({
   document,
   pageNumber,
   scale,
+  crop,
   lazy,
   observerRoot,
   fallbackSize,
@@ -31,6 +35,7 @@ export function PDFPageCanvas({
   onTextLayerError,
   highlights,
   onTextSelection,
+  onHighlightClick,
 }: Props) {
   const shellRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -41,10 +46,11 @@ export function PDFPageCanvas({
   const [rendered, setRendered] = useState(false)
   const [pageSize, setPageSize] = useState(fallbackSize)
   const [geometryReady, setGeometryReady] = useState(false)
+  const lastSelectionRef = useRef('')
 
   useLayoutEffect(() => {
     if (geometryReady) onGeometryReady(pageNumber)
-  }, [geometryReady, onGeometryReady, pageNumber, pageSize, scale])
+  }, [geometryReady, onGeometryReady, pageNumber, pageSize, scale, crop])
 
   useEffect(() => {
     if (!lazy) {
@@ -164,12 +170,47 @@ export function PDFPageCanvas({
     const textLayer = textLayerRef.current
     const selection = window.getSelection()
     if (!shell || !textLayer || !selection || selection.isCollapsed || selection.rangeCount === 0) return
-    if (!selection.anchorNode || !selection.focusNode || !textLayer.contains(selection.anchorNode) || !textLayer.contains(selection.focusNode)) return
+    if (!selection.anchorNode || !selection.focusNode) return
+    const elementFor = (node: Node) => node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement
+    const anchorLayer = elementFor(selection.anchorNode)?.closest('.pdf-text-layer')
+    const focusLayer = elementFor(selection.focusNode)?.closest('.pdf-text-layer')
+    const pages = shell.closest('.pdf-pages')
+    if (!anchorLayer || !focusLayer || !pages?.contains(anchorLayer) || !pages.contains(focusLayer)) return
+    if (!textLayer.contains(selection.anchorNode)) return
     const quote = selection.toString().replace(/\s+/g, ' ').trim()
     if (!quote) return
     const rects = Array.from(selection.getRangeAt(0).getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0)
     if (rects.length === 0) return
-    onTextSelection(pageNumber, shell.getBoundingClientRect(), rects, quote)
+    const signature = `${quote}:${rects[0].left}:${rects[0].top}:${rects.length}`
+    if (lastSelectionRef.current === signature) return
+    lastSelectionRef.current = signature
+    onTextSelection(pageNumber, fullPDFPageBounds(shell), rects, quote)
+  }
+
+  useEffect(() => {
+    if (!isNearViewport) return
+    let timer: number | undefined
+    const onChange = () => {
+      window.clearTimeout(timer)
+      if (window.getSelection()?.isCollapsed) { lastSelectionRef.current = ''; return }
+      timer = window.setTimeout(handlePointerUp, 250)
+    }
+    window.document.addEventListener('selectionchange', onChange)
+    return () => { window.clearTimeout(timer); window.document.removeEventListener('selectionchange', onChange) }
+  }, [isNearViewport, pageNumber, onTextSelection])
+
+  function highlightAt(clientX: number, clientY: number) {
+    const selection = window.getSelection()
+    if (selection && !selection.isCollapsed) return undefined
+    const bounds = shellRef.current ? fullPDFPageBounds(shellRef.current) : null
+    if (!bounds) return undefined
+    const x = (clientX - bounds.left) / bounds.width
+    const y = (clientY - bounds.top) / bounds.height
+    return highlights.find(mark => Array.isArray(mark.position.rects) && mark.position.rects.some((raw: unknown) => {
+      if (!raw || typeof raw !== 'object') return false
+      const rect = raw as Record<string, number>
+      return x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height
+    }))
   }
 
   return (
@@ -178,11 +219,21 @@ export function PDFPageCanvas({
       className={`pdf-page-shell${rendered ? ' rendered' : ''}`}
       data-pdf-page={pageNumber}
       data-geometry-ready={geometryReady ? 'true' : 'false'}
-      style={{ width, height }}
+      style={{ width: width * (1 - crop.left - crop.right), height: height * (1 - crop.top - crop.bottom) }}
       aria-label={`第 ${pageNumber} 页`}
-      onPointerUp={handlePointerUp}
+      onPointerUp={event => {
+        handlePointerUp()
+        // The viewport toggles its toolbar on pointer-up. Prevent that layout
+        // change before the ensuing click hit-tests the saved highlight.
+        if (highlightAt(event.clientX, event.clientY)) event.stopPropagation()
+      }}
+      onClick={event => {
+        const selected = highlightAt(event.clientX, event.clientY)
+        if (selected) { event.stopPropagation(); onHighlightClick(selected.id) }
+      }}
     >
       {!rendered && <span className="pdf-page-placeholder">第 {pageNumber} 页</span>}
+      <div className="pdf-page-content" style={{ position: 'absolute', width, height, left: -width * crop.left, top: -height * crop.top }}>
       <canvas ref={canvasRef} className="pdf-page-canvas" />
       <div className="pdf-highlight-layer" aria-hidden="true">
         {highlights.flatMap((mark) => {
@@ -196,6 +247,7 @@ export function PDFPageCanvas({
         })}
       </div>
       <div ref={textLayerRef} className="pdf-text-layer textLayer" />
+      </div>
       <span className="pdf-page-number">{pageNumber}</span>
     </div>
   )

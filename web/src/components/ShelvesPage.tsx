@@ -1,9 +1,12 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { api } from '../api'
-import type { BookFile, CatalogPage, PersonalShelf } from '../types'
+import type { BookFile, CatalogPage, PersonalShelf, Category, SmartShelfRules } from '../types'
 import { BookCover } from './BookCover'
 import { ShelfBookPicker } from './ShelfBookPicker'
 import { useShelfDragSort } from '../hooks/useShelfDragSort'
+import { confirmLeaveDrafts, useDraftGuard } from '../draftGuard'
+
+const emptyRules: SmartShelfRules = { format: '', status: '', favorite: false, categorySlug: '' }
 
 interface Props {
   selectedID?: number
@@ -14,6 +17,7 @@ interface Props {
 
 export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Props) {
   const [shelves, setShelves] = useState<PersonalShelf[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [result, setResult] = useState<CatalogPage | null>(null)
   const [page, setPage] = useState(1)
   const [revision, setRevision] = useState(0)
@@ -28,7 +32,10 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
     id?: number
     name: string
     description: string
+    rules?: SmartShelfRules
   } | null>(null)
+  const releaseDraft = useDraftGuard(Boolean(form), '未保存的书架')
+  const editingSmartShelf = Boolean(form?.rules)
   const busyRef = useRef(false)
   const mounted = useRef(false)
   const scope = useRef(selectedID)
@@ -37,7 +44,7 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
   const basePending = busy || loading || !!loadError
   const showContent = selected && loadedScope?.id === selectedID
   const shelfResult = loadedScope?.id === selectedID && loadedScope?.page === page ? result : null
-  const dragSort = useShelfDragSort(`${selectedID}:${page}:${revision}`, basePending || !!form, shelfResult?.items.map((book) => book.id) ?? [], (drop) => {
+  const dragSort = useShelfDragSort(`${selectedID}:${page}:${revision}`, basePending || !!form || selected?.kind === 'smart', shelfResult?.items.map((book) => book.id) ?? [], (drop) => {
     if (!selectedID) return
     void perform(async () => {
       await api.reorderShelfBook(selectedID, drop.bookId, drop.targetBookId, drop.placement)
@@ -53,6 +60,13 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
     mounted.current = true
     return () => { mounted.current = false }
   }, [])
+
+  useEffect(() => {
+    if (!editingSmartShelf) return
+    let disposed = false
+    void api.listCategories().then(items => { if (!disposed) setCategories(items) }).catch(() => {})
+    return () => { disposed = true }
+  }, [editingSmartShelf])
 
   useEffect(() => {
     let disposed = false
@@ -111,11 +125,12 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
     event.preventDefault()
     if (!form) return
     void perform(async () => {
-      const next = await api.saveShelf(form.name.trim(), form.description.trim(), form.id)
+      const next = await api.saveShelf(form.name.trim(), form.description.trim(), form.id, form.rules)
       if (!mounted.current || scope.current !== selectedID) return
       setFeedback(form.id ? '书架已保存。' : '书架已创建。')
       setForm(null)
       setPage(1)
+      releaseDraft()
       onSelect(next.id)
       refresh()
     })
@@ -129,7 +144,7 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
           <h1>我的书架</h1>
           <p className="muted">创建专题书架，排列阅读顺序。书架仅对你可见，不会复制书籍文件。</p>
         </div>
-        <button className="primary" disabled={pending} onClick={() => setForm({ name: '', description: '' })}>
+        <button className="primary" disabled={pending} onClick={() => { if (confirmLeaveDrafts()) setForm({ name: '', description: '' }) }}>
           ＋ 新建书架
         </button>
       </section>
@@ -167,6 +182,14 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
               placeholder="例如：今年想读、科幻入门…"
             />
           </label>
+          {!form.id && <label>书架类型<select aria-label="书架类型" disabled={busy} value={form.rules ? 'smart' : 'manual'} onChange={event => setForm({ ...form, rules: event.target.value === 'smart' ? { ...emptyRules } : undefined })}><option value="manual">手动书架 · 自己添加和排序</option><option value="smart">智能书架 · 按规则自动收录</option></select></label>}
+          {form.rules && <fieldset className="smart-shelf-rules" disabled={busy}><legend>自动收录规则（所有条件同时满足）</legend>
+            <label>格式<select aria-label="智能书架格式" value={form.rules.format} onChange={event => setForm({ ...form, rules: { ...form.rules!, format: event.target.value } })}><option value="">不限</option>{['pdf', 'epub', 'mobi', 'azw3'].map(format => <option key={format} value={format}>{format.toUpperCase()}</option>)}</select></label>
+            <label>阅读状态<select aria-label="智能书架阅读状态" value={form.rules.status} onChange={event => setForm({ ...form, rules: { ...form.rules!, status: event.target.value } })}><option value="">不限</option><option value="unread">未读</option><option value="reading">阅读中</option><option value="finished">已读完</option><option value="abandoned">已弃读</option></select></label>
+            <label>题材（精确分类）<select aria-label="智能书架题材" value={form.rules.categorySlug} onChange={event => setForm({ ...form, rules: { ...form.rules!, categorySlug: event.target.value } })}><option value="">不限</option>{categories.map(category => <option key={category.slug} value={category.slug}>{category.name}</option>)}</select></label>
+            <label><input type="checkbox" checked={form.rules.favorite} onChange={event => setForm({ ...form, rules: { ...form.rules!, favorite: event.target.checked } })} />只收录我收藏的书籍</label>
+            <small>至少选择一项。会随进度、收藏和书库权限变化；不会复制文件，不支持手动添加或排序。</small>
+          </fieldset>}
           <label>
             书架说明
             <textarea
@@ -178,10 +201,10 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
             />
           </label>
           <div className="personal-actions">
-            <button type="button" className="quiet" disabled={busy} onClick={() => setForm(null)}>
+            <button type="button" className="quiet" disabled={busy} onClick={() => { if (confirmLeaveDrafts()) setForm(null) }}>
               取消
             </button>
-            <button className="primary" disabled={pending || !form.name.trim()}>
+            <button className="primary" disabled={pending || !form.name.trim() || Boolean(form.rules && !form.rules.format && !form.rules.status && !form.rules.categorySlug && !form.rules.favorite)}>
               保存书架
             </button>
           </div>
@@ -197,13 +220,14 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
               aria-current={selectedID === shelf.id ? 'page' : undefined}
               disabled={busy || dragSort.active}
               onClick={() => {
+                if (!confirmLeaveDrafts()) return
                 setPage(1)
                 setFeedback('')
                 onSelect(shelf.id)
               }}
             >
               <span>{shelf.name}</span>
-              <small>{shelf.bookCount} 本</small>
+              <small>{shelf.kind === 'smart' ? '自动 · ' : ''}{shelf.bookCount} 本</small>
             </button>
           ))}
         </nav>
@@ -222,19 +246,21 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
               <header className="shelf-heading">
                 <div>
                   <h2 title={selected.name}>{selected.name}</h2>
-                  <p>{selected.description || `${shelfResult?.total ?? '—'} 本可阅读书籍 · 按你的阅读顺序排列`}</p>
+                  <p>{selected.description || `${shelfResult?.total ?? '—'} 本可阅读书籍 · ${selected.kind === 'smart' ? '按书名自动排列' : '按你的阅读顺序排列'}`}</p>
                 </div>
                 <div className="personal-actions">
                   <button
                     className="quiet"
                     disabled={pending}
-                    onClick={() =>
+                    onClick={() => {
+                      if (!confirmLeaveDrafts()) return
                       setForm({
                         id: selected.id,
                         name: selected.name,
                         description: selected.description,
+                        rules: selected.rules,
                       })
-                    }
+                    }}
                   >
                     编辑书架
                   </button>
@@ -256,22 +282,22 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
                   </button>
                 </div>
               </header>
-              <ShelfBookPicker key={selected.id} shelfID={selected.id} revision={revision} disabled={pending || !!loadError} onAdd={(books) => perform(async () => {
+              {selected.kind === 'smart' ? <p className="smart-shelf-summary">智能书架按规则自动收录、按书名排序。阅读状态、收藏或权限变化后，重新打开或刷新即可更新。<button className="quiet" disabled={pending} onClick={refresh}>刷新结果</button></p> : <ShelfBookPicker key={selected.id} shelfID={selected.id} revision={revision} disabled={pending || !!loadError} onAdd={(books) => perform(async () => {
                 const response = await api.addShelfBooks(selected.id, books.map((book) => book.id))
                 if (!mounted.current || scope.current !== selected.id) return response
                 setFeedback(`已添加 ${response.addedBookIds.length} 本书${response.alreadyPresentBookIds.length ? `，${response.alreadyPresentBookIds.length} 本已在书架，未重复添加` : ''}。`)
                 setUndo(null)
                 refresh()
                 return response
-              })} />
+              })} />}
               {loading && <p role="status">正在更新书架…</p>}
               {shelfResult?.items.length === 0 && (
                 <section className="empty-state">
                   <h3>书架里还没有可阅读的书</h3>
-                  <p>从上方查找并添加，也可以在书籍详情页加入书架。</p>
+                  <p>{selected.kind === 'smart' ? '当前没有满足规则且有权阅读的书籍，可以调整规则。' : '从上方查找并添加，也可以在书籍详情页加入书架。'}</p>
                 </section>
               )}
-              {!!shelfResult?.items.length && <p className="shelf-sort-help" id="shelf-sort-help">拖动 ⠿ 握柄调整本页顺序；↑↓ 可跨页逐本移动，也支持键盘操作。</p>}
+              {selected.kind !== 'smart' && !!shelfResult?.items.length && <p className="shelf-sort-help" id="shelf-sort-help">拖动 ⠿ 握柄调整本页顺序；↑↓ 可跨页逐本移动，也支持键盘操作。</p>}
               <p className="sr-only shelf-drag-status" role="status" aria-live="polite" aria-atomic="true">{dragSort.status}</p>
               <div ref={dragSort.listRef} className={`shelf-reading-list${dragSort.active ? ' is-drag-sorting' : ''}`}>
                 {shelfResult?.items.map((book, index) => (
@@ -299,7 +325,7 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
                         </button>
                       </div>
                     </div>
-                    <div className="shelf-order-actions">
+                    {selected.kind !== 'smart' && <div className="shelf-order-actions">
                       <button className="secondary shelf-drag-handle" type="button" aria-label={`拖动《${book.title}》排序`} aria-describedby="shelf-sort-help" disabled={basePending || !!form || (dragSort.active && dragSort.sourceID !== book.id)} {...dragSort.handleProps(book.id)}>⠿</button>
                       <button
                         className="secondary"
@@ -347,7 +373,7 @@ export function ShelvesPage({ selectedID, onSelect, onOpenBook, onViewBook }: Pr
                       >
                         移除
                       </button>
-                    </div>
+                    </div>}
                   </article>
                 ))}
               </div>

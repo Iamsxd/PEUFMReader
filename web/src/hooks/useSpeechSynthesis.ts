@@ -17,6 +17,8 @@ export interface SpeechSource {
   label: string
   language?: string
   cursor?: number
+  selectionOnly?: boolean
+  chunks?: Array<{ text: string; anchor?: string }>
 }
 
 export interface SpeechSourceAdvance {
@@ -29,6 +31,7 @@ interface UseSpeechSynthesisOptions {
   loadSource: () => Promise<SpeechSource>
   loadNextSource?: (source: SpeechSource) => Promise<SpeechSourceAdvance | null>
   sourceKey: string
+  onChunk?: (anchor: string | undefined, isCurrent: () => boolean) => void | Promise<void>
 }
 
 export interface BrowserSpeechControls {
@@ -42,7 +45,10 @@ export interface BrowserSpeechControls {
   sourceLabel: string
   progressLabel: string
   error: string
-  start: () => Promise<void>
+  sleepMinutes: number
+  sleepRemainingSeconds: number
+  setSleepMinutes: (minutes: number) => void
+  start: (source?: SpeechSource) => Promise<void>
   pauseOrResume: () => void
   stop: () => void
   selectVoice: (voiceURI: string) => void
@@ -63,7 +69,7 @@ function readPreferences() {
   }
 }
 
-export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: UseSpeechSynthesisOptions): BrowserSpeechControls {
+export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey, onChunk }: UseSpeechSynthesisOptions): BrowserSpeechControls {
   const supported = typeof window !== 'undefined'
     && 'speechSynthesis' in window
     && 'SpeechSynthesisUtterance' in window
@@ -77,16 +83,46 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
   const pauseTimerRef = useRef<number | null>(null)
   const previousSourceKeyRef = useRef(sourceKey)
   const expectedSourceKeyRef = useRef<string | null>(null)
+  const sleepDeadlineRef = useRef<number | null>(null)
+  const [sleepMinutes, setSleepMinutesState] = useState(0)
+  const [sleepRemainingSeconds, setSleepRemainingSeconds] = useState(0)
 
   const stop = useCallback(() => {
     runRef.current += 1
     if (pauseTimerRef.current !== null) window.clearTimeout(pauseTimerRef.current)
     pauseTimerRef.current = null
     expectedSourceKeyRef.current = null
+    sleepDeadlineRef.current = null
+    setSleepMinutesState(0)
+    setSleepRemainingSeconds(0)
     if (supported) window.speechSynthesis.cancel()
     setStatus('idle')
     setProgress({ current: 0, total: 0 })
   }, [supported])
+
+  const setSleepMinutes = useCallback((minutes: number) => {
+    const duration = Number.isFinite(minutes) ? Math.max(0, Math.min(120, Math.round(minutes))) : 0
+    sleepDeadlineRef.current = duration ? Date.now() + duration * 60_000 : null
+    setSleepMinutesState(duration)
+    setSleepRemainingSeconds(duration * 60)
+  }, [])
+
+  useEffect(() => {
+    if (!sleepMinutes) return
+    const checkDeadline = () => {
+      const deadline = sleepDeadlineRef.current
+      if (deadline === null) return
+      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1_000))
+      setSleepRemainingSeconds(remaining)
+      if (!remaining) stop()
+    }
+    const timer = window.setInterval(checkDeadline, 1_000)
+    document.addEventListener('visibilitychange', checkDeadline)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', checkDeadline)
+    }
+  }, [sleepMinutes, stop])
 
   useEffect(() => {
     if (!supported) return
@@ -157,7 +193,7 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
     })
   }, [preferences.voiceURI])
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (selectedSource?: SpeechSource) => {
     if (!supported) {
       setError('当前浏览器不支持即时朗读。请使用最新版 Safari、Chrome 或 Edge。')
       return
@@ -171,9 +207,9 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
     setProgress({ current: 0, total: 0 })
 
     try {
-      const source = await loadSource()
+      const source = selectedSource ?? await loadSource()
       if (run !== runRef.current) return
-      const chunks = chunkSpeechText(source.text)
+      const chunks = source.chunks?.map(chunk => chunk.text) ?? chunkSpeechText(source.text)
       if (chunks.length === 0) {
         setStatus('idle')
         setError('当前内容没有可朗读文字；扫描版 PDF 需要先具备文本层。')
@@ -185,7 +221,7 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
         setProgress((current) => ({ current: current.total, total: current.total }))
       }
       const continueToNextSource = async (currentSource: SpeechSource) => {
-        if (!preferences.autoAdvance || !loadNextSource) {
+        if (source.selectionOnly || !preferences.autoAdvance || !loadNextSource) {
           finish()
           return
         }
@@ -200,7 +236,7 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
               return
             }
             cursorSource = advance.source
-            const nextChunks = chunkSpeechText(advance.source.text)
+            const nextChunks = advance.source.chunks?.map(chunk => chunk.text) ?? chunkSpeechText(advance.source.text)
             if (nextChunks.length === 0) continue
             expectedSourceKeyRef.current = advance.sourceKey
             await advance.activate()
@@ -227,7 +263,18 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
           setError('浏览器没有提供中文音色，已停止以避免用英语朗读中文。请在 OPPO“设置 → 其他设置/无障碍 → 文字转语音输出”中选择语音引擎并下载“中文（中国）”后，重新打开浏览器。')
           return
         }
-        const speakChunk = (index: number) => {
+        const speakChunk = async (index: number) => {
+          if (run !== runRef.current) return
+          if (sleepDeadlineRef.current !== null && Date.now() >= sleepDeadlineRef.current) {
+            stop()
+            return
+          }
+          try {
+            await onChunk?.(activeSource.chunks?.[index]?.anchor, () => run === runRef.current)
+          } catch {
+            if (run === runRef.current) { stop(); setError('朗读定位失败，已停止。请重新选择段落。') }
+            return
+          }
           if (run !== runRef.current) return
           const utterance = new SpeechSynthesisUtterance(activeChunks[index])
           utterance.rate = preferences.rate
@@ -248,7 +295,7 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
                 return
               }
               setProgress({ current: next + 1, total: activeChunks.length })
-              speakChunk(next)
+              void speakChunk(next)
             }
             pauseTimerRef.current = window.setTimeout(resume, getSpeechPauseDuration(activeChunks[index]))
           }
@@ -264,7 +311,7 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
           window.speechSynthesis.speak(utterance)
         }
 
-        speakChunk(0)
+        void speakChunk(0)
       }
 
       void speakSource(source, chunks)
@@ -274,10 +321,14 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
       setStatus('idle')
       setError(reason instanceof Error ? reason.message : '朗读文本读取失败，请稍后重试。')
     }
-  }, [loadNextSource, loadSource, preferences.autoAdvance, preferences.pitch, preferences.rate, resolveVoice, supported])
+  }, [loadNextSource, loadSource, onChunk, preferences.autoAdvance, preferences.pitch, preferences.rate, resolveVoice, stop, supported])
 
   const pauseOrResume = useCallback(() => {
     if (!supported) return
+    if (sleepDeadlineRef.current !== null && Date.now() >= sleepDeadlineRef.current) {
+      stop()
+      return
+    }
     if (status === 'speaking') {
       window.speechSynthesis.pause()
       setStatus('paused')
@@ -285,7 +336,7 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
       window.speechSynthesis.resume()
       setStatus('speaking')
     }
-  }, [status, supported])
+  }, [status, stop, supported])
 
   const selectVoice = useCallback((voiceURI: string) => {
     stop()
@@ -325,6 +376,9 @@ export function useSpeechSynthesis({ loadSource, loadNextSource, sourceKey }: Us
     sourceLabel,
     progressLabel,
     error,
+    sleepMinutes,
+    sleepRemainingSeconds,
+    setSleepMinutes,
     start,
     pauseOrResume,
     stop,

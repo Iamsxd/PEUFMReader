@@ -194,6 +194,7 @@ export function Reader({ book, initialMark, contentData, userID, offlineMode, on
           {state && book.format === 'pdf' && (
             <PDFReader
               book={book}
+              userID={userID}
               contentURL={api.contentURL(book.id)}
               contentData={contentData}
               offlineMode={offlineMode}
@@ -210,6 +211,7 @@ export function Reader({ book, initialMark, contentData, userID, offlineMode, on
           {state && (book.format === 'epub' || isKindleBook) && (
             <EPUBReader
               book={book}
+              userID={userID}
               contentURL={api.contentURL(book.id)}
               contentData={contentData}
               offlineMode={offlineMode}

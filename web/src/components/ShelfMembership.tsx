@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api'
 import type { PersonalShelf } from '../types'
+import { useDraftGuard } from '../draftGuard'
 
 export function ShelfMembership({ bookID }: { bookID: number }) {
   const [shelves, setShelves] = useState<PersonalShelf[]>([])
@@ -8,6 +9,7 @@ export function ShelfMembership({ bookID }: { bookID: number }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [name, setName] = useState('')
+  useDraftGuard(Boolean(name.trim()), '新书架名称')
 
   async function refresh() {
     setLoading(true)
@@ -66,11 +68,11 @@ export function ShelfMembership({ bookID }: { bookID: number }) {
             <input
               type="checkbox"
               checked={shelf.containsBook}
-              disabled={busy || loading}
+              disabled={busy || loading || shelf.kind === 'smart'}
               onChange={() => void toggle(shelf)}
             />
             <span>{shelf.name}</span>
-            <small>{shelf.bookCount} 本</small>
+            <small>{shelf.kind === 'smart' ? '按规则 · ' : ''}{shelf.bookCount} 本</small>
           </label>
         ))}
         <form

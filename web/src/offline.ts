@@ -1,6 +1,7 @@
 import { APIError, api } from './api'
 import type { BookFile, ReadingState, Session, User } from './types'
 import { coverThumbnailURL } from './utils'
+import { clearOfflineMarks, loadReadingMarks, syncOfflineMarks } from './offlineMarks'
 
 const OFFLINE_VERSION = 'v1'
 const IDENTITY_KEY = `peufmreader-offline-identity-${OFFLINE_VERSION}`
@@ -101,6 +102,7 @@ export async function saveBookForOffline(userID: number, book: BookFile): Promis
   }
 
   const now = new Date().toISOString()
+  await loadReadingMarks(userID, book.id, false).catch(() => { /* A note snapshot must not block the book copy. */ })
   const record = { book: storedBook, cachedAt: now, lastOpenedAt: now, contentBytes: blob.size }
   try {
     writeOfflineBooks(userID, [record, ...listOfflineBooks(userID).filter((item) => item.book.id !== book.id)])
@@ -188,6 +190,7 @@ export async function removeOldestOfflineBook(userID: number): Promise<OfflineCl
 }
 
 export async function clearOfflineUserData(userID: number): Promise<void> {
+  clearOfflineMarks(userID)
   if (typeof caches !== 'undefined') await caches.delete(offlineBookCacheName(userID))
   safeRemove(offlineBooksKey(userID))
   safeRemove(offlineProgressKey(userID))
@@ -226,6 +229,7 @@ export function addOfflineActiveSeconds(userID: number, bookFileID: number, seco
 }
 
 export async function syncOfflineReading(userID: number): Promise<void> {
+  await syncOfflineMarks(userID)
   const progress = readOfflineProgress(userID)
   for (const [bookID, record] of Object.entries(progress)) {
     if (!record.pending) continue

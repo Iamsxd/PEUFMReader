@@ -21,7 +21,7 @@ func (s *Store) ReorderPersonalShelfBook(ctx context.Context, userID, id, bookID
 	}
 	defer tx.Rollback(ctx)
 	var lockedID int64
-	err = tx.QueryRow(ctx, `SELECT id FROM personal_shelves WHERE user_id=$1 AND id=$2 FOR UPDATE`, userID, id).Scan(&lockedID)
+	err = tx.QueryRow(ctx, `SELECT id FROM personal_shelves WHERE user_id=$1 AND id=$2 AND kind='manual' FOR UPDATE`, userID, id).Scan(&lockedID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}

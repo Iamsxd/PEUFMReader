@@ -1,7 +1,10 @@
-import type { CatalogPage, NotebookPage, NotebookQuery, PersonalShelf, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState } from '../types'
+import type { CatalogPage, NotebookPage, NotebookQuery, PersonalShelf, SmartShelfRules, ReadingMark, ReadingMarkInput, ReadingSession, ReadingState } from '../types'
 import { querySuffix, transport } from './core'
 
 export const readingAPI = {
+  syncReadingMark(input: { accountId: number; operationId: string; action: string; bookFileId: number; markId: number; expectedUpdatedAt?: string; mark: ReadingMark }): Promise<{ mark?: ReadingMark; deleted: boolean }> {
+    return transport.request('/api/v1/reading-marks/sync', { method: 'POST', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' } })
+  },
   searchNotebook(query: NotebookQuery = {}): Promise<NotebookPage> {
     return transport.request(`/api/v1/notebook${querySuffix(query)}`)
   },
@@ -13,8 +16,8 @@ export const readingAPI = {
     const result = await transport.request<{ items: PersonalShelf[] }>(`/api/v1/shelves${querySuffix({ bookId })}`)
     return result.items
   },
-  saveShelf(name: string, description: string, id?: number): Promise<PersonalShelf> {
-    return transport.request(`/api/v1/shelves${id ? `/${id}` : ''}`, { method: id ? 'PATCH' : 'POST', body: JSON.stringify({ name, description }), headers: { 'Content-Type': 'application/json' } })
+  saveShelf(name: string, description: string, id?: number, rules?: SmartShelfRules): Promise<PersonalShelf> {
+    return transport.request(`/api/v1/shelves${id ? `/${id}` : ''}`, { method: id ? 'PATCH' : 'POST', body: JSON.stringify({ name, description, rules }), headers: { 'Content-Type': 'application/json' } })
   },
   deleteShelf(id: number): Promise<void> {
     return transport.request(`/api/v1/shelves/${id}`, { method: 'DELETE' })

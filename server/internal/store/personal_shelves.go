@@ -10,12 +10,14 @@ import (
 )
 
 type PersonalShelf struct {
-	ID           int64     `json:"id"`
-	Name         string    `json:"name"`
-	Description  string    `json:"description"`
-	BookCount    int       `json:"bookCount"`
-	ContainsBook bool      `json:"containsBook"`
-	CreatedAt    time.Time `json:"createdAt"`
+	ID           int64            `json:"id"`
+	Name         string           `json:"name"`
+	Description  string           `json:"description"`
+	BookCount    int              `json:"bookCount"`
+	ContainsBook bool             `json:"containsBook"`
+	CreatedAt    time.Time        `json:"createdAt"`
+	Kind         string           `json:"kind"`
+	Rules        *SmartShelfRules `json:"rules,omitempty"`
 }
 
 type PersonalShelfBatchResult struct {
@@ -31,8 +33,7 @@ func (s *Store) PersonalShelfMemberships(ctx context.Context, userID, id int64, 
         FROM personal_shelves ps LEFT JOIN LATERAL (
             SELECT requested.book_file_id,requested.position
             FROM unnest($3::bigint[]) WITH ORDINALITY requested(book_file_id,position)
-            JOIN personal_shelf_books sb ON sb.book_file_id=requested.book_file_id AND sb.shelf_id=ps.id
-            JOIN accessible_book_ids($1) allowed ON allowed.book_file_id=requested.book_file_id
+            JOIN personal_shelf_visible_members($1) sb ON sb.book_file_id=requested.book_file_id AND sb.shelf_id=ps.id
             ORDER BY requested.position
         ) membership ON true WHERE ps.user_id=$1 AND ps.id=$2 ORDER BY membership.position`, userID, id, bookIDs)
 	if err != nil {
@@ -67,7 +68,7 @@ func (s *Store) AddPersonalShelfBooks(ctx context.Context, userID, id int64, boo
 	}
 	defer tx.Rollback(ctx)
 	var lockedID int64
-	err = tx.QueryRow(ctx, `SELECT id FROM personal_shelves WHERE user_id=$1 AND id=$2 FOR UPDATE`, userID, id).Scan(&lockedID)
+	err = tx.QueryRow(ctx, `SELECT id FROM personal_shelves WHERE user_id=$1 AND id=$2 AND kind='manual' FOR UPDATE`, userID, id).Scan(&lockedID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return result, false, nil
 	}
@@ -123,10 +124,10 @@ func (s *Store) AddPersonalShelfBooks(ctx context.Context, userID, id int64, boo
 }
 
 func (s *Store) ListPersonalShelves(ctx context.Context, userID, bookID int64) ([]PersonalShelf, error) {
-	rows, err := s.pool.Query(ctx, `WITH allowed AS MATERIALIZED (SELECT book_file_id FROM accessible_book_ids($1))
-        SELECT ps.id,ps.name,ps.description,ps.created_at,
-        (SELECT COUNT(*) FROM personal_shelf_books sb JOIN allowed a USING(book_file_id) WHERE sb.shelf_id=ps.id),
-        EXISTS(SELECT 1 FROM personal_shelf_books sb JOIN allowed a USING(book_file_id) WHERE sb.shelf_id=ps.id AND sb.book_file_id=$2)
+	rows, err := s.pool.Query(ctx, `WITH members AS MATERIALIZED (SELECT * FROM personal_shelf_visible_members($1))
+        SELECT ps.id,ps.name,ps.description,ps.created_at,ps.kind,ps.rules,
+        (SELECT COUNT(*) FROM members sb WHERE sb.shelf_id=ps.id),
+        EXISTS(SELECT 1 FROM members sb WHERE sb.shelf_id=ps.id AND sb.book_file_id=$2)
         FROM personal_shelves ps WHERE ps.user_id=$1 ORDER BY ps.created_at,ps.id`, userID, bookID)
 	if err != nil {
 		return nil, err
@@ -135,7 +136,7 @@ func (s *Store) ListPersonalShelves(ctx context.Context, userID, bookID int64) (
 	items := make([]PersonalShelf, 0)
 	for rows.Next() {
 		var item PersonalShelf
-		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.CreatedAt, &item.BookCount, &item.ContainsBook); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Description, &item.CreatedAt, &item.Kind, &item.Rules, &item.BookCount, &item.ContainsBook); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -144,17 +145,7 @@ func (s *Store) ListPersonalShelves(ctx context.Context, userID, bookID int64) (
 }
 
 func (s *Store) SavePersonalShelf(ctx context.Context, userID, id int64, name, description string) (PersonalShelf, bool, error) {
-	var shelf PersonalShelf
-	var err error
-	if id == 0 {
-		err = s.pool.QueryRow(ctx, `INSERT INTO personal_shelves(user_id,name,description) VALUES($1,$2,$3) RETURNING id,name,description,created_at`, userID, name, description).Scan(&shelf.ID, &shelf.Name, &shelf.Description, &shelf.CreatedAt)
-	} else {
-		err = s.pool.QueryRow(ctx, `UPDATE personal_shelves SET name=$3,description=$4 WHERE id=$2 AND user_id=$1 RETURNING id,name,description,created_at`, userID, id, name, description).Scan(&shelf.ID, &shelf.Name, &shelf.Description, &shelf.CreatedAt)
-	}
-	if errors.Is(err, pgx.ErrNoRows) {
-		return shelf, false, nil
-	}
-	return shelf, err == nil, err
+	return s.SavePersonalShelfWithRules(ctx, userID, id, name, description, nil)
 }
 
 func (s *Store) DeletePersonalShelf(ctx context.Context, userID, id int64) (bool, error) {
@@ -171,7 +162,7 @@ func (s *Store) PersonalShelfExists(ctx context.Context, userID, id int64) (bool
 func (s *Store) PersonalShelfBooks(ctx context.Context, userID, id int64, page, pageSize int) (CatalogPage, error) {
 	paging := NormalizeCatalogQuery(CatalogQuery{Page: page, PageSize: pageSize})
 	result := CatalogPage{Items: make([]BookFile, 0), Page: paging.Page, PageSize: paging.PageSize}
-	join := ` JOIN personal_shelf_books sb ON sb.book_file_id=bf.id JOIN personal_shelves ps ON ps.id=sb.shelf_id WHERE ps.user_id=$1 AND ps.id=$2`
+	join := ` JOIN personal_shelf_visible_members($1) sb ON sb.book_file_id=bf.id WHERE sb.shelf_id=$2`
 	if err := s.pool.QueryRow(ctx, "SELECT COUNT(*)"+catalogAccessibleBookFrom+join, userID, id).Scan(&result.Total); err != nil {
 		return result, err
 	}
@@ -200,7 +191,7 @@ func (s *Store) ChangePersonalShelfBook(ctx context.Context, userID, id, bookID 
 	}
 	defer tx.Rollback(ctx)
 	var lockedID int64
-	err = tx.QueryRow(ctx, `SELECT id FROM personal_shelves WHERE user_id=$1 AND id=$2 FOR UPDATE`, userID, id).Scan(&lockedID)
+	err = tx.QueryRow(ctx, `SELECT id FROM personal_shelves WHERE user_id=$1 AND id=$2 AND kind='manual' FOR UPDATE`, userID, id).Scan(&lockedID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}

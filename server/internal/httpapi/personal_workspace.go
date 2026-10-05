@@ -7,6 +7,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"peufmreader/internal/store"
+
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -146,8 +148,9 @@ func (a *API) savePersonalShelf(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var input struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
+		Name        string                 `json:"name"`
+		Description string                 `json:"description"`
+		Rules       *store.SmartShelfRules `json:"rules"`
 	}
 	if err := readJSON(w, r, &input, 4<<10); err != nil {
 		writeError(w, 400, "invalid_shelf", err.Error())
@@ -159,7 +162,11 @@ func (a *API) savePersonalShelf(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_shelf", "书架名称为 1–80 字，说明最多 500 字。")
 		return
 	}
-	shelf, found, err := a.store.SavePersonalShelf(r.Context(), sessionFromContext(r.Context()).User.ID, id, input.Name, input.Description)
+	if input.Rules != nil && !input.Rules.Valid() {
+		writeError(w, 400, "invalid_shelf_rules", "智能书架至少选择一条有效规则。")
+		return
+	}
+	shelf, found, err := a.store.SavePersonalShelfWithRules(r.Context(), sessionFromContext(r.Context()).User.ID, id, input.Name, input.Description, input.Rules)
 	if err != nil {
 		var databaseErr *pgconn.PgError
 		if errors.As(err, &databaseErr) && databaseErr.Code == "23505" {

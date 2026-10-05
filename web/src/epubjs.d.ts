@@ -1,4 +1,8 @@
 declare module 'epubjs' {
+  export class EpubCFI {
+    constructor(cfiFrom?: string | Range | Node, base?: string | object, ignoreClass?: string)
+    toString(): string
+  }
   export interface LocationCollection {
     generate(chars?: number): Promise<string[]>
     cfiFromPercentage(percentage: number): string
@@ -15,6 +19,8 @@ declare module 'epubjs' {
   export interface Contents {
     document: Document
     sectionIndex: number
+    range(cfi: string, ignoreClass?: string): Range
+    cfiFromRange(range: Range, ignoreClass?: string): string
   }
 
   export interface RenditionLocation {
@@ -33,7 +39,8 @@ declare module 'epubjs' {
     hooks: { content: Hook }
     annotations: {
       highlight(cfiRange: string, data?: object, callback?: (...args: unknown[]) => void, className?: string, styles?: Record<string, string>): void
-      remove(cfiRange: string, type: 'highlight'): void
+      underline(cfiRange: string, data?: object, callback?: (...args: unknown[]) => void, className?: string, styles?: Record<string, string>): void
+      remove(cfiRange: string, type: 'highlight' | 'underline'): void
     }
     display(target?: string | number): Promise<unknown>
     prev(): Promise<unknown>
@@ -79,6 +86,7 @@ declare module 'epubjs' {
     href: string
     linear: boolean
     document: Document
+    cfiBase: string
     load(request: (path: string) => Promise<Document>): Promise<unknown>
     find(query: string): SectionSearchResult[]
     unload(): void

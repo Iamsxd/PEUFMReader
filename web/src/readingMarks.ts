@@ -33,6 +33,16 @@ export interface HighlightRect {
   height: number
 }
 
+export function pdfHighlightsForPage(marks: ReadingMark[], pageNumber: number): ReadingMark[] {
+  return marks.flatMap(mark => {
+    if (Array.isArray(mark.position.segments)) {
+      const segment = mark.position.segments.find((raw: unknown) => raw && typeof raw === 'object' && (raw as Record<string, unknown>).pageIndex === pageNumber - 1)
+      return segment ? [{ ...mark, position: segment as Record<string, unknown> }] : []
+    }
+    return mark.position.pageIndex === pageNumber - 1 ? [mark] : []
+  })
+}
+
 interface ClientRectLike {
   left: number
   top: number
@@ -65,18 +75,23 @@ export function createPDFHighlightLocation(
   const round = (value: number) => Math.round(value * 1_000_000) / 1_000_000
   const right = pageBounds.left + pageBounds.width
   const bottom = pageBounds.top + pageBounds.height
+  const seen = new Set<string>()
   const rects = selectionRects.flatMap((rect): HighlightRect[] => {
     const left = Math.max(pageBounds.left, rect.left)
     const top = Math.max(pageBounds.top, rect.top)
     const clippedRight = Math.min(right, rect.left + rect.width)
     const clippedBottom = Math.min(bottom, rect.top + rect.height)
     if (clippedRight <= left || clippedBottom <= top || pageBounds.width <= 0 || pageBounds.height <= 0) return []
-    return [{
+    const normalized = {
       x: round((left - pageBounds.left) / pageBounds.width),
       y: round((top - pageBounds.top) / pageBounds.height),
       width: round((clippedRight - left) / pageBounds.width),
       height: round((clippedBottom - top) / pageBounds.height),
-    }]
+    }
+    const key = JSON.stringify(normalized)
+    if (seen.has(key)) return []
+    seen.add(key)
+    return [normalized]
   })
   return {
     ...location,

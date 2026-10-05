@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api'
+import { cachedReadingMarks, createLocalReadingMark, deleteLocalReadingMark, discardConflictingMarks, exportLocalMarks, loadReadingMarks, OFFLINE_MARKS_EVENT, pendingMarkStatus, syncOfflineMarks, updateLocalReadingMark } from '../../offlineMarks'
+import { downloadNotebookBlob } from '../../notebookDownload'
+import { confirmLeaveDrafts, useDraftGuard } from '../../draftGuard'
 import { highlightColorLabels, markKindLabel, removeReadingMark, upsertReadingMark, type ReadingMarkLocation } from '../../readingMarks'
 import type { ReadingMark, ReadingMarkInput } from '../../types'
 
 interface Props {
   bookFileID: number
+  userID: number
+  offlineMode: boolean
+  initialEditingID?: number
   current: ReadingMarkLocation
   onNavigate: (position: Record<string, unknown>) => void
   onClose: () => void
@@ -12,7 +18,7 @@ interface Props {
   onMarksChange?: (marks: ReadingMark[]) => void
 }
 
-export function ReadingMarksPanel({ bookFileID, current, onNavigate, onClose, onChromeActivity, onMarksChange }: Props) {
+export function ReadingMarksPanel({ bookFileID, userID, offlineMode, initialEditingID, current, onNavigate, onClose, onChromeActivity, onMarksChange }: Props) {
   const [marks, setMarks] = useState<ReadingMark[]>([])
   const [noteBody, setNoteBody] = useState('')
   const [editingID, setEditingID] = useState<number | null>(null)
@@ -23,13 +29,28 @@ export function ReadingMarksPanel({ bookFileID, current, onNavigate, onClose, on
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState('')
   const [color, setColor] = useState('')
+  const [syncStatus, setSyncStatus] = useState(() => pendingMarkStatus(userID, bookFileID))
   const visibleMarks = marks.filter(mark => (!kind || mark.kind === kind) && (!color || mark.color === color) && `${mark.label}\n${mark.body}\n${mark.quote}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+  const dirty = Boolean(noteBody.trim() || (editingID !== null && editingBody !== marks.find(mark => mark.id === editingID)?.body))
+  useDraftGuard(dirty)
+
+  function closePanel() {
+    if (!dirty || window.confirm('批注有未保存的内容，确定放弃吗？')) onClose()
+  }
 
   useEffect(() => {
     let disposed = false
     setLoading(true)
     setError('')
-    void api.listReadingMarks(bookFileID).then((items) => {
+    const updateCache = () => {
+      if (disposed) return
+      const items = cachedReadingMarks(userID, bookFileID)
+      setMarks(items)
+      setSyncStatus(pendingMarkStatus(userID, bookFileID))
+      onMarksChange?.(items)
+    }
+    window.addEventListener(OFFLINE_MARKS_EVENT, updateCache)
+    void loadReadingMarks(userID, bookFileID, offlineMode).then((items) => {
       if (!disposed) {
         setMarks(items)
         onMarksChange?.(items)
@@ -39,8 +60,17 @@ export function ReadingMarksPanel({ bookFileID, current, onNavigate, onClose, on
     }).finally(() => {
       if (!disposed) setLoading(false)
     })
-    return () => { disposed = true }
-  }, [bookFileID, onMarksChange])
+    return () => { disposed = true; window.removeEventListener(OFFLINE_MARKS_EVENT, updateCache) }
+  }, [bookFileID, offlineMode, onMarksChange, userID])
+
+  useEffect(() => {
+    if (initialEditingID === undefined) return
+    const mark = marks.find(item => item.id === initialEditingID)
+    if (!mark) return
+    setEditingID(mark.id)
+    setEditingBody(mark.body)
+    setQuery(''); setKind(''); setColor('')
+  }, [initialEditingID, loading])
 
   function publishMarks(update: (items: ReadingMark[]) => ReadingMark[]) {
     setMarks((items) => {
@@ -56,7 +86,7 @@ export function ReadingMarksPanel({ bookFileID, current, onNavigate, onClose, on
     setBusy(`create-${kind}`)
     setError('')
     try {
-      const mark = await api.createReadingMark(bookFileID, { kind, ...current, body })
+      const mark = await createLocalReadingMark(userID, bookFileID, { kind, ...current, body }, offlineMode)
       publishMarks((items) => upsertReadingMark(items, mark))
       if (kind === 'note') setNoteBody('')
     } catch {
@@ -67,6 +97,8 @@ export function ReadingMarksPanel({ bookFileID, current, onNavigate, onClose, on
   }
 
   function beginEditing(mark: ReadingMark) {
+    if (!confirmLeaveDrafts()) return
+    setNoteBody('')
     setEditingID(mark.id)
     setEditingBody(mark.body)
   }
@@ -77,7 +109,7 @@ export function ReadingMarksPanel({ bookFileID, current, onNavigate, onClose, on
     setBusy(`edit-${mark.id}`)
     setError('')
     try {
-      const updated = await api.updateReadingMark(mark.id, { label: mark.label, body, color: mark.color })
+      const updated = await updateLocalReadingMark(userID, mark, { label: mark.label, body, color: mark.color }, offlineMode)
       publishMarks((items) => upsertReadingMark(items, updated))
       setEditingID(null)
       setEditingBody('')
@@ -93,7 +125,7 @@ export function ReadingMarksPanel({ bookFileID, current, onNavigate, onClose, on
     setBusy(`delete-${mark.id}`)
     setError('')
     try {
-      await api.deleteReadingMark(mark.id)
+      await deleteLocalReadingMark(userID, mark, offlineMode)
       publishMarks((items) => removeReadingMark(items, mark.id))
       if (editingID === mark.id) setEditingID(null)
     } catch {
@@ -107,8 +139,17 @@ export function ReadingMarksPanel({ bookFileID, current, onNavigate, onClose, on
     <aside className="reader-side-panel reading-marks-panel" aria-label="书签、高亮和笔记" onPointerDown={onChromeActivity}>
       <header>
         <strong>书签、高亮与笔记</strong>
-        <button onClick={onClose} aria-label="关闭侧栏">×</button>
+        <button onClick={closePanel} aria-label="关闭侧栏">×</button>
       </header>
+      <div className="reading-mark-sync-status" role="status">
+        <small>{offlineMode ? '离线批注保存在此账号的设备缓存，联网后同步。' : syncStatus.pending ? `${syncStatus.pending} 项待同步` : '批注已同步'}</small>
+        {syncStatus.pending > 0 && <button disabled={offlineMode || Boolean(busy)} onClick={() => void syncOfflineMarks(userID)}>重试同步</button>}
+        <button onClick={() => downloadNotebookBlob(exportLocalMarks(userID, bookFileID), 'device-notes.json')}>导出设备草稿</button>
+        {syncStatus.problems.map(problem => <p className="reader-panel-error" key={problem}>{problem}</p>)}
+        {syncStatus.problems.length > 0 && <button disabled={offlineMode || Boolean(busy)} onClick={() => {
+          if (window.confirm('放弃本书冲突的本地草稿并读取服务器版本？建议先导出设备草稿。')) void discardConflictingMarks(userID, bookFileID).catch(() => setError('读取服务器版本失败。'))
+        }}>放弃冲突草稿，读取服务器版本</button>}
+      </div>
       <div className="reading-mark-create">
         <div className="reading-mark-current">
           <span>当前位置</span>
@@ -117,11 +158,11 @@ export function ReadingMarksPanel({ bookFileID, current, onNavigate, onClose, on
         <button className="reading-mark-bookmark" disabled={Boolean(busy)} onClick={() => void createMark('bookmark')}>
           {busy === 'create-bookmark' ? '添加中…' : '＋ 添加书签'}
         </button>
-        <div className="reading-mark-export" aria-label="导出阅读批注">
+        {!offlineMode && <div className="reading-mark-export" aria-label="导出阅读批注">
           <span>导出</span>
           <a href={api.readingMarksExportURL(bookFileID, 'markdown')} download>Markdown</a>
           <a href={api.readingMarksExportURL(bookFileID, 'json')} download>JSON</a>
-        </div>
+        </div>}
         <textarea
           value={noteBody}
           onChange={(event) => setNoteBody(event.target.value)}
@@ -143,7 +184,7 @@ export function ReadingMarksPanel({ bookFileID, current, onNavigate, onClose, on
         {visibleMarks.map((mark) => (
           <article key={mark.id} className={`reading-mark-item ${mark.kind}`}>
             <header>
-              <button className="reading-mark-location" onClick={() => onNavigate(mark.position)}>
+              <button className="reading-mark-location" onClick={() => { if (confirmLeaveDrafts()) onNavigate(mark.position) }}>
                 <span>{markKindLabel(mark.kind)} · {Math.round(mark.overallProgress * 100)}%</span>
                 <strong>{mark.label}</strong>
               </button>
@@ -154,7 +195,7 @@ export function ReadingMarksPanel({ bookFileID, current, onNavigate, onClose, on
               <div className="reading-mark-edit">
                 <textarea value={editingBody} onChange={(event) => setEditingBody(event.target.value)} maxLength={10000} rows={4} placeholder={mark.kind === 'highlight' ? '添加高亮批注（可选）' : ''} aria-label="编辑批注内容" />
                 <div>
-                  <button onClick={() => { setEditingID(null); setEditingBody('') }}>取消</button>
+                  <button onClick={() => { if (confirmLeaveDrafts()) { setEditingID(null); setEditingBody('') } }}>取消</button>
                   <button disabled={busy === `edit-${mark.id}` || (mark.kind === 'note' && !editingBody.trim())} onClick={() => void saveEdit(mark)}>保存</button>
                 </div>
               </div>

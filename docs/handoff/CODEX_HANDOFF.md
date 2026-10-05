@@ -57,6 +57,8 @@ PEUFMReader 是面向 NAS 的多用户电子书管理与 Web 阅读应用。它�
 
 后续路线在 `docs/product/development-roadmap.md`，但不要自行假定优先级。P2 的公开候选方向是：外部告警通知、跨书库全文检索与 AI、听书、阅读目标/导出/隐私等统计增强。开始新功能前先向项目负责人确认本次目标。
 
+2026-10-05 开发补记：用户选择批注／朗读／PDF／知识工作台（2／3／5／6）后，从 `master@fc398bb` 建立 `codex/reader-knowledge-enhancements`，第一批加入设备离线批注队列与幂等／版本冲突保护、选区朗读、连续 PDF 跨页高亮、EPUB 可见段落跟随、睡眠定时、PDF Range／本书裁边／页文字视图、权限化本地全文索引、私人智能书架和 JSON 导入。新增迁移 031–033，只在临时测试数据库验证；生产 8080 及 001–030 不变，仍运行 `fe9ee53`。没有合并、推送或部署授权；后台音频／引用 AI／第三方同步／EPUB 跨框架选区仍待开发，不要宣称四方向全部完成。续接前必须阅读 [第一批实施计划](../product/reader-knowledge-enhancements.md) 和 [验证记录](../validation/reader-knowledge-enhancements.md)，并再次检查实际 Git 状态。没有默认启用 AI 或把正文发到外部服务；临时测试只用原创合成电子书。
+
 ## 代码地图
 
 | 路径 | 内容 |
@@ -64,7 +66,7 @@ PEUFMReader 是面向 NAS 的多用户电子书管理与 Web 阅读应用。它�
 | `server/cmd/peufmreader/main.go` | 服务入口、依赖装配。 |
 | `server/internal/httpapi/` | REST API、认证、权限、阅读和管理接口及集成测试。 |
 | `server/internal/store/` | PostgreSQL 查询、领域持久化和后台任务状态。 |
-| `server/internal/database/migrations/` | 顺序 SQL 迁移；已有 001–027。 |
+| `server/internal/database/migrations/` | 顺序 SQL 迁移；当前开发源码 001–033，生产版本另见部署记录。 |
 | `server/internal/importing/`、`importinbox/`、`watchlibrary/`、`calibre/` | 书籍导入与外部书库接入。 |
 | `web/src/components/` | React 页面与组件；阅读器在 `components/readers/`。 |
 | `web/src/api/`、`web/src/types/` | 前端 API 客户端与领域类型。 |

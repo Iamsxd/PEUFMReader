@@ -1,4 +1,4 @@
-type IconName = 'home' | 'books' | 'recommendations' | 'favorites' | 'categories' | 'statistics' | 'notebook' | 'shelves' | 'more'
+type IconName = 'home' | 'books' | 'recommendations' | 'favorites' | 'categories' | 'statistics' | 'notebook' | 'shelves' | 'search' | 'more'
 
 const paths: Record<IconName, string> = {
   home: 'M3 10 12 3l9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z',
@@ -9,6 +9,7 @@ const paths: Record<IconName, string> = {
   statistics: 'M4 20V10 M12 20V4 M20 20v-7',
   notebook: 'M5 3h14v18H5z M8 7h8 M8 11h8 M8 15h5',
   shelves: 'M3 20h18 M5 4h4v12H5z M12 4h4v12h-4z M18 6l3 10',
+  search: 'M15 15l6 6 M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14Z M7 8h6 M7 11h4',
   more: 'M4 6h16 M4 12h16 M4 18h16',
 }
 

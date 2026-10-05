@@ -1,6 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import ePub, { type Book, type Contents, type Rendition } from 'epubjs'
-import { api } from '../../api'
+import ePub, { EpubCFI, type Book, type Contents, type Rendition } from 'epubjs'
 import {
   clampEPUBFontSize,
   DEFAULT_EPUB_TYPOGRAPHY,
@@ -30,9 +29,13 @@ import { extractReadableDocumentText } from '../../speech'
 import { isInteractiveReaderTarget, isReaderCenterTap, MOBILE_READER_CHROME_QUERY } from '../../readerChrome'
 import { createReaderNavigationHistory } from '../../readerNavigation'
 import { EPUBTypographyPanel } from './EPUBTypographyPanel'
+import { cachedReadingMarks, canonicalMarkID, createLocalReadingMark, loadReadingMarks, OFFLINE_MARKS_EVENT } from '../../offlineMarks'
+import { buildEPUBSpeechChunks } from '../../epubSpeech'
+import { confirmLeaveDrafts } from '../../draftGuard'
 
 interface Props {
   book: BookFile
+  userID: number
   contentURL: string
   contentData?: ArrayBuffer
   offlineMode: boolean
@@ -120,7 +123,7 @@ function readVisibleLocation(rendition: Rendition): RelocatedLocation | undefine
   }
 }
 
-export function EPUBReader({ book, contentURL, contentData, offlineMode, initialState, chromeVisible, onChromeActivity, onHideChrome, onToggleChrome, onProgress, readingStatus, onStatusChange }: Props) {
+export function EPUBReader({ book, userID, contentURL, contentData, offlineMode, initialState, chromeVisible, onChromeActivity, onHideChrome, onToggleChrome, onProgress, readingStatus, onStatusChange }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const renditionRef = useRef<Rendition | null>(null)
   const bookRef = useRef<Book | null>(null)
@@ -178,6 +181,8 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
   const [searchProgress, setSearchProgress] = useState('')
   const [searchError, setSearchError] = useState('')
   const [highlights, setHighlights] = useState<ReadingMark[]>([])
+  const [editingMarkID, setEditingMarkID] = useState<number | undefined>()
+  const speechAnchorRef = useRef<string | undefined>(undefined)
   const [pendingHighlight, setPendingHighlight] = useState<PendingHighlight | null>(null)
   const [savingHighlight, setSavingHighlight] = useState(false)
   const { schedule: scheduleProgress } = useReadingProgressPersistence({
@@ -198,12 +203,16 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
       ? contents.filter((content) => content.sectionIndex === currentChapter.index)
       : contents
     const activeContents = matchingContents.length > 0 ? matchingContents : contents
+    const currentCFI = readVisibleLocation(rendition)?.start.cfi ?? currentCFIRef.current
+    let visibleRange: Range | undefined
+    try { visibleRange = activeContents[0]?.range(currentCFI) } catch { /* Older positions may not have a CFI. */ }
+    const chunks = activeContents.flatMap((content, index) => buildEPUBSpeechChunks(content.document, range => content.cfiFromRange(range), index === 0 ? visibleRange : undefined))
     const text = activeContents.map((content) => extractReadableDocumentText(content.document)).filter(Boolean).join('\n\n')
     const normalizedHref = currentChapter.href.split('#')[0]
     const chapterLabel = toc.find((entry) => entry.href.split('#')[0] === normalizedHref)?.label
       ?? (currentChapter.index >= 0 ? `第 ${currentChapter.index + 1} 章` : '当前章节')
     const language = activeContents[0]?.document.documentElement.lang || undefined
-    return { text, label: chapterLabel, language, cursor: activeContents[0]?.sectionIndex ?? currentChapter.index }
+    return { text, chunks, label: chapterLabel, language, cursor: activeContents[0]?.sectionIndex ?? currentChapter.index }
   }, [currentChapter, toc])
   const loadNextSpeechSource = useCallback(async (source: { cursor?: number }) => {
     const epub = bookRef.current
@@ -219,7 +228,7 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
       const chapterLabel = toc.find((entry) => entry.href.split('#')[0] === normalizedHref)?.label ?? `第 ${section.index + 1} 章`
       const language = section.document.documentElement.lang || undefined
       return {
-        source: { text, label: chapterLabel, language, cursor: section.index },
+        source: { text, chunks: buildEPUBSpeechChunks(section.document, range => new EpubCFI(range, section.cfiBase).toString()), label: chapterLabel, language, cursor: section.index },
         sourceKey: `${book.id}:${section.index}`,
         activate: async () => {
           if (renditionRef.current !== rendition || reflowingRef.current || navigatingRef.current) throw new Error('Reader layout or navigation is changing.')
@@ -243,11 +252,36 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
       section.unload()
     }
   }, [book.id, currentChapter.index, toc])
+  const followSpeechChunk = useCallback(async (anchor: string | undefined, isCurrent: () => boolean) => {
+    const rendition = renditionRef.current
+    if (!rendition || anchor === speechAnchorRef.current) return
+    if (speechAnchorRef.current) rendition.annotations.remove(speechAnchorRef.current, 'underline')
+    speechAnchorRef.current = undefined
+    if (!anchor) return
+    if (reflowingRef.current || navigatingRef.current) throw new Error('Reading layout changed')
+    navigatingRef.current = true
+    setNavigating(true)
+    try {
+      await rendition.display(anchor)
+      if (renditionRef.current !== rendition || !isCurrent()) return
+      rendition.annotations.underline(anchor, {}, undefined, 'peufm-speech-follow', { stroke: '#3b9ed8', 'stroke-width': '3' })
+      speechAnchorRef.current = anchor
+      const location = readVisibleLocation(rendition)
+      if (location) publishLocationRef.current(location)
+    } finally { navigatingRef.current = false; setNavigating(false) }
+  }, [])
   const speech = useSpeechSynthesis({
     loadSource: loadSpeechSource,
     loadNextSource: loadNextSpeechSource,
     sourceKey: `${book.id}:${currentChapter.index}`,
+    onChunk: followSpeechChunk,
   })
+  useEffect(() => {
+    if (speech.status === 'idle' && speechAnchorRef.current) {
+      renditionRef.current?.annotations.remove(speechAnchorRef.current, 'underline')
+      speechAnchorRef.current = undefined
+    }
+  }, [speech.status])
 
   const turnPage = useCallback((direction: -1 | 1) => {
     const rendition = renditionRef.current
@@ -289,6 +323,7 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
   }, [captureReflowAnchor])
 
   const closeSidePanel = useCallback(() => {
+    if (!confirmLeaveDrafts()) return
     setSidePanel(null)
     sidePanelTriggerRef.current?.focus({ preventScroll: true })
   }, [])
@@ -351,7 +386,7 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
     for (const mark of marks) {
       const cfi = typeof mark.position.cfi === 'string' ? mark.position.cfi : ''
       if (!cfi || !mark.color) continue
-      rendition.annotations.highlight(cfi, { id: mark.id }, () => setSidePanel('marks'), 'peufm-highlight', {
+      rendition.annotations.highlight(cfi, { id: mark.id }, () => { if (confirmLeaveDrafts()) { setEditingMarkID(canonicalMarkID(userID, mark.id)); setSidePanel('marks'); onChromeActivity() } }, 'peufm-highlight', {
         fill: EPUB_HIGHLIGHT_COLORS[mark.color],
         'fill-opacity': '0.42',
         'mix-blend-mode': 'multiply',
@@ -359,22 +394,19 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
       rendered.push(cfi)
     }
     renderedHighlightCFIsRef.current = rendered
-  }, [])
+  }, [onChromeActivity, userID])
 
   useEffect(() => {
-    if (offlineMode) {
-      setHighlights([])
-      setSidePanel((current) => current === 'marks' ? null : current)
-      return
-    }
     let disposed = false
-    void api.listReadingMarks(book.id).then((marks) => {
+    const updateCache = () => { if (!disposed) setHighlights(cachedReadingMarks(userID, book.id).filter(mark => mark.kind === 'highlight')) }
+    window.addEventListener(OFFLINE_MARKS_EVENT, updateCache)
+    void loadReadingMarks(userID, book.id, offlineMode).then((marks) => {
       if (!disposed) setHighlights(marks.filter((mark) => mark.kind === 'highlight'))
     }).catch(() => {
       if (!disposed) setError('文本高亮加载失败。')
     })
-    return () => { disposed = true }
-  }, [book.id, offlineMode])
+    return () => { disposed = true; window.removeEventListener(OFFLINE_MARKS_EVENT, updateCache) }
+  }, [book.id, offlineMode, userID])
 
   useEffect(() => {
     const rendition = renditionRef.current
@@ -583,7 +615,6 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
       if (event.clientY <= 100) onChromeActivity()
     }
     const selected = (cfiRange: string, contents: Contents) => {
-      if (offlineMode) return
       const quote = contents.document.getSelection()?.toString().replace(/\s+/g, ' ').trim() ?? ''
       if (!quote) return
       const currentProgress = clampProgress(lastProgressRef.current)
@@ -764,6 +795,7 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
   }
 
   function toggleSidePanel(panel: Exclude<EPUBSidePanel, null>, trigger: HTMLButtonElement) {
+    if (!confirmLeaveDrafts()) return
     sidePanelTriggerRef.current = trigger
     if (panel === 'progress') setPreviewProgress(Math.round(progress * 100))
     setSidePanel((current) => current === panel ? null : panel)
@@ -838,9 +870,9 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
     if (!pendingHighlight) return
     setSavingHighlight(true)
     try {
-      const mark = await api.createReadingMark(book.id, {
+      const mark = await createLocalReadingMark(userID, book.id, {
         kind: 'highlight', ...pendingHighlight, body, quote: pendingHighlight.quote, color,
-      })
+      }, offlineMode)
       setHighlights((items) => upsertReadingMark(items, mark))
       setPendingHighlight(null)
       hostRef.current?.querySelectorAll('iframe').forEach((frame) => frame.contentDocument?.getSelection()?.removeAllRanges())
@@ -908,7 +940,7 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
         <div className="reader-tool-group" aria-label="书籍导航">
           <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={(event) => toggleSidePanel('toc', event.currentTarget)}>目录</button>
           <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={(event) => toggleSidePanel('search', event.currentTarget)}>书内搜索</button>
-          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} disabled={offlineMode} title={offlineMode ? '离线状态下书签与高亮只读' : undefined} onClick={(event) => toggleSidePanel('marks', event.currentTarget)}>书签/高亮</button>
+          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} onClick={(event) => { setEditingMarkID(undefined); toggleSidePanel('marks', event.currentTarget) }}>书签/高亮</button>
           <button className={sidePanel === 'speech' || speech.status === 'speaking' || speech.status === 'paused' ? 'active' : ''} aria-pressed={sidePanel === 'speech'} onClick={(event) => toggleSidePanel('speech', event.currentTarget)}>朗读</button>
         </div>
         <ScreenWakeLockControl onChromeActivity={onChromeActivity} />
@@ -977,8 +1009,11 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
           onChromeActivity={onChromeActivity}
         />
       ) : sidePanel === 'marks' ? (
-        !offlineMode && <ReadingMarksPanel
+        <ReadingMarksPanel
           bookFileID={book.id}
+          userID={userID}
+          offlineMode={offlineMode}
+          initialEditingID={editingMarkID}
           current={markLocation}
           onNavigate={(position) => {
             const target = getReadingMarkNavigationTarget(book.format, position)
@@ -1022,7 +1057,7 @@ export function EPUBReader({ book, contentURL, contentData, offlineMode, initial
       )}
 
       {pendingHighlight && (
-        <HighlightComposer selection={pendingHighlight} busy={savingHighlight} onSave={(color, body) => void saveHighlight(color, body)} onCancel={() => setPendingHighlight(null)} />
+        <HighlightComposer selection={pendingHighlight} busy={savingHighlight} onSave={(color, body) => void saveHighlight(color, body)} onCancel={() => setPendingHighlight(null)} onSpeak={speech.supported ? () => { void speech.start({ text: pendingHighlight.quote, label: '选中文字', selectionOnly: true }); setPendingHighlight(null); setSidePanel('speech') } : undefined} />
       )}
 
       {error && <div className="notice error epub-error">{error}</div>}

@@ -30,6 +30,7 @@ import (
 	"peufmreader/internal/mobiconvert"
 	"peufmreader/internal/pdfassets"
 	"peufmreader/internal/store"
+	"peufmreader/internal/textindex"
 	"peufmreader/internal/watchlibrary"
 )
 
@@ -113,7 +114,12 @@ func main() {
 	}
 	importService := importing.New(dataStore, libraryManager, kindleConverter)
 	importService.SetPostImportHook(func(ctx context.Context, userID int64, book store.BookFile) error {
-		return bibliographyjobs.EnqueueIfConfigured(ctx, dataStore, userID, book)
+		bibliographyErr := bibliographyjobs.EnqueueIfConfigured(ctx, dataStore, userID, book)
+		var indexErr error
+		if book.Format == "epub" || (book.Format == "pdf" && book.TextPath != "") {
+			_, indexErr = textindex.Enqueue(ctx, dataStore, book)
+		}
+		return errors.Join(bibliographyErr, indexErr)
 	})
 	importManager, err := importinbox.NewManager(cfg.ImportRoot)
 	if err != nil {
@@ -149,8 +155,23 @@ func main() {
 		calibre.ReferenceSyncJobKind: calibre.ReferenceSyncHandler(calibreScanner, dataStore, libraryManager),
 		classificationjobs.JobKind:   classificationjobs.Handler(dataStore),
 		importinbox.JobKind:          importinbox.Handler(importManager, importService),
-		pdfassets.JobKind:            pdfassets.Handler(dataStore, libraryManager, pdfProcessor),
-		bibliographyjobs.JobKind:     bibliographyjobs.Handler(dataStore, bibliographyService),
+		pdfassets.JobKind: func(ctx context.Context, job store.BackgroundJob) (any, error) {
+			result, err := pdfassets.Handler(dataStore, libraryManager, pdfProcessor)(ctx, job)
+			if err == nil && job.BookFileID != nil {
+				book, found, loadErr := dataStore.GetCatalogBook(ctx, *job.BookFileID)
+				if loadErr != nil {
+					return nil, loadErr
+				}
+				if found && book.TextPath != "" {
+					if _, err = textindex.Enqueue(ctx, dataStore, book); err != nil {
+						return nil, err
+					}
+				}
+			}
+			return result, err
+		},
+		textindex.JobKind:        textindex.Handler(dataStore, libraryManager, calibreScanner),
+		bibliographyjobs.JobKind: bibliographyjobs.Handler(dataStore, bibliographyService),
 	}
 	if watchedLibraryManager != nil {
 		handlers[watchlibrary.JobKind] = watchlibrary.Handler(watchedLibraryManager, importService)

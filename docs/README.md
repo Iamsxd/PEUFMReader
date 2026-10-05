@@ -5,6 +5,8 @@
 跨机器、跨账号将项目交给另一台 Codex 时，先阅读 [Codex 交接包](./handoff/CODEX_HANDOFF.md) 和 [新机器启动提示](./handoff/NEW_MACHINE_PROMPT.md)。
 
 - [后续开发计划与当前完成状态](./product/development-roadmap.md)
+- [阅读器／知识工作台 2／3／5／6 的实施范围与后续批次](./product/reader-knowledge-enhancements.md)
+- [离线批注、朗读、PDF、正文检索与智能书架验证](./validation/reader-knowledge-enhancements.md)
 - [GitHub 同类项目调研](./discovery/github-project-comparison.md)
 - [开源阅读器体验对照与下一步改进](./discovery/reader-experience-gap-analysis.md)
 - [阅读器排版、跳转历史与 PDF 页内定位验证](./validation/reader-experience-refinements.md)

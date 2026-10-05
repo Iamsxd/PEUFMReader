@@ -1,7 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 import workerURL from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
-import { api } from '../../api'
 import {
   calculatePDFScale,
   calculatePDFYRatio,
@@ -11,7 +10,6 @@ import {
   clampPDFZoom,
   createPDFSearchSnippet,
   describePDFError,
-  fetchPDFBytes,
   getPDFJSAssetOptions,
   getPDFViewPages,
   getPDFReadingAnchor,
@@ -24,7 +22,7 @@ import {
 import type { PDFPageFlow, PDFPageLayout, PDFReaderPreferences, PDFReadingAnchor } from '../../pdf'
 import type { BookFile, HighlightColor, ReadingMark, ReadingState } from '../../types'
 import { clampProgress } from '../../utils'
-import { createPDFHighlightLocation, createPDFReadingMarkLocation, getReadingMarkNavigationTarget, upsertReadingMark } from '../../readingMarks'
+import { createPDFHighlightLocation, createPDFReadingMarkLocation, getReadingMarkNavigationTarget, pdfHighlightsForPage, upsertReadingMark } from '../../readingMarks'
 import { PDFPageCanvas } from './PDFPageCanvas'
 import { ReadingMarksPanel } from './ReadingMarksPanel'
 import { HighlightComposer, type PendingHighlight } from './HighlightComposer'
@@ -34,11 +32,17 @@ import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis'
 import { useReadingProgressPersistence } from '../../hooks/useReadingProgressPersistence'
 import { isInteractiveReaderTarget, isReaderCenterTap, MOBILE_READER_CHROME_QUERY } from '../../readerChrome'
 import { createReaderNavigationHistory } from '../../readerNavigation'
+import { cachedReadingMarks, canonicalMarkID, createLocalReadingMark, loadReadingMarks, OFFLINE_MARKS_EVENT } from '../../offlineMarks'
+import { confirmLeaveDrafts } from '../../draftGuard'
+import { PDFTextPanel } from './PDFTextPanel'
+import { PDFCropPanel } from './PDFCropPanel'
+import { fullPDFPageBounds, NO_PDF_CROP, parsePDFCrop, type PDFCrop } from '../../pdfCrop'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerURL
 
 interface Props {
   book: BookFile
+  userID: number
   contentURL: string
   contentData?: ArrayBuffer
   offlineMode: boolean
@@ -66,7 +70,7 @@ interface PDFSearchResult {
   excerpt: string
 }
 
-type PDFSidePanel = 'toc' | 'search' | 'marks' | 'speech' | null
+type PDFSidePanel = 'toc' | 'search' | 'marks' | 'speech' | 'text' | 'crop' | null
 
 interface PendingPDFAnchor {
   target: PDFReadingAnchor
@@ -105,7 +109,7 @@ function readPreferences(): PDFReaderPreferences {
   }
 }
 
-export function PDFReader({ book, contentURL, contentData, offlineMode, initialState, chromeVisible, onChromeActivity, onHideChrome, onToggleChrome, onProgress, readingStatus, onStatusChange }: Props) {
+export function PDFReader({ book, userID, contentURL, contentData, offlineMode, initialState, chromeVisible, onChromeActivity, onHideChrome, onToggleChrome, onProgress, readingStatus, onStatusChange }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const loadingTaskRef = useRef<pdfjs.PDFDocumentLoadingTask | null>(null)
   const visiblePagesRef = useRef(new Map<number, number>())
@@ -132,6 +136,9 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   const [availableHeight, setAvailableHeight] = useState(Math.max(320, window.innerHeight - 96))
   const [isNarrow, setIsNarrow] = useState(window.innerWidth <= 720)
   const [preferences, setPreferences] = useState(readPreferences)
+  const cropKey = `peufmreader.pdf.crop.v1.${userID}.${book.id}`
+  const [crop, setCrop] = useState<PDFCrop>(() => { try { return parsePDFCrop(localStorage.getItem(cropKey)) } catch { return { ...NO_PDF_CROP } } })
+  useEffect(() => { try { localStorage.setItem(cropKey, JSON.stringify(crop)) } catch { /* Cosmetic preference only. */ } }, [crop, cropKey])
   const [error, setError] = useState('')
   const [warning, setWarning] = useState('')
   const [loadingStatus, setLoadingStatus] = useState('正在连接书库…')
@@ -144,6 +151,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   const [searchProgress, setSearchProgress] = useState('')
   const [searchError, setSearchError] = useState('')
   const [highlights, setHighlights] = useState<ReadingMark[]>([])
+  const [editingMarkID, setEditingMarkID] = useState<number | undefined>()
   const [pendingHighlight, setPendingHighlight] = useState<PendingHighlight | null>(null)
   const [savingHighlight, setSavingHighlight] = useState(false)
   const { schedule: scheduleProgress } = useReadingProgressPersistence({
@@ -158,12 +166,12 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   const scale = useMemo(() => calculatePDFScale({
     zoomMode: preferences.zoomMode,
     zoomPercent: preferences.zoomPercent,
-    pageWidth: basePageSize.width,
-    pageHeight: basePageSize.height,
+    pageWidth: basePageSize.width * (1 - crop.left - crop.right),
+    pageHeight: basePageSize.height * (1 - crop.top - crop.bottom),
     containerWidth,
     availableHeight,
     layout: effectiveLayout,
-  }), [availableHeight, basePageSize, containerWidth, effectiveLayout, preferences.zoomMode, preferences.zoomPercent])
+  }), [availableHeight, basePageSize, containerWidth, effectiveLayout, preferences.zoomMode, preferences.zoomPercent, crop])
   const displayedZoom = preferences.zoomMode === 'custom' ? preferences.zoomPercent : Math.round(scale * 100)
   const pages = useMemo(() => {
     if (!pageCount) return []
@@ -242,7 +250,9 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     candidates.sort((left, right) => Math.max(0, left.bounds.top - line) - Math.max(0, right.bounds.top - line)
       || (left.number === currentAnchorRef.current.page ? -1 : right.number === currentAnchorRef.current.page ? 1 : left.number - right.number))
     const selected = candidates[0]
-    return selected ? { page: selected.number, yRatio: calculatePDFYRatio(selected.bounds.top, selected.bounds.height, bounds.top) } : currentAnchorRef.current
+    const selectedPage = selected ? viewport.querySelector(`[data-pdf-page="${selected.number}"]`) : null
+    const fullBounds = selectedPage ? fullPDFPageBounds(selectedPage) : null
+    return selected && fullBounds ? { page: selected.number, yRatio: calculatePDFYRatio(fullBounds.top, fullBounds.height, bounds.top) } : currentAnchorRef.current
   }, [])
 
   const applyPendingAnchor = useCallback(() => {
@@ -256,14 +266,16 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     // A spread's right page can be wholly outside a zoomed viewport. Reveal
     // the placeholder too, so horizontal lazy visibility can load real size.
     viewport.scrollLeft = calculatePDFPageScrollLeft(viewport.scrollLeft, viewportBounds.left, viewport.clientWidth, bounds.left, bounds.width)
-    viewport.scrollTop = calculatePDFAnchorScrollTop(viewport.scrollTop, viewportBounds.top, bounds.top, bounds.height, pending.target.yRatio)
+    const contentBounds = fullPDFPageBounds(page)
+    viewport.scrollTop = calculatePDFAnchorScrollTop(viewport.scrollTop, viewportBounds.top, contentBounds.top, contentBounds.height, pending.target.yRatio)
     currentAnchorRef.current = pending.target
     // Lazy placeholders may have the first page's size. Keep the pending
     // request until this page's intrinsic dimensions have reached the DOM.
     if (page.dataset.geometryReady !== 'true') return
     const finalBounds = page.getBoundingClientRect()
     if (finalBounds.right <= viewportBounds.left || finalBounds.left >= viewportBounds.left + viewport.clientWidth) return
-    const actual = { page: pending.target.page, yRatio: calculatePDFYRatio(finalBounds.top, finalBounds.height, viewportBounds.top) }
+    const finalContentBounds = fullPDFPageBounds(page)
+    const actual = { page: pending.target.page, yRatio: calculatePDFYRatio(finalContentBounds.top, finalContentBounds.height, viewportBounds.top) }
     currentAnchorRef.current = actual
     pendingAnchorRef.current = null
     if (pending.source && pending.history) {
@@ -310,7 +322,6 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
 
   useEffect(() => {
     let disposed = false
-    const controller = new AbortController()
     visiblePagesRef.current.clear()
     currentAnchorRef.current = initialAnchor
     pendingAnchorRef.current = { target: initialAnchor, persist: false }
@@ -319,7 +330,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     searchRunRef.current += 1
     setError('')
     setWarning('')
-    setLoadingStatus(contentData ? '正在读取设备副本…' : '正在下载 PDF…')
+    setLoadingStatus(contentData ? '正在读取设备副本…' : '正在按需加载 PDF…')
     setLoadingProgress(contentData ? 100 : null)
     setPDFDocument(null)
     setOutline([])
@@ -328,22 +339,26 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     setSearchProgress('')
     setSearchError('')
 
-    const bytesPromise = contentData ? Promise.resolve(new Uint8Array(contentData)) : fetchPDFBytes(contentURL, controller.signal, (loaded, total) => {
-      if (disposed) return
-      setLoadingStatus(total ? `正在下载 PDF · ${Math.round((loaded / total) * 100)}%` : `正在下载 PDF · ${(loaded / (1024 * 1024)).toFixed(1)} MB`)
-      setLoadingProgress(total ? Math.min(100, Math.round((loaded / total) * 100)) : null)
+    // Online files use PDF.js' authenticated range transport. Disabling the
+    // full stream and speculative fetch avoids retaining duplicate full buffers.
+    // Servers without Range support automatically fall back to a normal GET.
+    const task = pdfjs.getDocument({
+      ...(contentData ? { data: new Uint8Array(contentData) } : {
+        url: contentURL,
+        withCredentials: true,
+        rangeChunkSize: 256 * 1024,
+        disableStream: true,
+        disableAutoFetch: true,
+      }),
+      ...getPDFJSAssetOptions(import.meta.env.BASE_URL),
     })
-    void bytesPromise.then((bytes) => {
-      if (disposed) return null
-      setLoadingStatus('下载完成，正在解析第一页…')
-      setLoadingProgress(100)
-      const task = pdfjs.getDocument({
-        data: bytes,
-        ...getPDFJSAssetOptions(import.meta.env.BASE_URL),
-      })
-      loadingTaskRef.current = task
-      return task.promise
-    }).then(async (document) => {
+    loadingTaskRef.current = task
+    task.onProgress = ({ loaded, total }: { loaded: number; total: number }) => {
+      if (disposed) return
+      setLoadingStatus(total ? `正在加载阅读所需页面 · ${Math.round((loaded / total) * 100)}%` : '正在加载阅读所需页面…')
+      setLoadingProgress(total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : null)
+    }
+    void task.promise.then(async (document) => {
       if (!document || disposed) return
       const firstPage = await document.getPage(1)
       if (disposed) return
@@ -361,7 +376,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
         if (!disposed) console.warn('PDF outline loading failed.', reason)
       })
     }).catch((reason: unknown) => {
-      if (controller.signal.aborted) return
+      if (disposed) return
       console.error('PDF loading failed', reason)
       setError(describePDFError(reason))
     })
@@ -369,7 +384,6 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
     return () => {
       disposed = true
       searchRunRef.current += 1
-      controller.abort()
       pendingAnchorRef.current = null
       const document = loadingTaskRef.current
       loadingTaskRef.current = null
@@ -378,43 +392,60 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   }, [book.id, contentData, contentURL])
 
   useEffect(() => {
-    if (offlineMode) {
-      setHighlights([])
-      setSidePanel((current) => current === 'marks' ? null : current)
-      return
-    }
     let disposed = false
-    void api.listReadingMarks(book.id).then((marks) => {
+    const updateCache = () => { if (!disposed) setHighlights(cachedReadingMarks(userID, book.id).filter(mark => mark.kind === 'highlight')) }
+    window.addEventListener(OFFLINE_MARKS_EVENT, updateCache)
+    void loadReadingMarks(userID, book.id, offlineMode).then((marks) => {
       if (!disposed) setHighlights(marks.filter((mark) => mark.kind === 'highlight'))
     }).catch(() => {
       if (!disposed) setError('文本高亮加载失败。')
     })
-    return () => { disposed = true }
-  }, [book.id, offlineMode])
+    return () => { disposed = true; window.removeEventListener(OFFLINE_MARKS_EVENT, updateCache) }
+  }, [book.id, offlineMode, userID])
 
   const syncHighlights = useCallback((marks: ReadingMark[]) => {
     setHighlights(marks.filter((mark) => mark.kind === 'highlight'))
   }, [])
 
   const handleTextSelection = useCallback((selectedPage: number, pageBounds: DOMRect, selectionRects: DOMRect[], quote: string) => {
-    if (offlineMode) return
-    const location = createPDFHighlightLocation(selectedPage, pageCount, pageBounds, selectionRects)
+    const shells = Array.from(viewportRef.current?.querySelectorAll<HTMLElement>('.pdf-page-shell') ?? [])
+    const selectedRange = window.getSelection()?.rangeCount ? window.getSelection()!.getRangeAt(0) : undefined
+    const selectedQuotes: string[] = []
+    const segments = shells.flatMap(shell => {
+      const layer = shell.querySelector('.pdf-text-layer')
+      if (!layer || !selectedRange?.intersectsNode(layer)) return []
+      // A cross-page range also contains canvases and page chrome. Clip each
+      // sub-range to the text layer to highlight only selected words.
+      const clipped = document.createRange()
+      clipped.selectNodeContents(layer)
+      if (layer.contains(selectedRange.startContainer)) clipped.setStart(selectedRange.startContainer, selectedRange.startOffset)
+      if (layer.contains(selectedRange.endContainer)) clipped.setEnd(selectedRange.endContainer, selectedRange.endOffset)
+      const segment = createPDFHighlightLocation(Number(shell.dataset.pdfPage), pageCount, fullPDFPageBounds(shell), Array.from(clipped.getClientRects()))
+      selectedQuotes.push(clipped.toString().replace(/\s+/g, ' ').trim())
+      return Array.isArray(segment.position.rects) && segment.position.rects.length ? [segment.position] : []
+    })
+    const location = segments.length > 1 ? {
+      ...createPDFReadingMarkLocation(Number(segments[0].pageIndex) + 1, pageCount),
+      position: { ...segments[0], segments },
+      label: `第 ${Number(segments[0].pageIndex) + 1}–${Number(segments.at(-1)!.pageIndex) + 1} 页高亮`,
+    } : createPDFHighlightLocation(selectedPage, pageCount, pageBounds, selectionRects)
     if (!Array.isArray(location.position.rects) || location.position.rects.length === 0) return
-    setPendingHighlight({ ...location, quote: quote.slice(0, 4000) })
+    if (new TextEncoder().encode(JSON.stringify(location.position)).byteLength > 8 * 1024) { setError('选区过大，请分段创建高亮。'); return }
+    setPendingHighlight({ ...location, quote: (segments.length > 1 ? selectedQuotes.join('\n') : quote).slice(0, 4000) })
     onChromeActivity()
-  }, [offlineMode, onChromeActivity, pageCount])
+  }, [onChromeActivity, pageCount])
 
   async function saveHighlight(color: HighlightColor, body: string) {
     if (!pendingHighlight) return
     setSavingHighlight(true)
     try {
-      const mark = await api.createReadingMark(book.id, {
+      const mark = await createLocalReadingMark(userID, book.id, {
         kind: 'highlight',
         ...pendingHighlight,
         body,
         quote: pendingHighlight.quote,
         color,
-      })
+      }, offlineMode)
       setHighlights((items) => upsertReadingMark(items, mark))
       setPendingHighlight(null)
       window.getSelection()?.removeAllRanges()
@@ -597,6 +628,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
   }
 
   function toggleSidePanel(panel: Exclude<PDFSidePanel, null>) {
+    if (!confirmLeaveDrafts()) return
     setSidePanel((current) => current === panel ? null : panel)
     onChromeActivity()
   }
@@ -659,8 +691,10 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
         <div className="reader-tool-group" aria-label="书籍导航">
           <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={() => toggleSidePanel('toc')}>目录</button>
           <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={() => toggleSidePanel('search')}>书内搜索</button>
-          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} disabled={offlineMode} title={offlineMode ? '离线状态下书签与高亮只读' : undefined} onClick={() => toggleSidePanel('marks')}>书签/高亮</button>
+          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} onClick={() => { setEditingMarkID(undefined); toggleSidePanel('marks') }}>书签/高亮</button>
           <button className={sidePanel === 'speech' || speech.status === 'speaking' || speech.status === 'paused' ? 'active' : ''} aria-pressed={sidePanel === 'speech'} onClick={() => toggleSidePanel('speech')}>朗读</button>
+          <button aria-pressed={sidePanel === 'text'} disabled={!pdfDocument} onClick={() => toggleSidePanel('text')}>文字阅读</button>
+          <button aria-pressed={sidePanel === 'crop'} disabled={!pdfDocument} onClick={() => toggleSidePanel('crop')}>裁边</button>
         </div>
         <div className="reader-tool-group" aria-label="阅读位置">
           <button aria-label="返回刚才位置" title="返回上一次跳转前的位置，不是退出阅读器" disabled={!navigationState.canBack || Boolean(pendingAnchorRef.current)} onClick={() => navigateHistory('back')}>返回刚才</button>
@@ -695,6 +729,10 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
         <span className="reader-shortcuts">← → 翻页 · + − / Ctrl+滚轮缩放</span>
       </div>
 
+      {sidePanel === 'crop' && <PDFCropPanel crop={crop} onChange={next => {
+        if (!pendingAnchorRef.current) pendingAnchorRef.current = { target: readVisibleAnchor(), persist: false }
+        setCrop(next)
+      }} onClose={() => setSidePanel(null)} onChromeActivity={onChromeActivity} />}
       {sidePanel === 'speech' ? (
         <SpeechPanel
           controls={speech}
@@ -702,9 +740,14 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
           onClose={() => setSidePanel(null)}
           onChromeActivity={onChromeActivity}
         />
+      ) : sidePanel === 'text' && pdfDocument ? (
+        <PDFTextPanel document={pdfDocument} pageNumber={pageNumber} onPageChange={page => goToPage(page, 0, true)} onClose={() => setSidePanel(null)} />
       ) : sidePanel === 'marks' ? (
-        !offlineMode && <ReadingMarksPanel
+        <ReadingMarksPanel
           bookFileID={book.id}
+          userID={userID}
+          offlineMode={offlineMode}
+          initialEditingID={editingMarkID}
           current={createPDFReadingMarkLocation(pageNumber, pageCount, currentAnchorRef.current.yRatio)}
           onNavigate={(position) => {
             const target = getReadingMarkNavigationTarget(book.format, position)
@@ -718,7 +761,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
           onChromeActivity={onChromeActivity}
           onMarksChange={syncHighlights}
         />
-      ) : sidePanel && (
+      ) : (sidePanel === 'toc' || sidePanel === 'search') && (
         <aside className="reader-side-panel" aria-label={sidePanel === 'toc' ? 'PDF 目录' : 'PDF 书内搜索'} onPointerDown={onChromeActivity}>
           <header>
             <strong>{sidePanel === 'toc' ? '目录' : '书内搜索'}</strong>
@@ -754,7 +797,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
       )}
 
       {pendingHighlight && (
-        <HighlightComposer selection={pendingHighlight} busy={savingHighlight} onSave={(color, body) => void saveHighlight(color, body)} onCancel={() => { setPendingHighlight(null); window.getSelection()?.removeAllRanges() }} />
+        <HighlightComposer selection={pendingHighlight} busy={savingHighlight} onSave={(color, body) => void saveHighlight(color, body)} onCancel={() => { setPendingHighlight(null); window.getSelection()?.removeAllRanges() }} onSpeak={speech.supported ? () => { void speech.start({ text: pendingHighlight.quote, label: '选中文字', selectionOnly: true }); setPendingHighlight(null); setSidePanel('speech') } : undefined} />
       )}
 
       {error && <div className="notice error pdf-error">{error}</div>}
@@ -777,6 +820,7 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
                 document={pdfDocument}
                 pageNumber={number}
                 scale={scale}
+                crop={crop}
                 lazy={preferences.flow === 'continuous'}
                 observerRoot={viewportRef.current}
                 fallbackSize={basePageSize}
@@ -784,7 +828,8 @@ export function PDFReader({ book, contentURL, contentData, offlineMode, initialS
                 onGeometryReady={handleGeometryReady}
                 onRenderError={handleRenderError}
                 onTextLayerError={handleTextLayerError}
-                highlights={highlights.filter((mark) => Number(mark.position.pageIndex) === number - 1)}
+                highlights={pdfHighlightsForPage(highlights, number)}
+                onHighlightClick={id => { if (confirmLeaveDrafts()) { setEditingMarkID(canonicalMarkID(userID, id)); setSidePanel('marks'); onChromeActivity() } }}
                 onTextSelection={handleTextSelection}
               />
             ))}
