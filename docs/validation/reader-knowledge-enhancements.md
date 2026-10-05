@@ -1,6 +1,6 @@
 # 阅读器与知识工作台第一批验证
 
-> 日期：2026-10-05；分支 `codex/reader-knowledge-enhancements`，从 `master@fc398bb` 创建。
+> 日期：2026-10-05；分支 `codex/reader-knowledge-enhancements`，从 `master@fc398bb` 创建；实现与测试提交 `c087b19`。
 >
 > 本机 8080 未替换，继续运行 `fe9ee53`；没有操作生产数据库、原书、Calibre 目录或备份。没有合并、推送 GitHub 或触发远端自动构建。
 
@@ -31,7 +31,7 @@
 
 Playwright 使用 `http://127.0.0.1:5196` 的独立生产资源预览，阻断 Service Worker 并模拟 API。书籍全部为程序生成的原创 PDF／EPUB fixture；没有登录生产服务或读取真实电子书。桌面 Chromium 与 Pixel 7 视口验证，不代表真实手机或 Safari。
 
-最终同批执行 130 项，129 项通过、1 项按设计跳过（2.4 分钟，无自动重试）；产物位于被忽略的 `web/test-results/knowledge-refinements/final-verified/`。临时 PostgreSQL 容器只有 tmpfs 测试数据，无生产挂载，验证后已删除，不保留该合成数据库。
+最终同批执行 130 项，129 项通过、1 项按设计跳过（2.4 分钟，无自动重试）；产物位于被忽略的 `web/test-results/knowledge-refinements/final-verified/`。临时 PostgreSQL 容器只有 tmpfs 测试数据，无生产挂载，验证后已删除，不保留该合成数据库；5196 预览服务也已停止。
 
 新增关键场景：离线笔记联网一次回放、大 PDF Range、跨页选区一条高亮、暂停中的睡眠截止、EPUB 可见段落跟随、点击已有高亮编辑、JSON 书籍归属预览／重复重试、裁边保持原坐标、取消放弃草稿、正文出处导航、智能规则与手动操作隔离、保存中规则锁定与连续更换草稿后仍可拒绝离开。
 
