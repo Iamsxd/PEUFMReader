@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { NotebookEntry } from '../src/types'
+import { chooseAppTheme } from './support/theme'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -247,7 +248,7 @@ test('clearing an empty search resets keyword, kind and color in both themes at 
   await page.setViewportSize({ width: 320, height: 760 })
   await page.goto('/#/notebook')
   for (const theme of ['edition', 'night']) {
-    await page.getByRole('combobox', { name: '界面主题', exact: true }).selectOption(theme)
+    await chooseAppTheme(page, theme)
     await expect(page.locator('.notebook-card')).toHaveCount(3)
     await page.getByRole('textbox', { name: '搜索笔记', exact: true }).fill('没有这个原创摘录')
     await page.getByRole('button', { name: '搜索', exact: true }).click()

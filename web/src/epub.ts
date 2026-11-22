@@ -1,6 +1,8 @@
+import { parseReaderTheme, type ReaderTheme } from './readerAppearance'
+
 export type EPUBPageFlow = 'paged' | 'continuous'
 export type EPUBPageLayout = 'single' | 'spread'
-export type EPUBTheme = 'paper' | 'sepia' | 'night'
+export type EPUBTheme = ReaderTheme
 export type EPUBFontFamily = 'serif' | 'sans' | 'system'
 
 export interface EPUBTypographyPreferences {
@@ -80,7 +82,7 @@ export function parseEPUBPreferences(value: string | null): EPUBReaderPreference
       flow: candidate.flow === 'continuous' ? 'continuous' : 'paged',
       layout: candidate.layout === 'spread' ? 'spread' : 'single',
       fontSize: clampEPUBFontSize(typeof candidate.fontSize === 'number' ? candidate.fontSize : defaultPreferences.fontSize),
-      theme: candidate.theme === 'sepia' || candidate.theme === 'night' ? candidate.theme : 'paper',
+      theme: parseReaderTheme(candidate.theme),
     }
   } catch {
     return { ...defaultPreferences }

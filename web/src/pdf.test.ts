@@ -127,8 +127,11 @@ describe('PDF reading model', () => {
       layout: 'spread',
       zoomMode: 'custom',
       zoomPercent: 300,
+      theme: 'paper',
     })
-    expect(parsePDFPreferences('not-json')).toEqual({ flow: 'paged', layout: 'single', zoomMode: 'fit-width', zoomPercent: 100 })
+    expect(parsePDFPreferences('not-json')).toEqual({ flow: 'paged', layout: 'single', zoomMode: 'fit-width', zoomPercent: 100, theme: 'paper' })
+    expect(parsePDFPreferences('{"theme":"night"}').theme).toBe('night')
+    expect(parsePDFPreferences('{"theme":"__proto__"}').theme).toBe('paper')
   })
 
   it('creates compact, whitespace-normalized search snippets', () => {

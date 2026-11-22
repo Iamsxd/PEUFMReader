@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ePub, { EpubCFI, type Book, type Contents, type Rendition } from 'epubjs'
 import {
   clampEPUBFontSize,
@@ -32,6 +32,10 @@ import { EPUBTypographyPanel } from './EPUBTypographyPanel'
 import { cachedReadingMarks, canonicalMarkID, createLocalReadingMark, loadReadingMarks, OFFLINE_MARKS_EVENT } from '../../offlineMarks'
 import { buildEPUBSpeechChunks } from '../../epubSpeech'
 import { confirmLeaveDrafts } from '../../draftGuard'
+import { getEPUBThemeRules, READER_THEME_IDS, READER_THEMES } from '../../readerAppearance'
+import { useReaderComfort } from '../../hooks/useReaderComfort'
+import { ReaderAppearancePanel, ReaderComfortLayer } from './ReaderAppearancePanel'
+import { ReaderToolIcon } from './ReaderToolIcon'
 
 interface Props {
   book: BookFile
@@ -61,22 +65,9 @@ interface EPUBSearchResult {
   sectionLabel: string
 }
 
-type EPUBSidePanel = 'toc' | 'search' | 'marks' | 'speech' | 'typography' | 'progress' | null
+type EPUBSidePanel = 'toc' | 'search' | 'marks' | 'speech' | 'typography' | 'appearance' | 'progress' | null
 
-const EPUB_THEMES: Record<EPUBTheme, Record<string, Record<string, string>>> = {
-  paper: {
-    'html, body': { color: '#19231d', background: '#f8f5ed' },
-    a: { color: '#27613f' },
-  },
-  sepia: {
-    'html, body': { color: '#3d3022', background: '#eee2c8' },
-    a: { color: '#765322' },
-  },
-  night: {
-    'html, body': { color: '#d8ded9', background: '#18211c' },
-    a: { color: '#91c8a1' },
-  },
-}
+const EPUB_THEMES = Object.fromEntries(READER_THEME_IDS.map((id) => [id, getEPUBThemeRules(id)])) as Record<EPUBTheme, Record<string, Record<string, string>>>
 
 const EPUB_DISPLAY_TIMEOUT_MS = 15_000
 
@@ -151,6 +142,7 @@ export function EPUBReader({ book, userID, contentURL, contentData, offlineMode,
   const [preferences, setPreferences] = useState(readPreferences)
   const preferencesRef = useRef(preferences)
   const [typography, setTypography] = useState(readTypography)
+  const [comfort, setComfort] = useReaderComfort()
   const typographyRef = useRef(typography)
   const [historyState, setHistoryState] = useState({ canBack: false, canForward: false })
   const [navigating, setNavigating] = useState(false)
@@ -927,7 +919,13 @@ export function EPUBReader({ book, userID, contentURL, contentData, offlineMode,
   }
 
   return (
-    <div className={`epub-reader theme-${preferences.theme}`} aria-busy={loading || navigating || reflowing}>
+    <div
+      className={`epub-reader theme-${preferences.theme}`}
+      data-reader-theme={preferences.theme}
+      data-reader-tone={READER_THEMES[preferences.theme].tone}
+      style={{ '--reader-page': READER_THEMES[preferences.theme].page, '--reader-stage': READER_THEMES[preferences.theme].stage, '--reader-ink': READER_THEMES[preferences.theme].ink } as CSSProperties}
+      aria-busy={loading || navigating || reflowing}
+    >
       <div
         className={`reader-toolbar epub-toolbar${chromeVisible ? '' : ' is-hidden'}`}
         role="toolbar"
@@ -936,12 +934,12 @@ export function EPUBReader({ book, userID, contentURL, contentData, offlineMode,
         onPointerDown={onChromeActivity}
         onFocusCapture={onChromeActivity}
       >
-        <button className="reader-toolbar-collapse" onClick={onHideChrome} title="收起阅读工具" aria-label="收起阅读工具">收起</button>
+        <button className="reader-toolbar-collapse" onClick={onHideChrome} title="收起阅读工具" aria-label="收起阅读工具"><ReaderToolIcon name="collapse" />收起</button>
         <div className="reader-tool-group" aria-label="书籍导航">
-          <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={(event) => toggleSidePanel('toc', event.currentTarget)}>目录</button>
-          <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={(event) => toggleSidePanel('search', event.currentTarget)}>书内搜索</button>
-          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} onClick={(event) => { setEditingMarkID(undefined); toggleSidePanel('marks', event.currentTarget) }}>书签/高亮</button>
-          <button className={sidePanel === 'speech' || speech.status === 'speaking' || speech.status === 'paused' ? 'active' : ''} aria-pressed={sidePanel === 'speech'} onClick={(event) => toggleSidePanel('speech', event.currentTarget)}>朗读</button>
+          <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={(event) => toggleSidePanel('toc', event.currentTarget)}><ReaderToolIcon name="toc" />目录</button>
+          <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={(event) => toggleSidePanel('search', event.currentTarget)}><ReaderToolIcon name="search" />书内搜索</button>
+          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} onClick={(event) => { setEditingMarkID(undefined); toggleSidePanel('marks', event.currentTarget) }}><ReaderToolIcon name="marks" />书签/高亮</button>
+          <button className={sidePanel === 'speech' || speech.status === 'speaking' || speech.status === 'paused' ? 'active' : ''} aria-pressed={sidePanel === 'speech'} onClick={(event) => toggleSidePanel('speech', event.currentTarget)}><ReaderToolIcon name="speech" />朗读</button>
         </div>
         <ScreenWakeLockControl onChromeActivity={onChromeActivity} />
         <span className="reader-toolbar-divider" />
@@ -972,13 +970,11 @@ export function EPUBReader({ book, userID, contentURL, contentData, offlineMode,
           <button disabled={navigating} title="缩小字号（-）" aria-label="缩小字号" onClick={() => updateFontSize(-10)}>A−</button>
           <button disabled={navigating} className="reader-font-value" title="恢复默认字号" onClick={() => updateFontSize(100 - preferences.fontSize)}>{preferences.fontSize}%</button>
           <button disabled={navigating} title="放大字号（+）" aria-label="放大字号" onClick={() => updateFontSize(10)}>A＋</button>
-          <button className={sidePanel === 'typography' ? 'active' : ''} aria-pressed={sidePanel === 'typography'} onClick={(event) => toggleSidePanel('typography', event.currentTarget)}>排版</button>
+          <button className={sidePanel === 'typography' ? 'active' : ''} aria-pressed={sidePanel === 'typography'} onClick={(event) => toggleSidePanel('typography', event.currentTarget)}><ReaderToolIcon name="typography" />排版</button>
         </div>
         <span className="reader-toolbar-divider" />
-        <div className="reader-tool-group" aria-label="阅读主题">
-          <button className={preferences.theme === 'paper' ? 'active' : ''} aria-pressed={preferences.theme === 'paper'} onClick={() => setTheme('paper')}>日间</button>
-          <button className={preferences.theme === 'sepia' ? 'active' : ''} aria-pressed={preferences.theme === 'sepia'} onClick={() => setTheme('sepia')}>护眼</button>
-          <button className={preferences.theme === 'night' ? 'active' : ''} aria-pressed={preferences.theme === 'night'} onClick={() => setTheme('night')}>夜间</button>
+        <div className="reader-tool-group" aria-label="阅读外观">
+          <button className={sidePanel === 'appearance' ? 'active' : ''} aria-pressed={sidePanel === 'appearance'} title={`阅读皮肤：${READER_THEMES[preferences.theme].label}`} onClick={(event) => toggleSidePanel('appearance', event.currentTarget)}><ReaderToolIcon name="appearance" />外观</button>
         </div>
         <span className="reader-shortcuts">{preferences.flow === 'paged' ? '滚轮 / ← → 翻页 · + − 字号' : '滚轮连续阅读 · + − 字号'}</span>
       </div>
@@ -991,6 +987,25 @@ export function EPUBReader({ book, userID, contentURL, contentData, offlineMode,
           onClose={closeSidePanel}
           onChromeActivity={onChromeActivity}
         />
+      ) : sidePanel === 'appearance' ? (
+        <ReaderAppearancePanel
+          label="EPUB 阅读外观"
+          theme={preferences.theme}
+          onThemeChange={setTheme}
+          comfort={comfort}
+          onComfortChange={setComfort}
+          onClose={closeSidePanel}
+          onChromeActivity={onChromeActivity}
+        >
+          <section>
+            <h3>正文字号</h3>
+            <div className="reader-stepper" role="group" aria-label="外观面板字号">
+              <button disabled={navigating || preferences.fontSize <= 70} aria-label="缩小正文字号" onClick={() => updateFontSize(-10)}>A−</button>
+              <output>{preferences.fontSize}%</output>
+              <button disabled={navigating || preferences.fontSize >= 180} aria-label="放大正文字号" onClick={() => updateFontSize(10)}>A＋</button>
+            </div>
+          </section>
+        </ReaderAppearancePanel>
       ) : sidePanel === 'progress' ? (
         <aside className="reader-side-panel" aria-label="EPUB 进度跳转" onPointerDown={onChromeActivity} onFocusCapture={onChromeActivity}>
           <header><strong>跳转阅读进度</strong><button onClick={closeSidePanel} aria-label="关闭侧栏">×</button></header>
@@ -1064,6 +1079,7 @@ export function EPUBReader({ book, userID, contentURL, contentData, offlineMode,
       {loading && !error && <div className="epub-loading">正在加载 EPUB…</div>}
       {(navigationError || reflowing) && <div className="epub-reader-feedback" role="status" aria-live="polite">{navigationError || '正在应用排版，保留当前阅读位置…'}</div>}
       <div className="epub-host" ref={hostRef} aria-busy={loading} />
+      <ReaderComfortLayer comfort={comfort} />
 
       {!loading && !error && (
         <nav className={`epub-navigation${chromeVisible ? '' : ' is-hidden'}`} aria-label="EPUB 翻页" aria-hidden={!chromeVisible}>

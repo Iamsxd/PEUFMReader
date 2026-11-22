@@ -5,6 +5,7 @@ import { coverThumbnailURL, formatDuration, formatRelativeTime } from '../utils'
 import { BookCard } from './BookCard'
 import { BookCover } from './BookCover'
 import { useAppTheme } from './ThemeProvider'
+import { APP_THEMES } from '../theme'
 
 interface Props {
   username: string
@@ -18,6 +19,7 @@ interface Props {
 
 export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategories, onFavorites, onRecommendations }: Props) {
   const { theme } = useAppTheme()
+  const eveningTone = APP_THEMES[theme].tone === 'dark'
   const [summary, setSummary] = useState<HomeSummary | null>(null)
   const [categories, setCategories] = useState<CategorySummary[] | null>(null)
   const [hotBooks, setHotBooks] = useState<HomeBook[] | null>(null)
@@ -77,7 +79,7 @@ export function HomePage({ username, onOpenBook, onViewBook, onBrowse, onCategor
         <section className="dashboard-hero">
           <div className="home-editorial-copy">
             <p className="eyebrow">欢迎回来，{username}</p>
-            <h1>{theme === 'night' ? <>今晚，读点<em>喜欢的。</em></> : <>留一点时间，<em>给好书。</em></>}</h1>
+            <h1>{eveningTone ? <>今晚，读点<em>喜欢的。</em></> : <>留一点时间，<em>给好书。</em></>}</h1>
             <p>从上次的位置继续，或者在共享书库中发现下一本书。</p>
           </div>
           <form className="dashboard-search" role="search" onSubmit={search}>

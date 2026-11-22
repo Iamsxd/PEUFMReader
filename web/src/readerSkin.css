@@ -1,0 +1,189 @@
+/* Reader skin layer.
+   Reader chrome (bar, toolbar, side panels, page navigation) follows the active
+   reading skin through --rc-* tokens; the PDF/EPUB page colours themselves come
+   from readerAppearance.ts. Everything here is scoped to .reader-shell so it
+   wins over the neutral fallbacks in styles.css without !important. */
+
+.reader-shell {
+  --rc-glass: #fbfaf6e0;
+  --rc-solid: #fbfaf6;
+  --rc-ink: #1f2a23;
+  --rc-muted: #5d6b62;
+  --rc-line: #1f2a231a;
+  --rc-control: #1f2a230c;
+  --rc-control-hover: #1f2a231a;
+  --rc-accent: #2d6041;
+  --rc-on-accent: #fff;
+  --rc-field: #ffffff;
+  --rc-shadow: 0 12px 40px #0f1a1324, 0 1px 3px #0f1a1314;
+  background: var(--rc-solid);
+  color: var(--rc-ink);
+}
+/* Shared panels (bookmarks, notes) read --ui-* tokens with fallbacks. Feed them
+   reader-skin colours here only, so application theme tokens never reach the reader. */
+.reader-shell :is(.reader-side-panel, .highlight-composer) {
+  --ui-ink: var(--rc-ink);
+  --ui-muted: var(--rc-muted);
+  --ui-line: var(--rc-line);
+  --ui-surface: var(--rc-field);
+  --ui-surface-alt: var(--rc-control);
+  --ui-accent: var(--rc-accent);
+  --ui-on-accent: var(--rc-on-accent);
+}
+.reader-shell:has([data-reader-theme='sepia']) { --rc-glass: #f6eedde6; --rc-solid: #f3e9d4; --rc-ink: #3b2f22; --rc-muted: #6b5843; --rc-line: #3b2f221f; --rc-control: #3b2f220f; --rc-control-hover: #3b2f221f; --rc-accent: #82521f; --rc-field: #fffaf0; }
+.reader-shell:has([data-reader-theme='green']) { --rc-glass: #e8f3e7e6; --rc-solid: #dcecdc; --rc-ink: #1d3324; --rc-muted: #4a6553; --rc-line: #1d33241f; --rc-control: #1d33240f; --rc-control-hover: #1d33241f; --rc-accent: #2a6640; --rc-field: #f8fcf7; }
+.reader-shell:has([data-reader-theme='mist']) { --rc-glass: #f0f4f8e6; --rc-solid: #e6ecf2; --rc-ink: #1c2833; --rc-muted: #53636f; --rc-line: #1c28331f; --rc-control: #1c28330d; --rc-control-hover: #1c28331c; --rc-accent: #2c5b85; --rc-field: #fbfcfe; }
+.reader-shell:has([data-reader-tone='dark']) {
+  color-scheme: dark;
+  --rc-glass: #141b17e6;
+  --rc-solid: #111813;
+  --rc-ink: #e3e9e4;
+  --rc-muted: #a2b2a8;
+  --rc-line: #ffffff1c;
+  --rc-control: #ffffff0f;
+  --rc-control-hover: #ffffff1f;
+  --rc-accent: #8fcca4;
+  --rc-on-accent: #0f2218;
+  --rc-field: #0d120f;
+  --rc-shadow: 0 14px 44px #0009, 0 1px 3px #0006;
+}
+.reader-shell:has([data-reader-theme='oled']) { --rc-glass: #000000e6; --rc-solid: #000; --rc-ink: #d4d4d4; --rc-muted: #8e8e8e; --rc-accent: #c8d3ff; --rc-on-accent: #0a0f24; --rc-field: #0a0a0a; }
+
+/* Top bar and progress line */
+.reader-shell .reader-bar { min-height: 58px; border-bottom: 1px solid var(--rc-line); background: var(--rc-glass); color: var(--rc-ink); backdrop-filter: blur(18px) saturate(1.4); }
+.reader-shell .reader-bar > .quiet { padding: 8px 14px; border-radius: 999px; background: var(--rc-control); color: var(--rc-ink); font-weight: 600; }
+.reader-shell .reader-bar > .quiet:hover { background: var(--rc-control-hover); }
+.reader-shell .reader-title strong { font-weight: 650; letter-spacing: -.01em; }
+.reader-shell .reader-title span { color: var(--rc-muted); font-variant-numeric: tabular-nums; }
+.reader-shell .reader-bar .format-badge { border-radius: 999px; background: var(--rc-control); color: var(--rc-muted); font-weight: 700; letter-spacing: .06em; }
+.reader-progress-line { position: fixed; z-index: 12; top: 0; right: 0; left: 0; height: 3px; background: transparent; pointer-events: none; }
+.reader-progress-line > i { display: block; height: 100%; border-radius: 0 3px 3px 0; background: var(--rc-accent); opacity: .75; transition: width .4s ease; }
+.reader-shell .reader-chrome-toggle { border: 1px solid var(--rc-line); border-radius: 999px; background: var(--rc-glass); color: var(--rc-ink); box-shadow: var(--rc-shadow); }
+.reader-shell .reader-chrome-toggle:hover { background: var(--rc-solid); }
+
+/* Toolbar */
+.reader-shell .reader-toolbar { top: 58px; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--rc-line); background: var(--rc-glass); color: var(--rc-ink); box-shadow: 0 8px 24px #0000000f; backdrop-filter: blur(18px) saturate(1.4); scrollbar-color: var(--rc-muted) transparent; }
+.reader-shell .reader-toolbar::-webkit-scrollbar-track { background: transparent; }
+.reader-shell .reader-toolbar::-webkit-scrollbar-thumb { border: 0; background: var(--rc-control-hover); }
+.reader-tool-icon { width: 16px; height: 16px; flex: none; margin-right: 6px; vertical-align: -3px; }
+.reader-shell .reader-toolbar-collapse { border: 0; border-radius: 10px; background: var(--rc-control); color: var(--rc-ink); font-weight: 650; }
+.reader-shell .reader-toolbar-collapse:hover { background: var(--rc-control-hover); }
+.reader-shell .reader-tool-group { gap: 2px; padding: 3px; border: 0; border-radius: 12px; background: var(--rc-control); }
+.reader-shell .reader-tool-group button { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border: 0; border-radius: 9px; color: var(--rc-ink); font-weight: 600; transition: background .15s ease, color .15s ease, box-shadow .15s ease; }
+.reader-shell .reader-tool-group button:hover:not(:disabled):not(.active) { background: var(--rc-control-hover); }
+.reader-shell .reader-tool-group button.active, .reader-shell .reader-tool-group button[aria-pressed='true'] { background: var(--rc-accent); color: var(--rc-on-accent); box-shadow: 0 2px 8px color-mix(in srgb, var(--rc-accent) 35%, transparent); }
+.reader-shell .reader-tool-group button:disabled { color: var(--rc-muted); opacity: .55; }
+.reader-shell .reader-wake-lock-control button { border: 0; border-radius: 12px; background: var(--rc-control); color: var(--rc-ink); font-weight: 600; }
+.reader-shell .reader-wake-lock-control button:hover:not(:disabled):not(.active) { background: var(--rc-control-hover); }
+.reader-shell .reader-wake-lock-control button.active { background: var(--rc-accent); color: var(--rc-on-accent); box-shadow: none; }
+.reader-shell .reader-wake-lock-control > span { color: var(--rc-muted); }
+.reader-shell .reader-status-control { color: var(--rc-muted); font-weight: 600; }
+.reader-shell .reader-status-control select { border: 0; border-radius: 10px; background-color: var(--rc-control); color: var(--rc-ink); font-weight: 600; }
+.reader-shell :is(.reader-zoom-tools .reader-zoom-value, .reader-font-tools .reader-font-value) { color: var(--rc-ink); }
+.reader-shell .reader-toolbar-divider { height: 22px; background: var(--rc-line); }
+.reader-shell .reader-shortcuts { color: var(--rc-muted); }
+.reader-shell :is(button, select, input, a):focus-visible { outline: 2px solid var(--rc-accent); outline-offset: 2px; }
+
+/* Side panels */
+.reader-shell .reader-side-panel { top: 124px; border: 1px solid var(--rc-line); border-radius: 20px; background: color-mix(in srgb, var(--rc-solid) 92%, transparent); color: var(--rc-ink); box-shadow: var(--rc-shadow); backdrop-filter: blur(22px) saturate(1.3); animation: reader-panel-in .18s ease-out; }
+@keyframes reader-panel-in { from { opacity: 0; transform: translateX(-10px); } }
+.reader-shell .reader-side-panel > header { border-bottom: 1px solid var(--rc-line); }
+.reader-shell .reader-side-panel > header strong { font-family: inherit; font-size: 1rem; font-weight: 700; letter-spacing: -.01em; }
+.reader-shell .reader-side-panel > header button { border-radius: 999px; background: var(--rc-control); color: var(--rc-ink); }
+.reader-shell .reader-side-panel > header button:hover { background: var(--rc-control-hover); }
+.reader-shell .reader-toc-list > button { border-bottom: 0; border-radius: 10px; margin: 1px 8px; color: var(--rc-ink); }
+.reader-shell .reader-toc-list > button:hover:not(:disabled) { background: var(--rc-control-hover); }
+.reader-shell .reader-toc-list > button[aria-current='location'] { border-left: 0; background: color-mix(in srgb, var(--rc-accent) 16%, transparent); color: var(--rc-ink); box-shadow: inset 3px 0 var(--rc-accent); }
+.reader-shell .reader-toc-list > button[aria-current='location']::after { color: var(--rc-accent); }
+.reader-shell .reader-toc-list > button:disabled { color: var(--rc-muted); }
+.reader-shell :is(.reader-toc-list small, .reader-panel-empty, .reader-search-progress, .epub-settings-scope, .reader-speech-note, .reader-speech-progress) { color: var(--rc-muted); }
+.reader-shell .reader-search-panel form input, .reader-shell .highlight-composer input { border: 1px solid var(--rc-line); border-radius: 10px; background: var(--rc-field); color: var(--rc-ink); }
+.reader-shell :is(.reader-search-panel form button, .epub-progress-preview > button, .highlight-composer > button:last-child) { border-radius: 10px; background: var(--rc-accent); color: var(--rc-on-accent); }
+.reader-shell .reader-search-results > button { border: 1px solid var(--rc-line); border-radius: 12px; background: var(--rc-field); color: var(--rc-ink); }
+.reader-shell .reader-search-results > button:hover { border-color: color-mix(in srgb, var(--rc-accent) 50%, var(--rc-line)); background: color-mix(in srgb, var(--rc-accent) 7%, var(--rc-field)); }
+.reader-shell .reader-search-results span { color: var(--rc-muted); }
+.reader-shell .reader-speech-source { background: var(--rc-control); color: var(--rc-ink); }
+.reader-shell .reader-speech-panel label { color: var(--rc-muted); }
+.reader-shell :is(.reader-speech-panel select, .epub-typography-controls select) { border: 1px solid var(--rc-line); border-radius: 10px; background-color: var(--rc-field); color: var(--rc-ink); }
+.reader-shell .reader-speech-panel .reader-speech-toggle { background: var(--rc-control); color: var(--rc-ink); }
+.reader-shell .reader-speech-actions button { border: 0; border-radius: 10px; background: var(--rc-control); color: var(--rc-ink); }
+.reader-shell .reader-speech-actions button.primary { background: var(--rc-accent); color: var(--rc-on-accent); }
+.reader-shell :is(.epub-typography-controls label, .epub-progress-preview label) { color: var(--rc-ink); }
+.reader-shell .epub-typography-controls output { color: var(--rc-muted); }
+.reader-shell :is(input[type='range'], input[type='checkbox']) { accent-color: var(--rc-accent); }
+.reader-shell .epub-reset-typography { border: 0; border-radius: 10px; background: var(--rc-control); color: var(--rc-ink); }
+.reader-shell .epub-reader-feedback { border-radius: 999px; background: var(--rc-glass); color: var(--rc-ink); box-shadow: var(--rc-shadow); backdrop-filter: blur(14px); }
+.reader-shell .highlight-composer { border: 1px solid var(--rc-line); border-radius: 18px; background: color-mix(in srgb, var(--rc-solid) 94%, transparent); color: var(--rc-ink); box-shadow: var(--rc-shadow); }
+.reader-shell .highlight-composer-close { border-radius: 999px; background: var(--rc-control); color: var(--rc-ink); }
+.reader-shell .highlight-composer blockquote { color: var(--rc-muted); }
+.reader-shell .highlight-color { border-color: var(--rc-solid); box-shadow: 0 0 0 1px var(--rc-line); }
+.reader-shell .highlight-color.active { box-shadow: 0 0 0 3px var(--rc-accent); }
+
+/* Appearance panel */
+.reader-appearance-controls { min-height: 0; display: grid; align-content: start; gap: 22px; overflow-y: auto; padding: 16px; }
+.reader-appearance-controls h3 { margin: 0 0 10px; color: var(--rc-muted); font-size: .72rem; font-weight: 700; letter-spacing: .12em; }
+.reader-appearance-controls .epub-settings-scope { margin: 10px 0 0; }
+.reader-theme-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.reader-shell .reader-theme-card { display: grid; gap: 7px; padding: 0 0 8px; overflow: hidden; border: 1px solid var(--rc-line); border-radius: 14px; background: var(--rc-field); color: var(--rc-ink); font-size: .75rem; font-weight: 600; cursor: pointer; transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease; }
+.reader-shell .reader-theme-card:hover { transform: translateY(-2px); box-shadow: 0 8px 18px #0000001a; }
+.reader-shell .reader-theme-card.active { border-color: var(--rc-accent); box-shadow: 0 0 0 2px var(--rc-accent); }
+.reader-theme-sample { position: relative; display: grid; align-content: center; gap: 4px; height: 58px; padding: 0 12px; background: var(--card-page); color: var(--card-ink); text-align: left; }
+.reader-theme-sample b { font: 600 1.05rem/1 Georgia, 'Songti SC', serif; }
+.reader-theme-sample i { display: block; height: 3px; border-radius: 3px; background: currentColor; opacity: .35; }
+.reader-theme-sample i:last-child { width: 62%; background: var(--card-link); opacity: .7; }
+.reader-theme-name { padding-inline: 4px; }
+.reader-range { display: grid; gap: 6px; margin: 0 0 10px; color: var(--rc-ink); font-size: .82rem; }
+.reader-range > span { display: flex; justify-content: space-between; gap: 10px; }
+.reader-range output { color: var(--rc-muted); font-variant-numeric: tabular-nums; }
+.reader-range input { width: 100%; min-height: 30px; padding: 0; cursor: pointer; }
+.reader-stepper { display: grid; grid-template-columns: 52px minmax(0, 1fr) 52px; align-items: center; gap: 6px; padding: 4px; border-radius: 12px; background: var(--rc-control); }
+.reader-shell .reader-stepper button { min-height: 38px; border: 0; border-radius: 9px; background: var(--rc-field); color: var(--rc-ink); font-weight: 700; }
+.reader-shell .reader-stepper button:disabled { opacity: .45; }
+.reader-stepper output { color: var(--rc-ink); font-weight: 700; font-variant-numeric: tabular-nums; text-align: center; }
+.reader-shell .reader-appearance-reset { width: 100%; min-height: 38px; border: 0; border-radius: 10px; background: var(--rc-control); color: var(--rc-ink); font-weight: 600; }
+
+/* Comfort layer: above pages (z 0–6), below navigation (8), toolbar (9) and panels (10). */
+.reader-comfort-layer { position: fixed; z-index: 7; inset: 0; pointer-events: none; }
+.reader-comfort-layer > i { position: absolute; inset: 0; }
+.reader-comfort-dim { background: #000; }
+.reader-comfort-warmth { background: #ff9a3c; mix-blend-mode: multiply; }
+
+/* Bottom page navigation */
+.reader-shell :is(.pdf-navigation, .epub-navigation) { gap: 6px; padding: 6px; border: 1px solid var(--rc-line); border-radius: 999px; background: var(--rc-glass); color: var(--rc-ink); box-shadow: var(--rc-shadow); backdrop-filter: blur(18px) saturate(1.4); }
+.reader-shell :is(.pdf-navigation, .epub-navigation) button { border-radius: 999px; background: var(--rc-control); color: var(--rc-ink); font-weight: 700; transition: background .15s ease; }
+.reader-shell :is(.pdf-navigation, .epub-navigation) button:hover:not(:disabled) { background: var(--rc-accent); color: var(--rc-on-accent); }
+.reader-shell :is(.pdf-navigation, .epub-navigation) button:disabled { opacity: .4; }
+.reader-shell .epub-reader .epub-navigation .epub-progress-button { min-width: 72px; color: var(--rc-ink); }
+.reader-shell .pdf-navigation input { border: 1px solid var(--rc-line); border-radius: 999px; background: var(--rc-field); color: var(--rc-ink); }
+
+/* EPUB surface */
+.reader-shell .epub-reader { background: var(--reader-stage, #f8f5ed); }
+.reader-shell .epub-loading { color: color-mix(in srgb, var(--reader-ink, #19231d) 70%, transparent); }
+
+/* PDF surface: canvases are recoloured, the text layer stays transparent for selection. */
+.reader-shell .pdf-reader { background: var(--pdf-stage, #dcd9d1); transition: background .2s ease; }
+.reader-shell .pdf-reader-viewport { scrollbar-color: color-mix(in srgb, var(--rc-ink) 35%, transparent) transparent; }
+.reader-shell .pdf-page-shell { border-radius: 3px; box-shadow: 0 1px 2px #0000001f, 0 12px 34px #00000029; }
+.reader-shell .pdf-page-canvas { filter: var(--pdf-filter, none); transition: opacity .12s ease, filter .2s ease; }
+.reader-shell .pdf-loading { color: var(--rc-ink); }
+.reader-shell .pdf-loading small { color: var(--rc-muted); }
+.reader-shell .reader-load-progress { background: var(--rc-control-hover); }
+.reader-shell .reader-load-progress i { background: var(--rc-accent); }
+.reader-shell .pdf-reader[data-reader-tone='dark'] .pdf-page-shell { background: #151a17; box-shadow: 0 0 0 1px #ffffff12, 0 14px 40px #000a; }
+.reader-shell .pdf-reader[data-reader-theme='oled'] .pdf-page-shell { background: #000; }
+.reader-shell .pdf-reader[data-reader-tone='dark'] .pdf-page-placeholder { background: linear-gradient(110deg, #161c18 30%, #1e2621 45%, #161c18 60%); background-size: 240% 100%; color: #6f7d74; }
+.reader-shell .pdf-reader[data-reader-tone='dark'] .pdf-highlight { mix-blend-mode: screen; opacity: .38; }
+
+@media (max-width: 720px) {
+  .reader-shell .reader-toolbar { top: 58px; }
+  .reader-shell .reader-side-panel { top: 116px; }
+  .reader-theme-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+}
+@supports (padding: max(0px)) {
+  .reader-shell .reader-toolbar { top: calc(58px + env(safe-area-inset-top)); }
+  .reader-shell .reader-side-panel { top: calc(124px + env(safe-area-inset-top)); }
+  @media (max-width: 720px) { .reader-shell .reader-side-panel { top: calc(116px + env(safe-area-inset-top)); } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reader-shell *, .reader-shell *::before, .reader-shell *::after { animation: none !important; transition: none !important; }
+}

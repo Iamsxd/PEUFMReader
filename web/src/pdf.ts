@@ -1,3 +1,5 @@
+import { parseReaderTheme, type ReaderTheme } from './readerAppearance'
+
 export class PDFContentError extends Error {
   constructor(message: string, public readonly status?: number) {
     super(message)
@@ -14,6 +16,8 @@ export interface PDFReaderPreferences {
   layout: PDFPageLayout
   zoomMode: PDFZoomMode
   zoomPercent: number
+  /** Reading skin; `paper` keeps original page colours. */
+  theme: ReaderTheme
 }
 
 export const PDF_PREFERENCES_KEY = 'peufmreader.pdf.preferences.v1'
@@ -22,6 +26,7 @@ export const DEFAULT_PDF_PREFERENCES: PDFReaderPreferences = {
   layout: 'single',
   zoomMode: 'fit-width',
   zoomPercent: 100,
+  theme: 'paper',
 }
 
 export interface PDFReadingAnchor {
@@ -176,6 +181,7 @@ export function parsePDFPreferences(value: string | null): PDFReaderPreferences 
       layout: parsed.layout === 'spread' ? 'spread' : 'single',
       zoomMode: parsed.zoomMode === 'fit-page' || parsed.zoomMode === 'custom' ? parsed.zoomMode : 'fit-width',
       zoomPercent: clampPDFZoom(typeof parsed.zoomPercent === 'number' ? parsed.zoomPercent : 100),
+      theme: parseReaderTheme(parsed.theme),
     }
   } catch {
     return { ...DEFAULT_PDF_PREFERENCES }

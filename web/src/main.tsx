@@ -5,6 +5,7 @@ import './styles.css'
 import './themes.css'
 import './workspace.css'
 import './personalWorkspace.css'
+import './readerSkin.css'
 import { ThemeProvider } from './components/ThemeProvider'
 import { applyTheme, loadTheme } from './theme'
 

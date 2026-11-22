@@ -183,6 +183,11 @@ export function Reader({ book, initialMark, contentData, userID, offlineMode, on
         </div>
         <span className={`format-badge ${book.format}`}>{book.format.toUpperCase()}</span>
       </header>
+      {isImmersiveReader && state && (
+        <div className="reader-progress-line" role="progressbar" aria-label="整本书阅读进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(state.overallProgress * 100)}>
+          <i style={{ width: `${Math.round(state.overallProgress * 1000) / 10}%` }} />
+        </div>
+      )}
       {isImmersiveReader && !readerChromeVisible && (
         <button className="reader-chrome-toggle" onClick={showReaderChrome} aria-label={`显示 ${book.format.toUpperCase()} 阅读工具`} title="显示阅读工具">
           工具
