@@ -1,5 +1,6 @@
 import { expect, test, type CDPSession, type Locator, type Page } from '@playwright/test'
 import type { ShelfDrop } from '../src/shelfOrder'
+import { chooseAppTheme } from './support/theme'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -284,7 +285,7 @@ test('touch PointerEvents sort at 320px in both themes and leave card scrolling 
       ['edition', a, b, 'after', [b, a, c]],
       ['night', a, b, 'before', [a, b, c]],
     ] as const) {
-      await page.getByRole('combobox', { name: '界面主题', exact: true }).selectOption(theme)
+      await chooseAppTheme(page, theme)
       const points = await coordinates(page, handle(page, sourceID), card(page, targetID), placement)
       await touchAt(touch, 'touchStart', points.start)
       await touchAt(touch, 'touchMove', points.end)

@@ -1,6 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { parseReaderCorpusIDs, selectReaderCorpus } from '../src/readerRegression'
 import type { BookFile, CatalogPage, ReadingState } from '../src/types'
+import { chooseReaderTheme } from './support/theme'
 
 const readerUsername = process.env.E2E_READER_USERNAME
 const readerPassword = process.env.E2E_READER_PASSWORD
@@ -100,8 +101,9 @@ test.describe('reader regression corpus', () => {
         const initialFont = await fontValue.textContent()
         await toolbar.getByRole('button', { name: '放大字号' }).click()
         await expect(fontValue).not.toHaveText(initialFont ?? '')
-        await toolbar.getByRole('button', { name: '夜间' }).click()
+        await chooseReaderTheme(page, '夜间')
         await expect(page.locator('.epub-reader')).toHaveClass(/theme-night/)
+        await page.getByRole('complementary', { name: 'EPUB 阅读外观' }).getByRole('button', { name: '关闭侧栏' }).click()
 
         const next = page.getByRole('navigation', { name: 'EPUB 翻页' }).getByRole('button', { name: '下一页' })
         if (await next.isEnabled()) await next.click()

@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, type FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 import workerURL from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 import {
@@ -28,6 +28,10 @@ import { ReadingMarksPanel } from './ReadingMarksPanel'
 import { HighlightComposer, type PendingHighlight } from './HighlightComposer'
 import { SpeechPanel } from './SpeechPanel'
 import { ScreenWakeLockControl } from './ScreenWakeLockControl'
+import { ReaderToolIcon } from './ReaderToolIcon'
+import { ReaderAppearancePanel, ReaderComfortLayer } from './ReaderAppearancePanel'
+import { useReaderComfort } from '../../hooks/useReaderComfort'
+import { READER_THEMES, type ReaderTheme } from '../../readerAppearance'
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis'
 import { useReadingProgressPersistence } from '../../hooks/useReadingProgressPersistence'
 import { isInteractiveReaderTarget, isReaderCenterTap, MOBILE_READER_CHROME_QUERY } from '../../readerChrome'
@@ -70,7 +74,7 @@ interface PDFSearchResult {
   excerpt: string
 }
 
-type PDFSidePanel = 'toc' | 'search' | 'marks' | 'speech' | 'text' | 'crop' | null
+type PDFSidePanel = 'toc' | 'search' | 'marks' | 'speech' | 'text' | 'crop' | 'appearance' | null
 
 interface PendingPDFAnchor {
   target: PDFReadingAnchor
@@ -136,6 +140,7 @@ export function PDFReader({ book, userID, contentURL, contentData, offlineMode, 
   const [availableHeight, setAvailableHeight] = useState(Math.max(320, window.innerHeight - 96))
   const [isNarrow, setIsNarrow] = useState(window.innerWidth <= 720)
   const [preferences, setPreferences] = useState(readPreferences)
+  const [comfort, setComfort] = useReaderComfort()
   const cropKey = `peufmreader.pdf.crop.v1.${userID}.${book.id}`
   const [crop, setCrop] = useState<PDFCrop>(() => { try { return parsePDFCrop(localStorage.getItem(cropKey)) } catch { return { ...NO_PDF_CROP } } })
   useEffect(() => { try { localStorage.setItem(cropKey, JSON.stringify(crop)) } catch { /* Cosmetic preference only. */ } }, [crop, cropKey])
@@ -627,6 +632,11 @@ export function PDFReader({ book, userID, contentURL, contentData, offlineMode, 
     changePreferences((current) => ({ ...current, layout }))
   }
 
+  // A skin only recolours canvases through CSS; it never moves the reading anchor.
+  function setTheme(theme: ReaderTheme) {
+    setPreferences((current) => current.theme === theme ? current : { ...current, theme })
+  }
+
   function toggleSidePanel(panel: Exclude<PDFSidePanel, null>) {
     if (!confirmLeaveDrafts()) return
     setSidePanel((current) => current === panel ? null : panel)
@@ -678,7 +688,12 @@ export function PDFReader({ book, userID, contentURL, contentData, offlineMode, 
   }
 
   return (
-    <div className="pdf-reader">
+    <div
+      className="pdf-reader"
+      data-reader-theme={preferences.theme}
+      data-reader-tone={READER_THEMES[preferences.theme].tone}
+      style={{ '--pdf-stage': READER_THEMES[preferences.theme].pdfStage, '--pdf-filter': READER_THEMES[preferences.theme].pdfFilter } as CSSProperties}
+    >
       <div
         className={`reader-toolbar pdf-toolbar${chromeVisible ? '' : ' is-hidden'}`}
         role="toolbar"
@@ -687,18 +702,18 @@ export function PDFReader({ book, userID, contentURL, contentData, offlineMode, 
         onPointerDown={onChromeActivity}
         onFocusCapture={onChromeActivity}
       >
-        <button className="reader-toolbar-collapse" onClick={onHideChrome} title="收起阅读工具" aria-label="收起阅读工具">收起</button>
+        <button className="reader-toolbar-collapse" onClick={onHideChrome} title="收起阅读工具" aria-label="收起阅读工具"><ReaderToolIcon name="collapse" />收起</button>
         <div className="reader-tool-group" aria-label="书籍导航">
-          <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={() => toggleSidePanel('toc')}>目录</button>
-          <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={() => toggleSidePanel('search')}>书内搜索</button>
-          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} onClick={() => { setEditingMarkID(undefined); toggleSidePanel('marks') }}>书签/高亮</button>
-          <button className={sidePanel === 'speech' || speech.status === 'speaking' || speech.status === 'paused' ? 'active' : ''} aria-pressed={sidePanel === 'speech'} onClick={() => toggleSidePanel('speech')}>朗读</button>
-          <button aria-pressed={sidePanel === 'text'} disabled={!pdfDocument} onClick={() => toggleSidePanel('text')}>文字阅读</button>
-          <button aria-pressed={sidePanel === 'crop'} disabled={!pdfDocument} onClick={() => toggleSidePanel('crop')}>裁边</button>
+          <button className={sidePanel === 'toc' ? 'active' : ''} aria-pressed={sidePanel === 'toc'} onClick={() => toggleSidePanel('toc')}><ReaderToolIcon name="toc" />目录</button>
+          <button className={sidePanel === 'search' ? 'active' : ''} aria-pressed={sidePanel === 'search'} onClick={() => toggleSidePanel('search')}><ReaderToolIcon name="search" />书内搜索</button>
+          <button className={sidePanel === 'marks' ? 'active' : ''} aria-pressed={sidePanel === 'marks'} onClick={() => { setEditingMarkID(undefined); toggleSidePanel('marks') }}><ReaderToolIcon name="marks" />书签/高亮</button>
+          <button className={sidePanel === 'speech' || speech.status === 'speaking' || speech.status === 'paused' ? 'active' : ''} aria-pressed={sidePanel === 'speech'} onClick={() => toggleSidePanel('speech')}><ReaderToolIcon name="speech" />朗读</button>
+          <button aria-pressed={sidePanel === 'text'} disabled={!pdfDocument} onClick={() => toggleSidePanel('text')}><ReaderToolIcon name="text" />文字阅读</button>
+          <button aria-pressed={sidePanel === 'crop'} disabled={!pdfDocument} onClick={() => toggleSidePanel('crop')}><ReaderToolIcon name="crop" />裁边</button>
         </div>
         <div className="reader-tool-group" aria-label="阅读位置">
-          <button aria-label="返回刚才位置" title="返回上一次跳转前的位置，不是退出阅读器" disabled={!navigationState.canBack || Boolean(pendingAnchorRef.current)} onClick={() => navigateHistory('back')}>返回刚才</button>
-          <button aria-label="前进到跳转位置" disabled={!navigationState.canForward || Boolean(pendingAnchorRef.current)} onClick={() => navigateHistory('forward')}>前进</button>
+          <button aria-label="返回刚才位置" title="返回上一次跳转前的位置，不是退出阅读器" disabled={!navigationState.canBack || Boolean(pendingAnchorRef.current)} onClick={() => navigateHistory('back')}><ReaderToolIcon name="back" />返回刚才</button>
+          <button aria-label="前进到跳转位置" disabled={!navigationState.canForward || Boolean(pendingAnchorRef.current)} onClick={() => navigateHistory('forward')}><ReaderToolIcon name="forward" />前进</button>
         </div>
         <ScreenWakeLockControl onChromeActivity={onChromeActivity} />
         <span className="reader-toolbar-divider" />
@@ -726,6 +741,10 @@ export function PDFReader({ book, userID, contentURL, contentData, offlineMode, 
           <button className={preferences.zoomMode === 'fit-width' ? 'active' : ''} aria-pressed={preferences.zoomMode === 'fit-width'} onClick={() => changePreferences((current) => ({ ...current, zoomMode: 'fit-width' }))}>适宽</button>
           <button className={preferences.zoomMode === 'fit-page' ? 'active' : ''} aria-pressed={preferences.zoomMode === 'fit-page'} onClick={() => changePreferences((current) => ({ ...current, zoomMode: 'fit-page' }))}>适页</button>
         </div>
+        <span className="reader-toolbar-divider" />
+        <div className="reader-tool-group" aria-label="阅读外观">
+          <button className={sidePanel === 'appearance' ? 'active' : ''} aria-pressed={sidePanel === 'appearance'} title={`阅读皮肤：${READER_THEMES[preferences.theme].label}`} onClick={() => toggleSidePanel('appearance')}><ReaderToolIcon name="appearance" />外观</button>
+        </div>
         <span className="reader-shortcuts">← → 翻页 · + − / Ctrl+滚轮缩放</span>
       </div>
 
@@ -733,7 +752,18 @@ export function PDFReader({ book, userID, contentURL, contentData, offlineMode, 
         if (!pendingAnchorRef.current) pendingAnchorRef.current = { target: readVisibleAnchor(), persist: false }
         setCrop(next)
       }} onClose={() => setSidePanel(null)} onChromeActivity={onChromeActivity} />}
-      {sidePanel === 'speech' ? (
+      {sidePanel === 'appearance' ? (
+        <ReaderAppearancePanel
+          label="PDF 阅读外观"
+          theme={preferences.theme}
+          onThemeChange={setTheme}
+          comfort={comfort}
+          onComfortChange={setComfort}
+          onClose={() => setSidePanel(null)}
+          onChromeActivity={onChromeActivity}
+          themeNote="PDF 皮肤通过滤镜给页面着色，图片和插图也会随之变色；选“日间”即保留原书页面颜色。不会修改原文件。"
+        />
+      ) : sidePanel === 'speech' ? (
         <SpeechPanel
           controls={speech}
           sourceDescription={speechPages.length > 1 ? `当前第 ${speechPages[0]}–${speechPages.at(-1)} 页` : `当前第 ${speechPages[0] ?? pageNumber} 页`}
@@ -855,6 +885,7 @@ export function PDFReader({ book, userID, contentURL, contentData, offlineMode, 
           <button disabled={(preferences.flow === 'paged' ? pages.at(-1) ?? pageNumber : pageNumber) >= pageCount} onClick={() => movePage(1)} aria-label="下一页" title="下一页（→）">→</button>
         </nav>
       )}
+      <ReaderComfortLayer comfort={comfort} />
     </div>
   )
 }

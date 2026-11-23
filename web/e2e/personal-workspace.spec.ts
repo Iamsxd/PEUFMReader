@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { minimalPDF } from './support/pdf'
 import { minimalEPUB } from './support/epub'
+import { chooseAppTheme } from './support/theme'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -376,7 +377,7 @@ test('shelf batch controls and candidate pagination fit 320px in both themes', a
   await expect.poll(() => page.locator('.shelf-navigation button').first().evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(110)
   await expect.poll(() => page.locator('.shelf-heading h2').evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(130)
   for (const theme of ['edition', 'night']) {
-    await page.getByRole('combobox', { name: '界面主题' }).selectOption(theme)
+    await chooseAppTheme(page, theme)
     await page.getByRole('button', { name: '勾选本页', exact: true }).click()
     await expect(page.locator('.shelf-selection-bar')).toContainText('已勾选 10 本')
     await noOverflow(page)
@@ -485,7 +486,7 @@ test('notebook searches, filters, edits and deletes private annotations in both 
   await page.goto('/#/notebook')
   await expect(page.locator('.notebook-card')).toHaveCount(3)
   for (const theme of ['edition', 'night']) {
-    await page.getByRole('combobox', { name: '界面主题' }).selectOption(theme)
+    await chooseAppTheme(page, theme)
     await noOverflow(page)
     await page.screenshot({
       path: info.outputPath(`${theme}-notebook.png`),
@@ -512,7 +513,7 @@ test('personal shelves create, add, order, rename and remove without deleting bo
   await page.goto('/#/shelves?shelf=50')
   await expect(page.locator('.shelf-book')).toHaveCount(2)
   for (const theme of ['edition', 'night']) {
-    await page.getByRole('combobox', { name: '界面主题' }).selectOption(theme)
+    await chooseAppTheme(page, theme)
     await noOverflow(page)
     await page.screenshot({
       path: info.outputPath(`${theme}-shelves.png`),
@@ -578,7 +579,7 @@ test('notebook handles errors and long excerpts at 320px without losing navigati
   await page.setViewportSize({ width: 320, height: 850 })
   await page.reload()
   for (const theme of ['edition', 'night']) {
-    await page.getByRole('combobox', { name: '界面主题' }).selectOption(theme)
+    await chooseAppTheme(page, theme)
     await expect(page.locator('.notebook-card')).toHaveCount(3)
     await noOverflow(page)
     await page.goto('/#/shelves?shelf=50')

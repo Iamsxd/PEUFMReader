@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import initialHTML from '../index.html?raw'
 import manifestJSON from '../public/site.webmanifest?raw'
-import { APP_THEMES, applyTheme, DEFAULT_THEME, loadTheme, parseTheme, saveTheme, THEME_STORAGE_KEY } from './theme'
+import { APP_THEME_IDS, APP_THEMES, applyTheme, DEFAULT_THEME, loadTheme, loadThemePreference, parseTheme, parseThemePreference, resolveTheme, saveTheme, THEME_STORAGE_KEY } from './theme'
 import { EPUB_PREFERENCES_KEY } from './epub'
 import { PDF_PREFERENCES_KEY } from './pdf'
 
@@ -11,7 +11,24 @@ describe('application theme preferences', () => {
     expect(DEFAULT_THEME).toBe('edition')
     expect(THEME_STORAGE_KEY).toBe('peufmreader.app-theme')
     expect(parseTheme('night')).toBe('night')
-    for (const value of [null, '', 'edition', 'invalid', '__proto__']) expect(parseTheme(value)).toBe(DEFAULT_THEME)
+    for (const value of [null, '', 'edition', 'invalid', '__proto__', 'constructor']) expect(parseTheme(value)).toBe(DEFAULT_THEME)
+  })
+  it('offers the additional skins and resolves the system-following preference', () => {
+    expect(APP_THEME_IDS).toEqual(['edition', 'sakura', 'amber', 'ink', 'ocean', 'night', 'aurora'])
+    for (const id of APP_THEME_IDS) expect(parseTheme(id)).toBe(id)
+    expect(parseThemePreference('auto')).toBe('auto')
+    expect(resolveTheme('auto', false)).toBe('edition')
+    expect(resolveTheme('auto', true)).toBe('night')
+    expect(parseTheme('auto', true)).toBe('night')
+    expect(resolveTheme('aurora', false)).toBe('aurora')
+    const labels = APP_THEME_IDS.map(id => APP_THEMES[id].label)
+    expect(new Set(labels).size).toBe(labels.length)
+    for (const id of APP_THEME_IDS) expect(APP_THEMES[id].themeColor).toMatch(/^#[0-9A-F]{6}$/)
+  })
+  it('keeps auto stored as auto while painting the system tone', () => {
+    vi.stubGlobal('window', { localStorage: { getItem: () => 'auto' }, matchMedia: () => ({ matches: true }) })
+    expect(loadThemePreference()).toBe('auto')
+    expect(loadTheme()).toBe('night')
   })
   it.each(['edition', 'night'] as const)('restores the existing %s preference with the new display design', theme => {
     vi.stubGlobal('window', { localStorage: { getItem: vi.fn(() => theme) } })
@@ -43,15 +60,15 @@ describe('application theme preferences', () => {
     expect(storage.get(PDF_PREFERENCES_KEY)).toBe(pdfPreference)
     expect(storage.size).toBe(3)
   })
-  it.each(['edition', 'night'] as const)('applies %s to the application and browser chrome only', theme => {
+  it.each(['edition', 'night', 'sakura', 'aurora'] as const)('applies %s to the application and browser chrome only', theme => {
     const setAttribute = vi.fn()
     const querySelector = vi.fn(() => ({ setAttribute }))
     const dataset = { appTheme: 'edition', readerTheme: 'sepia' }
     vi.stubGlobal('document', { documentElement: { dataset }, querySelector })
     applyTheme(theme)
-    expect(dataset).toEqual({ appTheme: theme, readerTheme: 'sepia' })
+    expect(dataset).toEqual({ appTheme: theme, appTone: APP_THEMES[theme].tone, appStyle: APP_THEMES[theme].style, readerTheme: 'sepia' })
     expect(querySelector).toHaveBeenCalledExactlyOnceWith('meta[name="theme-color"]')
-    expect(setAttribute).toHaveBeenCalledExactlyOnceWith('content', theme === 'edition' ? '#F2F3EA' : '#101E2A')
+    expect(setAttribute).toHaveBeenCalledExactlyOnceWith('content', APP_THEMES[theme].themeColor)
   })
   it('can apply an interface theme without a theme-color meta tag', () => {
     const dataset: Record<string, string> = {}

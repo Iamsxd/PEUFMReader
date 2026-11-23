@@ -4,6 +4,7 @@ import { minimalEPUB } from './support/epub'
 import { APP_THEMES, THEME_STORAGE_KEY } from '../src/theme'
 import { EPUB_PREFERENCES_KEY } from '../src/epub'
 import { PDF_PREFERENCES_KEY } from '../src/pdf'
+import { chooseAppTheme, appThemeOption, chooseReaderTheme } from './support/theme'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -85,7 +86,7 @@ async function mockLibrary(page: Page, options: { empty?: boolean; error?: boole
 test('EPUB reader keeps independent themes, typography and chapter navigation', async ({ page }, info) => {
   await mockLibrary(page, { epub: true })
   await page.goto('/#/book/910000')
-  await page.getByRole('combobox', { name: '界面主题' }).selectOption('night')
+  await chooseAppTheme(page, 'night')
   await page.locator('.detail-actions .primary').click()
   const toolbar = page.locator('.epub-toolbar[role="toolbar"]')
   await expect(page.locator('.epub-host iframe').first()).toBeVisible()
@@ -100,10 +101,11 @@ test('EPUB reader keeps independent themes, typography and chapter navigation', 
   await expect(toolbar).not.toHaveAttribute('aria-hidden', 'true')
   await toolbar.getByRole('button', { name: '放大字号', exact: true }).click()
   await expect(toolbar.getByRole('button', { name: '110%', exact: true })).toBeVisible()
-  await toolbar.getByRole('button', { name: '夜间', exact: true }).click()
+  await chooseReaderTheme(page, '夜间')
   await expect(page.locator('.epub-reader')).toHaveClass(/theme-night/)
-  await toolbar.getByRole('button', { name: '日间', exact: true }).click()
+  await chooseReaderTheme(page, '日间')
   await expect(page.locator('.epub-reader')).toHaveClass(/theme-paper/)
+  await page.getByRole('complementary', { name: 'EPUB 阅读外观' }).getByRole('button', { name: '关闭侧栏' }).click()
   await toolbar.getByRole('button', { name: '目录', exact: true }).click()
   const toc = page.getByRole('complementary', { name: 'EPUB 目录' })
   await toc.getByRole('button', { name: 'Chapter Two', exact: true }).click()
@@ -125,7 +127,7 @@ test('both theme palettes preserve readable text on actual local surfaces', asyn
   await page.goto('/#/home')
   await expect(page.locator('.continue-description h3')).toHaveText('瓦尔登湖')
   for (const theme of ['edition', 'night'] as const) {
-    await page.getByRole('combobox', { name: '界面主题' }).selectOption(theme)
+    await chooseAppTheme(page, theme)
     const expectedBackground = theme === 'edition' ? 'rgb(242, 243, 234)' : 'rgb(16, 30, 42)'
     await expect(page.locator('html')).toHaveCSS('background-color', expectedBackground)
     await expect(page.locator('.app-shell')).toHaveCSS('background-color', expectedBackground)
@@ -276,7 +278,7 @@ test('workspace works at tablet and phone breakpoints in both themes', async ({ 
   for (const width of [320, 390, 720, 721, 820, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 })
     for (const theme of ['edition', 'night']) {
-      await page.getByRole('combobox', { name: '界面主题' }).selectOption(theme)
+      await chooseAppTheme(page, theme)
       await expect(page.locator('.continue-description h3')).toBeVisible()
       await noOverflow(page)
       const navigation = page.getByRole('navigation', { name: '主导航', exact: true })
@@ -303,7 +305,7 @@ test('themes cover statistics and admin without changing workspace', async ({ pa
   await mockLibrary(page)
   await page.goto('/#/statistics')
   for (const theme of ['edition', 'night']) {
-    await page.getByRole('combobox', { name: '界面主题' }).selectOption(theme)
+    await chooseAppTheme(page, theme)
     await expect(page.getByRole('heading', { name: '阅读统计', exact: true })).toBeVisible()
     await expect(page.locator('.reading-heatmap span')).toHaveCount(84)
     const levels = await page.locator('.reading-heatmap span').evaluateAll(elements => [...new Set(elements.map(el => getComputedStyle(el).backgroundColor))])
@@ -314,7 +316,7 @@ test('themes cover statistics and admin without changing workspace', async ({ pa
   await page.goto('/#/admin')
   await expect(page.locator('.upload-drop-zone')).toBeVisible()
   for (const theme of ['edition', 'night']) {
-    await page.getByRole('combobox', { name: '界面主题' }).selectOption(theme)
+    await chooseAppTheme(page, theme)
     await expect(page.getByRole('heading', { name: '书籍导入', exact: true })).toBeVisible()
     await noOverflow(page)
     await page.screenshot({ path: info.outputPath(`${theme}-imports.png`), fullPage: true })
@@ -328,12 +330,12 @@ test('a selection synchronizes to other open tabs', async ({ page, context }) =>
   const second = await context.newPage()
   await mockLibrary(second)
   await second.goto('/')
-  await page.getByRole('combobox', { name: '界面主题' }).selectOption('night')
-  await expect(second.getByRole('combobox', { name: '界面主题' })).toHaveValue('night')
+  await chooseAppTheme(page, 'night')
+  await expect(appThemeOption(second, 'night')).toBeChecked()
   await expect(second.locator('html')).toHaveAttribute('data-app-theme', 'night')
   await expect(second.locator('meta[name="theme-color"]')).toHaveAttribute('content', APP_THEMES.night.themeColor)
   await second.evaluate((key) => window.dispatchEvent(new StorageEvent('storage', { key, newValue: '{"theme":"paper"}' })), EPUB_PREFERENCES_KEY)
-  await expect(second.getByRole('combobox', { name: '界面主题' })).toHaveValue('night')
+  await expect(appThemeOption(second, 'night')).toBeChecked()
   await second.close()
 })
 
@@ -351,16 +353,15 @@ for (const theme of ['edition', 'night'] as const) {
       }
     }, { key: THEME_STORAGE_KEY, theme, epubKey: EPUB_PREFERENCES_KEY, pdfKey: PDF_PREFERENCES_KEY, epub, pdf })
     await page.goto('/')
-    const switcher = page.getByRole('combobox', { name: '界面主题' })
-    await expect(switcher).toHaveValue(theme)
-    await expect(switcher.locator('option:checked')).toHaveText(APP_THEMES[theme].label)
+    await expect(appThemeOption(page, theme)).toBeChecked()
+    await expect(page.locator('details.theme-switch > summary')).toHaveAccessibleName(`界面主题：${APP_THEMES[theme].label}`)
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', APP_THEMES[theme].themeColor)
     const next = theme === 'night' ? 'edition' : 'night'
-    await switcher.selectOption(next)
+    await chooseAppTheme(page, next)
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', APP_THEMES[next].themeColor)
     await page.reload()
-    await expect(switcher).toHaveValue(next)
-    await expect(switcher.locator('option:checked')).toHaveText(APP_THEMES[next].label)
+    await expect(appThemeOption(page, next)).toBeChecked()
+    await expect(page.locator('details.theme-switch > summary')).toHaveAccessibleName(`界面主题：${APP_THEMES[next].label}`)
     expect(await page.evaluate(({ epubKey, pdfKey }) => ({ epub: localStorage.getItem(epubKey), pdf: localStorage.getItem(pdfKey) }), { epubKey: EPUB_PREFERENCES_KEY, pdfKey: PDF_PREFERENCES_KEY })).toEqual({ epub, pdf })
   })
 }
@@ -376,7 +377,7 @@ for (const theme of ['edition', 'night'] as const) {
     const requests = await mockLibrary(page)
     await page.goto('/')
     await expect(page.locator('.continue-description h3')).toHaveText('瓦尔登湖')
-    await page.getByRole('combobox', { name: '界面主题' }).selectOption(theme)
+    await chooseAppTheme(page, theme)
     await expect(page.locator('html')).toHaveAttribute('data-app-theme', theme)
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', APP_THEMES[theme].themeColor)
     await expect(page.locator('.continue-progress strong')).toHaveText('42%')
@@ -385,10 +386,10 @@ for (const theme of ['edition', 'night'] as const) {
     await page.screenshot({ path: info.outputPath(`${theme}-home.png`), fullPage: true })
     const before = requests.filter(path => path === '/api/v1/home/summary').length
     await page.getByRole('textbox', { name: '搜索书库' }).fill('瓦尔登湖')
-    await page.getByRole('combobox', { name: '界面主题' }).selectOption(theme === 'night' ? 'edition' : 'night')
+    await chooseAppTheme(page, theme === 'night' ? 'edition' : 'night')
     await expect(page.getByRole('textbox', { name: '搜索书库' })).toHaveValue('瓦尔登湖')
     expect(requests.filter(path => path === '/api/v1/home/summary')).toHaveLength(before)
-    await page.getByRole('combobox', { name: '界面主题' }).selectOption(theme)
+    await chooseAppTheme(page, theme)
     await page.getByRole('button', { name: '搜索', exact: true }).click()
     await expect(page).toHaveURL(/q=/)
     await expect(page.getByRole('heading', { name: '全部书籍' })).toBeVisible()
@@ -396,7 +397,7 @@ for (const theme of ['edition', 'night'] as const) {
     await page.screenshot({ path: info.outputPath(`${theme}-catalog.png`), fullPage: true })
     await page.reload()
     await expect(page.locator('html')).toHaveAttribute('data-app-theme', theme)
-    await expect(page.getByRole('combobox', { name: '界面主题' })).toHaveValue(theme)
+    await expect(appThemeOption(page, theme)).toBeChecked()
     await page.goto('/#/book/910000')
     await expect(page.locator('.book-detail-page h1')).toHaveText('瓦尔登湖')
     await noOverflow(page)
@@ -416,7 +417,7 @@ test('switch works when preference storage is blocked', async ({ page }) => {
     Storage.prototype.getItem = () => { throw new DOMException('Denied', 'SecurityError') }
   })
   await page.goto('/')
-  await page.getByRole('combobox', { name: '界面主题' }).selectOption('night')
+  await chooseAppTheme(page, 'night')
   await expect(page.locator('html')).toHaveAttribute('data-app-theme', 'night')
   await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible()
   await noOverflow(page)
@@ -428,7 +429,7 @@ for (const state of ['empty', 'error', 'long'] as const) {
     await page.setViewportSize({ width: 320, height: 850 })
     await page.goto('/')
     for (const theme of ['night', 'edition']) {
-      await page.getByRole('combobox', { name: '界面主题' }).selectOption(theme)
+      await chooseAppTheme(page, theme)
       if (state === 'empty') await expect(page.getByRole('heading', { name: '书库还是空的' })).toBeVisible()
       if (state === 'error') await expect(page.getByRole('alert')).toContainText('阅读概况暂不可用')
       if (state === 'long') await expect(page.locator('.continue-stage > .book-jacket .cover-placeholder')).toBeVisible()
